@@ -1,0 +1,27 @@
+# Dependencies
+node_modules
+python/.venv
+python/venv
+**/__pycache__/
+*.py[cod]
+
+# Build
+dist
+out
+release
+*.log*
+.eslintcache
+.DS_Store
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.idea
+*.swp
+Thumbs.db
+
+# Electron
+*.asar
