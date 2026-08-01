@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trading-zone.local/contracts/stock_list.response.json",
+  "title": "StockListResponse",
+  "description": "Result for method data.sync.stock_list (synced_at is filled by Main)",
+  "type": "object",
+  "required": ["stocks", "count"],
+  "properties": {
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "stocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ts_code", "symbol", "name"],
+        "properties": {
+          "ts_code": { "type": "string" },
+          "symbol": { "type": "string" },
+          "name": { "type": "string" },
+          "area": { "type": ["string", "null"] },
+          "industry": { "type": ["string", "null"] },
+          "market": { "type": ["string", "null"] },
+          "list_date": { "type": ["string", "null"] }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

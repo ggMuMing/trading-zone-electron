@@ -7,19 +7,19 @@ todos:
     status: completed
   - id: sqlite
     content: Main 侧 better-sqlite3：stocks 表、Repository、stocks:list IPC
-    status: pending
+    status: completed
   - id: python-worker
     content: Python venv + NDJSON worker + tushare stock_basic + 库 import 冒烟 + contracts
-    status: pending
+    status: completed
   - id: app-service
     content: ApplicationService 编排 sync + pythonBridge + stocks:sync IPC
-    status: pending
+    status: completed
   - id: ui-page
     content: React 同步按钮 + 股票列表表格 + loading/error/token 配置
-    status: pending
+    status: completed
   - id: acceptance
     content: 按 Sprint1 验收清单自测全链路与持久化
-    status: pending
+    status: completed
 isProject: false
 ---
 
@@ -73,8 +73,8 @@ flowchart LR
 
 验收标准（与 [sprint1.md](prompt/trading-zone-electron开发文档/sprint1.md) 一致）：
 
-1. Electron + React UI，可经 Main/SQLite 交互  
-2. Python worker 能加载 tushare / pandas / numpy / duckdb  
+1. Electron + React UI，可经 Main/SQLite 交互
+2. Python worker 能加载 tushare / pandas / numpy / duckdb
 3. 全链路：`UI → ApplicationService → Python(tushare 拉 A 股列表) → 写入 SQLite → UI 展示`
 
 ---

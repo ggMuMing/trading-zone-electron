@@ -8,15 +8,18 @@
 | --- | --- |
 | 壳 | Electron + electron-vite + electron-builder |
 | UI | React + TypeScript + MUI |
-| 业务（后续） | Main 进程 + SQLite |
-| 数据/计算（后续） | 嵌入式 Python + Tushare / pandas / DuckDB |
+| 业务 | Main 进程 + better-sqlite3 |
+| 数据/计算 | Python worker + Tushare / pandas / numpy / DuckDB |
 
 目录：
 
 ```
-src/main       # Electron 主进程
+src/main       # Electron 主进程（含 db/、ipc/）
 src/preload    # contextBridge 白名单 API
 src/renderer   # React UI
+src/shared     # 跨进程共享类型
+python/        # NDJSON worker（venv + tushare）
+contracts/     # 跨语言 JSON Schema 契约
 frontend/      # 历史依赖备份（package-backup.json）
 prompt/        # 架构与迭代文档
 ```
@@ -25,6 +28,7 @@ prompt/        # 架构与迭代文档
 
 - Node.js **20.19+**（当前 electron-vite 5 / Vite 7 要求）
 - npm 10+
+- Python **3.11+**（推荐 3.12/3.13）
 
 若 `npm run dev` 报 `Electron uninstall`，执行：
 
@@ -49,7 +53,31 @@ npm install
 npm run dev
 ```
 
-可选：复制环境变量模板（后续 Python / Tushare 使用）：
+原生模块（`better-sqlite3`）需按 Electron ABI 编译。若启动报 NODE_MODULE_VERSION 不匹配：
+
+```bash
+npx @electron/rebuild -f -w better-sqlite3
+```
+
+### Python worker
+
+```bash
+cd python
+python -m venv .venv
+
+# Windows
+.venv\Scripts\activate
+pip install -r requirements.txt
+
+# 冒烟：ready + 库 import（不拉行情）
+python scripts\smoke_worker.py
+
+# 可选：带 Tushare token 拉 A 股列表
+set TUSHARE_TOKEN=你的token
+python scripts\smoke_worker.py
+```
+
+可选：复制环境变量模板：
 
 ```bash
 copy .env.example .env
@@ -61,14 +89,18 @@ copy .env.example .env
 | 命令 | 说明 |
 | --- | --- |
 | `npm run dev` | 启动开发窗口 |
+| `npm run acceptance` | Sprint1 无头验收（Python + SQLite 同步） |
 | `npm run typecheck` | 主进程 + 渲染进程类型检查 |
 | `npm run build` | 编译到 `out/` |
 | `npm run build:win` | Windows 安装包 |
+| `python python/scripts/smoke_worker.py` | Python worker 冒烟 |
 
 ## 架构要点
 
 - Renderer 仅展示；经 preload `window.api` 调用 Main
-- Main 编排业务（SQLite）与 Python worker（后续迭代）
-- 控制面先用 JSON；大数据面再演进 Arrow / DuckDB 窗读
+- Main `ApplicationService` 编排：`stocks:sync` → Python `data.sync.stock_list` → SQLite upsert
+- Python worker 由 `pythonBridge` 拉起（`python/.venv`），stdin/stdout NDJSON；崩溃自动重启 1 次
+- Token：环境变量 `TUSHARE_TOKEN` 优先，否则读 `userData/config/config.json`
+- 契约见 `contracts/`；TS 对照类型在 `src/shared/types/pythonProtocol.ts`
 
 详见 `prompt/trading-zone-electron开发文档/`。

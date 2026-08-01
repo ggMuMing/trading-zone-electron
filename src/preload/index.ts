@@ -1,13 +1,31 @@
-import { contextBridge } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import type { Stock } from '../shared/types/stock'
+import type { WorkerReadyMessage } from '../shared/types/pythonProtocol'
 
-/**
- * Renderer-facing API whitelist.
- * Sprint 1 later steps will add stocks:list / stocks:sync here.
- */
+export interface SyncStockListResult {
+  count: number
+  fetched: number
+}
+
 const api = {
   ping: (): void => {
-    electronAPI.ipcRenderer.send('ping')
+    ipcRenderer.send('ping')
+  },
+  stocks: {
+    list: (): Promise<Stock[]> => ipcRenderer.invoke('stocks:list'),
+    count: (): Promise<number> => ipcRenderer.invoke('stocks:count'),
+    sync: (): Promise<SyncStockListResult> => ipcRenderer.invoke('stocks:sync')
+  },
+  config: {
+    hasTushareToken: (): Promise<boolean> => ipcRenderer.invoke('config:hasTushareToken'),
+    getTushareTokenMasked: (): Promise<string | null> =>
+      ipcRenderer.invoke('config:getTushareTokenMasked'),
+    setTushareToken: (token: string): Promise<boolean> =>
+      ipcRenderer.invoke('config:setTushareToken', token)
+  },
+  python: {
+    ready: (): Promise<WorkerReadyMessage | null> => ipcRenderer.invoke('python:ready')
   }
 }
 

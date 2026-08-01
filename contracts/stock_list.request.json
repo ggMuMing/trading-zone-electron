@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trading-zone.local/contracts/stock_list.request.json",
+  "title": "StockListRequest",
+  "description": "Params for method data.sync.stock_list",
+  "type": "object",
+  "required": ["token"],
+  "properties": {
+    "token": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Tushare Pro API token"
+    },
+    "exchange": {
+      "type": "string",
+      "default": "",
+      "description": "Empty = all exchanges (SSE/SZSE/BSE)"
+    },
+    "list_status": {
+      "type": "string",
+      "default": "L",
+      "description": "L=listed, D=delisted, P=paused"
+    }
+  },
+  "additionalProperties": false
+}
