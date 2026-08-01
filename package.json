@@ -6,7 +6,8 @@
   "author": "trading-zone",
   "homepage": "https://github.com/trading-zone/trading-zone-electron",
   "engines": {
-    "node": ">=20.19.0"
+    "node": ">=20.19.0",
+    "npm": ">=10.0.0"
   },
   "scripts": {
     "format": "prettier --write .",

@@ -1,5 +1,7 @@
 # trading-zone-electron-sprint1
 
+> 完整迭代说明（目标 / 需求 / 设计 / 任务 / 测试 / 改进）见：[Sprint1迭代文档.md](./Sprint1迭代文档.md)
+
 ## 概述
 - 实现架构的最小实现的测试
 

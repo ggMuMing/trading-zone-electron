@@ -26,9 +26,21 @@ prompt/        # 架构与迭代文档
 
 ## 环境要求
 
-- Node.js **20.19+**（当前 electron-vite 5 / Vite 7 要求）
-- npm 10+
-- Python **3.11+**（推荐 3.12/3.13）
+| 运行时 | 要求 | 说明 |
+| --- | --- | --- |
+| Node.js | **≥ 20.19.0**（推荐 **22 LTS**） | `package.json` → `engines.node` 强制声明；低于此版本安装时会出现 `EBADENGINE`，且 electron-vite 5 / Vite 7 可能异常 |
+| npm | **≥ 10** | 随 Node 20.19+ / 22 LTS 自带即可 |
+| Python | **≥ 3.11**（推荐 3.12 / 3.13） | 用于 `python/.venv` worker |
+
+安装前请确认：
+
+```bash
+node -v   # 期望 v20.19.x 或 v22.x
+npm -v    # 期望 10+
+python --version
+```
+
+本地可用 `nvm` / `fnm` 切换到 22 LTS。若仍使用 Node 20，请至少升到 **20.19+**，勿停留在 20.16 等旧补丁。
 
 若 `npm run dev` 报 `Electron uninstall`，执行：
 
