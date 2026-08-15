@@ -18,6 +18,14 @@ CREATE TABLE IF NOT EXISTS stocks (
 
 CREATE INDEX IF NOT EXISTS idx_stocks_name ON stocks(name);
 CREATE INDEX IF NOT EXISTS idx_stocks_market ON stocks(market);
+
+CREATE TABLE IF NOT EXISTS market_pool (
+  ts_code   TEXT PRIMARY KEY NOT NULL,
+  rank      INTEGER NOT NULL,
+  synced_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_market_pool_rank ON market_pool(rank);
 `
 
 export function initDb(userDataPath: string): Database.Database {

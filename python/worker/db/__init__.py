@@ -1,0 +1,1 @@
+"""DuckDB market data access."""

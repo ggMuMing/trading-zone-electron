@@ -18,7 +18,7 @@ src/main       # Electron 主进程（含 db/、ipc/）
 src/preload    # contextBridge 白名单 API
 src/renderer   # React UI
 src/shared     # 跨进程共享类型
-python/        # NDJSON worker（venv + tushare）
+python/        # MessagePack worker（venv + tushare / DuckDB / Arrow）
 contracts/     # 跨语言 JSON Schema 契约
 frontend/      # 历史依赖备份（package-backup.json）
 prompt/        # 架构与迭代文档
@@ -102,6 +102,9 @@ copy .env.example .env
 | --- | --- |
 | `npm run dev` | 启动开发窗口 |
 | `npm run acceptance` | Sprint1 无头验收（Python + SQLite 同步） |
+| `npm run acceptance:s2` | Sprint2 无头验收（DuckDB 行情池 + 复权查询） |
+| `npm run acceptance:s3` | Sprint3 无头验收（MessagePack + Arrow 窗读） |
+| `npm run acceptance:s4` | Sprint4 无头验收（窗口补齐计划 / 清除 / 摘要 coverage） |
 | `npm run typecheck` | 主进程 + 渲染进程类型检查 |
 | `npm run build` | 编译到 `out/` |
 | `npm run build:win` | Windows 安装包 |
@@ -111,8 +114,11 @@ copy .env.example .env
 
 - Renderer 仅展示；经 preload `window.api` 调用 Main
 - Main `ApplicationService` 编排：`stocks:sync` → Python `data.sync.stock_list` → SQLite upsert
-- Python worker 由 `pythonBridge` 拉起（`python/.venv`），stdin/stdout NDJSON；崩溃自动重启 1 次
+- Sprint2：`market:syncPool` → 前 10 股票池 → Python `data.sync.market_pool` → DuckDB（`daily_bar` / `adj_factor`）；`market:query` 支持未/前/后复权
+- Python worker 由 `pythonBridge` 拉起（`python/.venv`），stdin/stdout **长度前缀 MessagePack**；注入 `TRADING_ZONE_USER_DATA`
+- Sprint3：`data.query.ohlcv` 回 Arrow IPC；Main 解码为行后经 `market:query` 给表格
+- Sprint4：两列壳（配置 / 行情）；`market:sync` 按 `[start_date, end_date]` 补齐交易日；coverage 无代码列表时只回摘要
 - Token：环境变量 `TUSHARE_TOKEN` 优先，否则读 `userData/config/config.json`
-- 契约见 `contracts/`；TS 对照类型在 `src/shared/types/pythonProtocol.ts`
+- 契约见 `contracts/`；TS 对照类型在 `src/shared/types/`
 
 详见 `prompt/trading-zone-electron开发文档/`。

@@ -1,4 +1,4 @@
-"""Smoke-test the NDJSON worker: ready + optional stock_list call.
+"""Smoke-test the MessagePack worker: ready + optional stock_list call.
 
 Usage (from repo root, with venv activated):
   python python/scripts/smoke_worker.py
@@ -18,6 +18,11 @@ ROOT = Path(__file__).resolve().parents[2]
 PYTHON_DIR = ROOT / "python"
 WORKER = PYTHON_DIR / "worker" / "main.py"
 
+if str(PYTHON_DIR) not in sys.path:
+    sys.path.insert(0, str(PYTHON_DIR))
+
+from worker.codec import pack_message, read_message  # noqa: E402
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -30,20 +35,23 @@ def main() -> int:
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
     )
     assert proc.stdout is not None
     assert proc.stdin is not None
 
-    ready_line = proc.stdout.readline()
-    if not ready_line:
-        err = proc.stderr.read() if proc.stderr else ""
+    try:
+        ready = read_message(proc.stdout)
+    except Exception as exc:
+        err = proc.stderr.read().decode("utf-8", errors="replace") if proc.stderr else ""
+        print(f"Worker failed to emit ready: {exc}\n{err}", file=sys.stderr)
+        return 1
+
+    if not ready:
+        err = proc.stderr.read().decode("utf-8", errors="replace") if proc.stderr else ""
         print("Worker failed to emit ready:", err, file=sys.stderr)
         return 1
 
-    ready = json.loads(ready_line)
-    print("ready:", json.dumps(ready, ensure_ascii=False))
+    print("ready:", json.dumps(ready, ensure_ascii=False, default=str))
     if ready.get("type") != "ready" or not all(ready.get("imports", {}).values()):
         print("Import smoke failed", file=sys.stderr)
         proc.kill()
@@ -60,19 +68,24 @@ def main() -> int:
         "method": "data.sync.stock_list",
         "params": {"token": args.token},
     }
-    proc.stdin.write(json.dumps(req) + "\n")
+    proc.stdin.write(pack_message(req))
     proc.stdin.flush()
     proc.stdin.close()
 
-    resp_line = proc.stdout.readline()
-    if not resp_line:
-        err = proc.stderr.read() if proc.stderr else ""
+    try:
+        resp = read_message(proc.stdout)
+    except Exception as exc:
+        err = proc.stderr.read().decode("utf-8", errors="replace") if proc.stderr else ""
+        print(f"No response: {exc}\n{err}", file=sys.stderr)
+        return 1
+
+    if not resp:
+        err = proc.stderr.read().decode("utf-8", errors="replace") if proc.stderr else ""
         print("No response:", err, file=sys.stderr)
         return 1
 
-    resp = json.loads(resp_line)
     if not resp.get("ok"):
-        print("error:", json.dumps(resp, ensure_ascii=False))
+        print("error:", json.dumps(resp, ensure_ascii=False, default=str))
         return 1
 
     count = resp["result"]["count"]

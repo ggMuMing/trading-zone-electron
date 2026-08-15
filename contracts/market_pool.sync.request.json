@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trading-zone.local/contracts/market_pool.sync.request.json",
+  "title": "MarketPoolSyncRequest",
+  "description": "Params for method data.sync.market_pool",
+  "type": "object",
+  "required": ["token", "ts_codes", "start_date", "end_date"],
+  "properties": {
+    "token": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ts_codes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "start_date": {
+      "type": "string",
+      "pattern": "^[0-9]{8}$"
+    },
+    "end_date": {
+      "type": "string",
+      "pattern": "^[0-9]{8}$"
+    }
+  },
+  "additionalProperties": false
+}

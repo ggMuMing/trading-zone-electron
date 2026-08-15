@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trading-zone.local/contracts/market_clear.response.json",
+  "title": "MarketClearResponse",
+  "description": "Result for method data.admin.clear_market",
+  "type": "object",
+  "required": ["ok", "db_path"],
+  "properties": {
+    "ok": { "type": "boolean" },
+    "db_path": { "type": "string" }
+  },
+  "additionalProperties": false
+}

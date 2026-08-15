@@ -10,8 +10,8 @@ import { registerHandlers } from './ipc/registerHandlers'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    width: 1100,
+    height: 720,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -47,6 +47,7 @@ app.whenReady().then(async () => {
   const userData = app.getPath('userData')
   initAppConfig(userData)
   initDb(userData)
+  pythonBridge.configure({ userDataPath: userData })
   registerHandlers()
 
   try {
@@ -58,6 +59,39 @@ app.whenReady().then(async () => {
   if (process.env.SPRINT1_ACCEPTANCE === '1') {
     try {
       await runSprint1Acceptance()
+    } catch (err) {
+      console.error('[acceptance] failed:', err)
+      app.exit(1)
+    }
+    return
+  }
+
+  if (process.env.SPRINT2_ACCEPTANCE === '1') {
+    try {
+      const { runSprint2Acceptance } = await import('./acceptance/runSprint2')
+      await runSprint2Acceptance()
+    } catch (err) {
+      console.error('[acceptance] failed:', err)
+      app.exit(1)
+    }
+    return
+  }
+
+  if (process.env.SPRINT3_ACCEPTANCE === '1') {
+    try {
+      const { runSprint3Acceptance } = await import('./acceptance/runSprint3')
+      await runSprint3Acceptance()
+    } catch (err) {
+      console.error('[acceptance] failed:', err)
+      app.exit(1)
+    }
+    return
+  }
+
+  if (process.env.SPRINT4_ACCEPTANCE === '1') {
+    try {
+      const { runSprint4Acceptance } = await import('./acceptance/runSprint4')
+      await runSprint4Acceptance()
     } catch (err) {
       console.error('[acceptance] failed:', err)
       app.exit(1)

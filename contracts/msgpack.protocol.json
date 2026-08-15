@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://trading-zone.local/contracts/ndjson.protocol.json",
-  "title": "PythonWorkerNdjsonProtocol",
-  "description": "Superseded by msgpack.protocol.json (Sprint3). Historical Main ↔ Python line protocol (one JSON object per line).",
+  "$id": "https://trading-zone.local/contracts/msgpack.protocol.json",
+  "title": "PythonWorkerMsgpackProtocol",
+  "description": "Main ↔ Python worker framed protocol: uint32be length + MessagePack body. Logical envelope matches the former NDJSON protocol; result may contain binary fields (e.g. Arrow IPC).",
   "oneOf": [
     {
       "title": "Ready",

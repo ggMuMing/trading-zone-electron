@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import sys
 import traceback
 from pathlib import Path
@@ -13,6 +12,14 @@ if str(_ROOT) not in sys.path:
 
 from pydantic import ValidationError  # noqa: E402
 
+from worker.codec import emit, read_message  # noqa: E402
+from worker.handlers.market_clear import clear_market  # noqa: E402
+from worker.handlers.market_day import market_day  # noqa: E402
+from worker.handlers.market_meta import market_coverage  # noqa: E402
+from worker.handlers.market_plan import market_plan  # noqa: E402
+from worker.handlers.market_query import query_ohlcv  # noqa: E402
+from worker.handlers.market_seed import seed_market_fixture, seed_sync_fixture  # noqa: E402
+from worker.handlers.market_sync import sync_market_pool  # noqa: E402
 from worker.handlers.stock_list import sync_stock_list  # noqa: E402
 from worker.models import ReadyMessage, WorkerError, WorkerRequest, WorkerResponse  # noqa: E402
 
@@ -20,23 +27,26 @@ Handler = Callable[[dict[str, Any]], Any]
 
 HANDLERS: dict[str, Handler] = {
     "data.sync.stock_list": sync_stock_list,
+    "data.sync.market_pool": sync_market_pool,
+    "data.sync.market_plan": market_plan,
+    "data.sync.market_day": market_day,
+    "data.admin.clear_market": clear_market,
+    "data.query.ohlcv": query_ohlcv,
+    "data.meta.market_coverage": market_coverage,
+    "data.test.seed_market_fixture": seed_market_fixture,
+    "data.test.seed_sync_fixture": seed_sync_fixture,
 }
 
 
 def smoke_imports() -> dict[str, bool]:
     status: dict[str, bool] = {}
-    for name in ("pandas", "numpy", "duckdb", "tushare", "pydantic"):
+    for name in ("pandas", "numpy", "duckdb", "tushare", "pydantic", "msgpack", "pyarrow"):
         try:
             __import__(name)
             status[name] = True
         except Exception:
             status[name] = False
     return status
-
-
-def emit(payload: dict[str, Any]) -> None:
-    sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    sys.stdout.flush()
 
 
 def emit_error(request_id: str, code: str, message: str) -> None:
@@ -87,18 +97,16 @@ def main() -> int:
         print(f"Import smoke failed: {missing}", file=sys.stderr, flush=True)
         return 1
 
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
+    stdin = sys.stdin.buffer
+    while True:
         try:
-            payload = json.loads(line)
-        except json.JSONDecodeError as exc:
-            emit_error("unknown", "invalid_json", str(exc))
-            continue
-        if not isinstance(payload, dict):
-            emit_error("unknown", "invalid_request", "Request must be a JSON object")
-            continue
+            payload = read_message(stdin)
+        except Exception as exc:
+            print(f"Frame error: {exc}", file=sys.stderr, flush=True)
+            emit_error("unknown", "invalid_frame", str(exc))
+            return 1
+        if payload is None:
+            break
         handle_request(payload)
 
     return 0

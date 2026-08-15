@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trading-zone.local/contracts/market_pool.sync.response.json",
+  "title": "MarketPoolSyncResponse",
+  "description": "Result for method data.sync.market_pool",
+  "type": "object",
+  "required": ["pool_size", "bar_count", "adj_count", "ts_codes", "errors"],
+  "properties": {
+    "pool_size": { "type": "integer", "minimum": 0 },
+    "bar_count": { "type": "integer", "minimum": 0 },
+    "adj_count": { "type": "integer", "minimum": 0 },
+    "ts_codes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ts_code", "stage", "message"],
+        "properties": {
+          "ts_code": { "type": "string" },
+          "stage": { "type": "string" },
+          "message": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

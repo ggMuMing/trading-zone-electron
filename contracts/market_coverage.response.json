@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trading-zone.local/contracts/market_coverage.response.json",
+  "title": "MarketCoverageResponse",
+  "description": "Result for method data.meta.market_coverage. When ts_codes is omitted, stocks is empty and min/max/complete_days describe the full database.",
+  "type": "object",
+  "required": [
+    "total_bars",
+    "total_adj",
+    "stock_count",
+    "stocks",
+    "min_date",
+    "max_date",
+    "complete_days",
+    "db_path"
+  ],
+  "properties": {
+    "total_bars": { "type": "integer", "minimum": 0 },
+    "total_adj": { "type": "integer", "minimum": 0 },
+    "stock_count": { "type": "integer", "minimum": 0 },
+    "min_date": { "type": ["string", "null"] },
+    "max_date": { "type": ["string", "null"] },
+    "complete_days": { "type": "integer", "minimum": 0 },
+    "db_path": { "type": "string" },
+    "stocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ts_code", "bar_count", "adj_count"],
+        "properties": {
+          "ts_code": { "type": "string" },
+          "bar_count": { "type": "integer", "minimum": 0 },
+          "adj_count": { "type": "integer", "minimum": 0 },
+          "start_date": { "type": ["string", "null"] },
+          "end_date": { "type": ["string", "null"] }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -3,6 +3,7 @@ import { getTushareToken, hasTushareToken, setTushareToken } from '../config/app
 import { stocksRepository } from '../db/stocksRepository'
 import { applicationService } from '../services/applicationService'
 import { pythonBridge } from '../bridge/pythonBridge'
+import type { AdjustType } from '../../shared/types/market'
 
 export function registerHandlers(): void {
   ipcMain.on('ping', () => console.log('pong'))
@@ -17,6 +18,74 @@ export function registerHandlers(): void {
 
   ipcMain.handle('stocks:sync', async () => {
     return applicationService.syncStockList()
+  })
+
+  ipcMain.handle('stocks:boardStats', () => {
+    return applicationService.getBoardStats()
+  })
+
+  ipcMain.handle('market:syncPool', async () => {
+    return applicationService.syncMarketPool()
+  })
+
+  ipcMain.handle('market:sync', async (event, params: unknown) => {
+    if (!params || typeof params !== 'object') {
+      throw new Error('market:sync requires params object')
+    }
+    const p = params as Record<string, unknown>
+    if (typeof p.start_date !== 'string' || typeof p.end_date !== 'string') {
+      throw new Error('start_date and end_date are required')
+    }
+    return applicationService.syncMarketWindow(
+      { start_date: p.start_date, end_date: p.end_date },
+      (progress) => {
+        event.sender.send('market:syncProgress', progress)
+      }
+    )
+  })
+
+  ipcMain.handle('market:syncStatus', () => {
+    return applicationService.getMarketSyncStatus()
+  })
+
+  ipcMain.handle('market:clear', async () => {
+    return applicationService.clearMarket()
+  })
+
+  ipcMain.handle('market:pool', () => {
+    return applicationService.getMarketPool()
+  })
+
+  ipcMain.handle('market:query', async (_event, params: unknown) => {
+    if (!params || typeof params !== 'object') {
+      throw new Error('market:query requires params object')
+    }
+    const p = params as Record<string, unknown>
+    if (typeof p.ts_code !== 'string' || !p.ts_code.trim()) {
+      throw new Error('ts_code must be a non-empty string')
+    }
+    const adjust = p.adjust
+    if (
+      adjust !== undefined &&
+      adjust !== 'none' &&
+      adjust !== 'qfq' &&
+      adjust !== 'hfq'
+    ) {
+      throw new Error('adjust must be none | qfq | hfq')
+    }
+    return applicationService.queryOhlcv({
+      ts_code: p.ts_code,
+      adjust: adjust as AdjustType | undefined,
+      start_date: typeof p.start_date === 'string' ? p.start_date : undefined,
+      end_date: typeof p.end_date === 'string' ? p.end_date : undefined,
+      limit: typeof p.limit === 'number' && Number.isInteger(p.limit) && p.limit >= 1
+        ? p.limit
+        : undefined
+    })
+  })
+
+  ipcMain.handle('market:coverage', async () => {
+    return applicationService.getMarketCoverage()
   })
 
   ipcMain.handle('config:hasTushareToken', () => {

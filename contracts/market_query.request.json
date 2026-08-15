@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trading-zone.local/contracts/market_query.request.json",
+  "title": "MarketQueryRequest",
+  "description": "Params for method data.query.ohlcv",
+  "type": "object",
+  "required": ["ts_code", "start_date", "end_date"],
+  "properties": {
+    "ts_code": { "type": "string", "minLength": 1 },
+    "start_date": { "type": "string", "pattern": "^[0-9]{8}$" },
+    "end_date": { "type": "string", "pattern": "^[0-9]{8}$" },
+    "adjust": {
+      "type": "string",
+      "enum": ["none", "qfq", "hfq"],
+      "default": "none"
+    },
+    "limit": { "type": "integer", "minimum": 1 }
+  },
+  "additionalProperties": false
+}

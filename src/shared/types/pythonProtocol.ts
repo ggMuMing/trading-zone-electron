@@ -1,4 +1,4 @@
-/** Mirror of contracts/ndjson.protocol.json + stock_list schemas. */
+/** Mirror of contracts/msgpack.protocol.json + stock_list / market schemas. */
 
 export interface WorkerReadyMessage {
   type: 'ready'
@@ -46,6 +46,104 @@ export interface StockListResult {
   count: number
 }
 
+export interface MarketPoolSyncParams {
+  token: string
+  ts_codes: string[]
+  start_date: string
+  end_date: string
+}
+
+export interface MarketPoolSyncError {
+  ts_code: string
+  stage: string
+  message: string
+}
+
+export interface MarketPoolSyncResult {
+  pool_size: number
+  bar_count: number
+  adj_count: number
+  ts_codes: string[]
+  errors: MarketPoolSyncError[]
+}
+
+export interface MarketQueryParams {
+  ts_code: string
+  start_date: string
+  end_date: string
+  adjust?: 'none' | 'qfq' | 'hfq'
+  limit?: number
+}
+
+export interface MarketQueryResult {
+  ts_code: string
+  adjust: 'none' | 'qfq' | 'hfq'
+  count: number
+  arrow_ipc: Uint8Array
+}
+
+export interface MarketCoverageResult {
+  total_bars: number
+  total_adj: number
+  stock_count: number
+  stocks: Array<{
+    ts_code: string
+    bar_count: number
+    adj_count: number
+    start_date: string | null
+    end_date: string | null
+  }>
+  min_date: string | null
+  max_date: string | null
+  complete_days: number
+  db_path: string
+}
+
+export interface MarketSyncPlanParams {
+  start_date: string
+  end_date: string
+  token?: string
+}
+
+export interface MarketSyncPlanResult {
+  start_date: string
+  end_date: string
+  trade_dates: string[]
+  complete_dates: string[]
+  pending_dates: string[]
+  total_days: number
+  complete_count: number
+  pending_count: number
+}
+
+export interface MarketSyncDayTimings {
+  wait: number
+  daily: number
+  upsert_daily: number
+  adj: number
+  upsert_adj: number
+}
+
+export interface MarketSyncDayResult {
+  trade_date: string
+  bar_count: number
+  adj_count: number
+  status: 'complete' | 'partial'
+  error?: string | null
+  timings_ms?: MarketSyncDayTimings
+}
+
+export interface MarketClearResult {
+  ok: boolean
+  db_path: string
+}
+
 export const PYTHON_METHODS = {
-  syncStockList: 'data.sync.stock_list'
+  syncStockList: 'data.sync.stock_list',
+  syncMarketPool: 'data.sync.market_pool',
+  syncMarketPlan: 'data.sync.market_plan',
+  syncMarketDay: 'data.sync.market_day',
+  clearMarket: 'data.admin.clear_market',
+  queryOhlcv: 'data.query.ohlcv',
+  metaMarketCoverage: 'data.meta.market_coverage'
 } as const

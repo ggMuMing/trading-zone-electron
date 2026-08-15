@@ -3,6 +3,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 import { randomUUID } from 'crypto'
+import { Packr, Unpackr } from 'msgpackr'
 import type {
   WorkerReadyMessage,
   WorkerRequest,
@@ -11,6 +12,20 @@ import type {
 
 const DEFAULT_CALL_TIMEOUT_MS = 120_000
 const READY_TIMEOUT_MS = 30_000
+const MAX_FRAME_BYTES = 64 * 1024 * 1024
+
+const packr = new Packr({
+  useRecords: false,
+  mapsAsObjects: true,
+  variableMapSize: true,
+  bundleStrings: false
+})
+
+const unpackr = new Unpackr({
+  useRecords: false,
+  mapsAsObjects: true,
+  int64AsType: 'number'
+})
 
 interface PendingCall {
   resolve: (value: unknown) => void
@@ -20,13 +35,18 @@ interface PendingCall {
 
 export class PythonBridge {
   private proc: ChildProcessWithoutNullStreams | null = null
-  private buffer = ''
+  private buffer = Buffer.alloc(0)
   private ready: WorkerReadyMessage | null = null
   private pending = new Map<string, PendingCall>()
   private starting: Promise<void> | null = null
   private restartAttempts = 0
   private stopped = false
   private readonly maxRestarts = 1
+  private userDataPath: string | null = null
+
+  configure(options: { userDataPath: string }): void {
+    this.userDataPath = options.userDataPath
+  }
 
   async start(): Promise<WorkerReadyMessage> {
     this.stopped = false
@@ -74,7 +94,7 @@ export class PythonBridge {
       })
 
       try {
-        this.writeLine(request)
+        this.writeFrame(request)
       } catch (err) {
         clearTimeout(timer)
         this.pending.delete(id)
@@ -106,16 +126,20 @@ export class PythonBridge {
     const child = spawn(python, [script], {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
+      env: {
+        ...process.env,
+        PYTHONUTF8: '1',
+        PYTHONIOENCODING: 'utf-8',
+        ...(this.userDataPath ? { TRADING_ZONE_USER_DATA: this.userDataPath } : {})
+      },
       windowsHide: true
     })
     this.proc = child
-    this.buffer = ''
+    this.buffer = Buffer.alloc(0)
     this.ready = null
 
-    child.stdout.setEncoding('utf-8')
     child.stderr.setEncoding('utf-8')
-    child.stdout.on('data', (chunk: string) => this.onStdout(chunk))
+    child.stdout.on('data', (chunk: Buffer) => this.onStdout(chunk))
     child.stderr.on('data', (chunk: string) => {
       console.error(`[pythonBridge:stderr] ${chunk.trimEnd()}`)
     })
@@ -154,25 +178,30 @@ export class PythonBridge {
     })
   }
 
-  private onStdout(chunk: string): void {
-    this.buffer += chunk
-    let idx = this.buffer.indexOf('\n')
-    while (idx >= 0) {
-      const line = this.buffer.slice(0, idx).trim()
-      this.buffer = this.buffer.slice(idx + 1)
-      if (line) {
-        this.handleLine(line)
+  private onStdout(chunk: Buffer): void {
+    this.buffer = Buffer.concat([this.buffer, chunk])
+    while (this.buffer.length >= 4) {
+      const size = this.buffer.readUInt32BE(0)
+      if (size <= 0 || size > MAX_FRAME_BYTES) {
+        console.error(`[pythonBridge] invalid frame size: ${size}`)
+        this.buffer = Buffer.alloc(0)
+        return
       }
-      idx = this.buffer.indexOf('\n')
+      if (this.buffer.length < 4 + size) {
+        return
+      }
+      const body = this.buffer.subarray(4, 4 + size)
+      this.buffer = this.buffer.subarray(4 + size)
+      this.handleFrame(body)
     }
   }
 
-  private handleLine(line: string): void {
+  private handleFrame(body: Buffer): void {
     let msg: unknown
     try {
-      msg = JSON.parse(line)
-    } catch {
-      console.error('[pythonBridge] invalid JSON line:', line)
+      msg = unpackr.unpack(body)
+    } catch (err) {
+      console.error('[pythonBridge] invalid MessagePack frame:', err)
       return
     }
 
@@ -235,11 +264,17 @@ export class PythonBridge {
     this.pending.clear()
   }
 
-  private writeLine(payload: WorkerRequest): void {
+  private writeFrame(payload: WorkerRequest): void {
     if (!this.proc) {
       throw new Error('Python worker is not running')
     }
-    this.proc.stdin.write(JSON.stringify(payload) + '\n')
+    const body = Buffer.from(packr.pack(payload))
+    if (body.length > MAX_FRAME_BYTES) {
+      throw new Error(`MessagePack body too large: ${body.length}`)
+    }
+    const header = Buffer.alloc(4)
+    header.writeUInt32BE(body.length, 0)
+    this.proc.stdin.write(Buffer.concat([header, body]))
   }
 }
 

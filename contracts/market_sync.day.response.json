@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trading-zone.local/contracts/market_sync.day.response.json",
+  "title": "MarketSyncDayResponse",
+  "description": "Result for method data.sync.market_day",
+  "type": "object",
+  "required": ["trade_date", "bar_count", "adj_count", "status", "timings_ms"],
+  "properties": {
+    "trade_date": { "type": "string", "pattern": "^[0-9]{8}$" },
+    "bar_count": { "type": "integer", "minimum": 0 },
+    "adj_count": { "type": "integer", "minimum": 0 },
+    "status": { "type": "string", "enum": ["complete", "partial"] },
+    "error": { "type": ["string", "null"] },
+    "timings_ms": {
+      "type": "object",
+      "required": ["wait", "daily", "upsert_daily", "adj", "upsert_adj"],
+      "additionalProperties": false,
+      "properties": {
+        "wait": { "type": "integer", "minimum": 0 },
+        "daily": { "type": "integer", "minimum": 0 },
+        "upsert_daily": { "type": "integer", "minimum": 0 },
+        "adj": { "type": "integer", "minimum": 0 },
+        "upsert_adj": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "additionalProperties": false
+}

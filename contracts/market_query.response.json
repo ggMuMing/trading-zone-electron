@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trading-zone.local/contracts/market_query.response.json",
+  "title": "MarketQueryResponse",
+  "description": "Result for method data.query.ohlcv. arrow_ipc is Arrow IPC stream bytes, carried as MessagePack bin.",
+  "type": "object",
+  "required": ["ts_code", "adjust", "count", "arrow_ipc"],
+  "properties": {
+    "ts_code": { "type": "string" },
+    "adjust": { "type": "string", "enum": ["none", "qfq", "hfq"] },
+    "count": { "type": "integer", "minimum": 0 },
+    "arrow_ipc": {
+      "type": "string",
+      "contentEncoding": "binary",
+      "description": "Arrow IPC stream (MessagePack bin on the wire)"
+    }
+  },
+  "additionalProperties": false
+}

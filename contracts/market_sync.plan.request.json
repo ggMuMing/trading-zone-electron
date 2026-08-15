@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trading-zone.local/contracts/market_sync.plan.request.json",
+  "title": "MarketSyncPlanRequest",
+  "description": "Params for method data.sync.market_plan",
+  "type": "object",
+  "required": ["start_date", "end_date"],
+  "properties": {
+    "start_date": {
+      "type": "string",
+      "pattern": "^[0-9]{8}$"
+    },
+    "end_date": {
+      "type": "string",
+      "pattern": "^[0-9]{8}$"
+    },
+    "token": {
+      "type": "string",
+      "minLength": 1,
+      "description": "If present, refresh trade_cal from Tushare. If omitted, use cached/seeded calendar."
+    }
+  },
+  "additionalProperties": false
+}
