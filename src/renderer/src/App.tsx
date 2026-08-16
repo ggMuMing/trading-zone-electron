@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AppShell, type AppPage } from './layout/AppShell'
+import { ChartPage } from './pages/ChartPage'
 import { MarketPage } from './pages/MarketPage'
 import { SettingsPage } from './pages/SettingsPage'
 import type { MarketSyncProgress } from '../../shared/types/market'
@@ -48,8 +49,10 @@ function App(): React.JSX.Element {
           onSyncingChange={setSyncing}
           onClearingChange={setClearing}
         />
-      ) : (
+      ) : page === 'market' ? (
         <MarketPage />
+      ) : (
+        <ChartPage />
       )}
     </AppShell>
   )

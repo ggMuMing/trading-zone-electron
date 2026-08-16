@@ -2,11 +2,12 @@ import Box from '@mui/material/Box'
 import IconButton from '@mui/material/IconButton'
 import Stack from '@mui/material/Stack'
 import Tooltip from '@mui/material/Tooltip'
+import CandlestickChartIcon from '@mui/icons-material/CandlestickChart'
 import SettingsIcon from '@mui/icons-material/Settings'
 import ShowChartIcon from '@mui/icons-material/ShowChart'
 import type { ReactNode } from 'react'
 
-export type AppPage = 'settings' | 'market'
+export type AppPage = 'settings' | 'market' | 'chart'
 
 interface AppShellProps {
   page: AppPage
@@ -66,6 +67,18 @@ export function AppShell({
               aria-label="行情"
             >
               <ShowChartIcon />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Tooltip title={navigationLocked ? lockedTitle : '图表'} placement="right">
+          <span>
+            <IconButton
+              color={page === 'chart' ? 'primary' : 'default'}
+              onClick={() => onPageChange('chart')}
+              disabled={navigationLocked}
+              aria-label="图表"
+            >
+              <CandlestickChartIcon />
             </IconButton>
           </span>
         </Tooltip>

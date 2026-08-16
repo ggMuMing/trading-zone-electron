@@ -1,0 +1,7 @@
+div#trading-zone .dark-theme {
+  color: var(--c-texPri);
+  fill: currentColor;
+  line-height: 1.5;
+  background-color: var(--c-bacPri);
+  transition: height 0.1s;
+}

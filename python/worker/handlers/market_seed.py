@@ -16,8 +16,13 @@ def seed_market_fixture(params: dict) -> dict:
             "high": 11.0,
             "low": 9.5,
             "close": 10.5,
+            "pre_close": 10.0,
+            "change": 0.5,
+            "pct_chg": 5.0,
             "vol": 1000.0,
             "amount": 10500.0,
+            "ah_vol": None,
+            "ah_amount": None,
         },
         {
             "ts_code": ts_code,
@@ -26,8 +31,13 @@ def seed_market_fixture(params: dict) -> dict:
             "high": 12.0,
             "low": 10.0,
             "close": 11.5,
+            "pre_close": 10.5,
+            "change": 1.0,
+            "pct_chg": 100.0 / 10.5,
             "vol": 1200.0,
             "amount": 13800.0,
+            "ah_vol": None,
+            "ah_amount": None,
         },
     ]
     factors = [

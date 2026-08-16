@@ -9,7 +9,10 @@ from worker.db import market_db
 from worker.models import MarketSyncDayParams, MarketSyncDayResult, MarketSyncDayTimings
 from worker.rate_limit import wait_for_tushare_slot
 
-DAILY_FIELDS = "ts_code,trade_date,open,high,low,close,vol,amount"
+DAILY_FIELDS = (
+    "ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,"
+    "vol,amount,ah_vol,ah_amount"
+)
 ADJ_FIELDS = "ts_code,trade_date,adj_factor"
 
 
@@ -88,8 +91,13 @@ def _fetch_daily(pro: Any, trade_date: str) -> list[dict[str, Any]]:
                 "high": _nullable_float(getattr(row, "high", None)),
                 "low": _nullable_float(getattr(row, "low", None)),
                 "close": _nullable_float(getattr(row, "close", None)),
+                "pre_close": _nullable_float(getattr(row, "pre_close", None)),
+                "change": _nullable_float(getattr(row, "change", None)),
+                "pct_chg": _nullable_float(getattr(row, "pct_chg", None)),
                 "vol": _nullable_float(getattr(row, "vol", None)),
                 "amount": _nullable_float(getattr(row, "amount", None)),
+                "ah_vol": _nullable_float(getattr(row, "ah_vol", None)),
+                "ah_amount": _nullable_float(getattr(row, "ah_amount", None)),
             }
         )
     return rows

@@ -17,8 +17,13 @@ export function decodeOhlcvArrow(arrowIpc: Uint8Array): OhlcvBar[] {
   const high = table.getChild('high')
   const low = table.getChild('low')
   const close = table.getChild('close')
+  const preClose = table.getChild('pre_close')
+  const change = table.getChild('change')
+  const pctChg = table.getChild('pct_chg')
   const vol = table.getChild('vol')
   const amount = table.getChild('amount')
+  const ahVol = table.getChild('ah_vol')
+  const ahAmount = table.getChild('ah_amount')
   const adjFactor = table.getChild('adj_factor')
 
   const bars: OhlcvBar[] = []
@@ -30,8 +35,13 @@ export function decodeOhlcvArrow(arrowIpc: Uint8Array): OhlcvBar[] {
       high: toNumOrNull(high?.get(i)),
       low: toNumOrNull(low?.get(i)),
       close: toNumOrNull(close?.get(i)),
+      pre_close: toNumOrNull(preClose?.get(i)),
+      change: toNumOrNull(change?.get(i)),
+      pct_chg: toNumOrNull(pctChg?.get(i)),
       vol: toNumOrNull(vol?.get(i)),
       amount: toNumOrNull(amount?.get(i)),
+      ah_vol: toNumOrNull(ahVol?.get(i)),
+      ah_amount: toNumOrNull(ahAmount?.get(i)),
       adj_factor: toNumOrNull(adjFactor?.get(i))
     })
   }

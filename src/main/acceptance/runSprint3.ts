@@ -94,6 +94,26 @@ export async function runSprint3Acceptance(): Promise<void> {
       detail: `none=${noneClose}, qfq=${qfqClose}, hfq=${hfqClose}`
     })
 
+    const noneBar = none.bars.find((b) => b.trade_date === '20240102')
+    const qfqBar = qfq.bars.find((b) => b.trade_date === '20240102')
+    const scale = 1 / 1.1
+    const changeOk =
+      noneBar?.pre_close === 10 &&
+      noneBar.change === 0.5 &&
+      noneBar.pct_chg === 5 &&
+      typeof qfqBar?.pre_close === 'number' &&
+      typeof qfqBar.change === 'number' &&
+      typeof qfqBar.pct_chg === 'number' &&
+      Math.abs(qfqBar.pre_close - 10 * scale) < 1e-6 &&
+      Math.abs(qfqBar.change - 0.5 * scale) < 1e-6 &&
+      Math.abs(qfqBar.pct_chg - 5) < 1e-6
+
+    results.push({
+      name: 'qfq recomputes change/pct_chg from scaled close and pre_close',
+      ok: changeOk,
+      detail: `none change=${noneBar?.change} pct=${noneBar?.pct_chg}; qfq change=${qfqBar?.change} pct=${qfqBar?.pct_chg}`
+    })
+
     const limited = await applicationService.queryOhlcv({
       ts_code: fixtureCode,
       start_date: MARKET_SYNC_START,

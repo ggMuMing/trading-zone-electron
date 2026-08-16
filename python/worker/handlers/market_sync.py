@@ -8,7 +8,10 @@ import tushare as ts
 from worker.db import market_db
 from worker.models import MarketPoolSyncError, MarketPoolSyncParams, MarketPoolSyncResult
 
-DAILY_FIELDS = "ts_code,trade_date,open,high,low,close,vol,amount"
+DAILY_FIELDS = (
+    "ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,"
+    "vol,amount,ah_vol,ah_amount"
+)
 ADJ_FIELDS = "ts_code,trade_date,adj_factor"
 SLEEP_SECONDS = 0.3
 
@@ -73,8 +76,13 @@ def _fetch_daily(pro: Any, ts_code: str, start_date: str, end_date: str) -> list
                 "high": _nullable_float(getattr(row, "high", None)),
                 "low": _nullable_float(getattr(row, "low", None)),
                 "close": _nullable_float(getattr(row, "close", None)),
+                "pre_close": _nullable_float(getattr(row, "pre_close", None)),
+                "change": _nullable_float(getattr(row, "change", None)),
+                "pct_chg": _nullable_float(getattr(row, "pct_chg", None)),
                 "vol": _nullable_float(getattr(row, "vol", None)),
                 "amount": _nullable_float(getattr(row, "amount", None)),
+                "ah_vol": _nullable_float(getattr(row, "ah_vol", None)),
+                "ah_amount": _nullable_float(getattr(row, "ah_amount", None)),
             }
         )
     return rows

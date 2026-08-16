@@ -7,8 +7,13 @@ export interface OhlcvBar {
   high: number | null
   low: number | null
   close: number | null
+  pre_close: number | null
+  change: number | null
+  pct_chg: number | null
   vol: number | null
   amount: number | null
+  ah_vol: number | null
+  ah_amount: number | null
   adj_factor: number | null
 }
 

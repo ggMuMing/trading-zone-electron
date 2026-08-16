@@ -9,6 +9,8 @@ import duckdb
 import pyarrow as pa
 import pyarrow.ipc as pa_ipc
 
+_DAILY_BAR_EXTRA_COLUMNS = ("pre_close", "change", "pct_chg", "ah_vol", "ah_amount")
+
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS daily_bar (
   ts_code VARCHAR NOT NULL,
@@ -17,8 +19,13 @@ CREATE TABLE IF NOT EXISTS daily_bar (
   high DOUBLE,
   low DOUBLE,
   close DOUBLE,
+  pre_close DOUBLE,
+  change DOUBLE,
+  pct_chg DOUBLE,
   vol DOUBLE,
   amount DOUBLE,
+  ah_vol DOUBLE,
+  ah_amount DOUBLE,
   synced_at TIMESTAMP NOT NULL,
   PRIMARY KEY (ts_code, trade_date)
 );
@@ -71,6 +78,8 @@ def get_conn() -> duckdb.DuckDBPyConnection:
 def init_schema(conn: duckdb.DuckDBPyConnection | None = None) -> None:
     c = conn or get_conn()
     c.execute(_SCHEMA_SQL)
+    for column in _DAILY_BAR_EXTRA_COLUMNS:
+        c.execute(f"ALTER TABLE daily_bar ADD COLUMN IF NOT EXISTS {column} DOUBLE")
 
 
 def close_conn() -> None:
@@ -97,8 +106,13 @@ def upsert_daily_bars(rows: list[dict[str, Any]]) -> int:
             "high": pa.array([r.get("high") for r in rows], type=pa.float64()),
             "low": pa.array([r.get("low") for r in rows], type=pa.float64()),
             "close": pa.array([r.get("close") for r in rows], type=pa.float64()),
+            "pre_close": pa.array([r.get("pre_close") for r in rows], type=pa.float64()),
+            "change": pa.array([r.get("change") for r in rows], type=pa.float64()),
+            "pct_chg": pa.array([r.get("pct_chg") for r in rows], type=pa.float64()),
             "vol": pa.array([r.get("vol") for r in rows], type=pa.float64()),
             "amount": pa.array([r.get("amount") for r in rows], type=pa.float64()),
+            "ah_vol": pa.array([r.get("ah_vol") for r in rows], type=pa.float64()),
+            "ah_amount": pa.array([r.get("ah_amount") for r in rows], type=pa.float64()),
             "synced_at": [synced_at] * len(rows),
         }
     )
@@ -108,8 +122,10 @@ def upsert_daily_bars(rows: list[dict[str, Any]]) -> int:
         conn.execute(
             f"""
             INSERT OR REPLACE INTO daily_bar
-              (ts_code, trade_date, open, high, low, close, vol, amount, synced_at)
-            SELECT ts_code, trade_date, open, high, low, close, vol, amount, synced_at
+              (ts_code, trade_date, open, high, low, close, pre_close, change, pct_chg,
+               vol, amount, ah_vol, ah_amount, synced_at)
+            SELECT ts_code, trade_date, open, high, low, close, pre_close, change, pct_chg,
+                   vol, amount, ah_vol, ah_amount, synced_at
             FROM {view}
             """
         )
@@ -172,8 +188,13 @@ def query_ohlcv_arrow(
             d.high,
             d.low,
             d.close,
+            d.pre_close,
+            d.change,
+            d.pct_chg,
             d.vol,
             d.amount,
+            d.ah_vol,
+            d.ah_amount,
             a.adj_factor
           FROM daily_bar d
           LEFT JOIN adj_factor a
@@ -206,8 +227,22 @@ def query_ohlcv_arrow(
           high * scale AS high,
           low * scale AS low,
           close * scale AS close,
+          pre_close * scale AS pre_close,
+          CASE
+            WHEN ? != 'none' THEN (close * scale) - (pre_close * scale)
+            ELSE change
+          END AS change,
+          CASE
+            WHEN ? != 'none' AND pre_close IS NOT NULL AND (pre_close * scale) != 0
+              THEN ((close * scale) - (pre_close * scale)) / (pre_close * scale) * 100
+            WHEN ? != 'none'
+              THEN NULL
+            ELSE pct_chg
+          END AS pct_chg,
           vol,
           amount,
+          ah_vol,
+          ah_amount,
           adj_factor
         FROM scaled
         ORDER BY trade_date
@@ -215,7 +250,7 @@ def query_ohlcv_arrow(
     params: list[Any] = [ts_code, ts_code, ts_code, start_date, end_date]
     if limit is not None:
         params.append(limit)
-    params.extend([adjust, adjust])
+    params.extend([adjust, adjust, adjust, adjust, adjust])
     return conn.execute(sql, params).fetch_arrow_table()
 
 

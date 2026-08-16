@@ -1,0 +1,50 @@
+:root {
+  --focus-border: #ffffff1a;
+  --separator-border: #2a2a2a;
+  --lwc-font-stack: -apple-system,BlinkMacSystemFont,Trebuchet MS,Roboto,Ubuntu,sans-serif;
+}
+
+body {
+  font-family: var(--lwc-font-stack) !important;
+}
+
+* {
+  box-sizing: border-box;
+  letter-spacing: 0.01em;
+  /* Firefox 滚动条样式 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) rgba(0, 0, 0, 0.1);
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  text-align: center;
+}
+
+/* 细的深色模式滚动条样式 - 全局应用 */
+
+/* Webkit 浏览器 (Chrome, Safari, Edge) */
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+  transition: background 0.2s ease;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+*::-webkit-scrollbar-corner {
+  background: rgba(0, 0, 0, 0.1);
+}
