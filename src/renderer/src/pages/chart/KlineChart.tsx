@@ -3,132 +3,192 @@ import {
   CandlestickSeries,
   HistogramSeries,
   createChart,
+  type IChartApi,
   type ISeriesApi,
   type MouseEventParams,
   type Time
 } from 'lightweight-charts'
-import { yyyymmddToIso } from '../../../../shared/constants/market'
-import type { OhlcvBar } from '../../../../shared/types/market'
+import type { CandlePoint, ChartInput, ValuePoint, VolumePoint } from '../../../../shared/types/chart'
 import { LWC_FONT_STACK } from '../../theme/lwcFont'
-import { PriceLegend, type PriceLegendBar } from './PriceLegend'
+import { PriceLegend, type PriceLegendBar, type PriceLegendOverlay } from './PriceLegend'
+import { SubpaneLegend, type SubpaneLegendPane } from './SubpaneLegend'
+import {
+  DEFAULT_HISTOGRAM_COLOR,
+  DEFAULT_LINE_COLOR,
+  addPrimitiveSeries,
+  applyPaneStretch,
+  applyPrimitiveData,
+  computeSubpaneTops,
+  observePaneLayout,
+  paneIndexOf,
+  subplotPaneOrder,
+  syncPrimitiveSeries,
+  type PrimitiveSeries
+} from './syncPrimitiveSeries'
 
 const UP_COLOR = '#ef5350'
 const DOWN_COLOR = '#26a69a'
 
-interface CandlePoint {
+function candleToLegend(point: CandlePoint): PriceLegendBar {
+  return {
+    date: point.time,
+    open: point.open,
+    high: point.high,
+    low: point.low,
+    close: point.close,
+    vol: point.vol ?? null,
+    amount: point.amount ?? null
+  }
+}
+
+function lastLegendBar(input: ChartInput): PriceLegendBar | null {
+  const last = input.candle[input.candle.length - 1]
+  return last ? candleToLegend(last) : null
+}
+
+function lastPrimitiveValues(input: ChartInput): Record<string, number | null> {
+  const values: Record<string, number | null> = {}
+  for (const primitive of input.primitives) {
+    const points = input.series[primitive.id]
+    const last = points?.[points.length - 1]
+    values[primitive.id] = last && Number.isFinite(last.value) ? last.value : null
+  }
+  return values
+}
+
+function toCandleData(points: CandlePoint[]): Array<{
   time: Time
   open: number
   high: number
   low: number
   close: number
+}> {
+  return points.map((point) => ({
+    time: point.time as Time,
+    open: point.open,
+    high: point.high,
+    low: point.low,
+    close: point.close
+  }))
 }
 
-interface VolumePoint {
-  time: Time
-  value: number
-  color: string
+function toVolumeData(points: VolumePoint[] | undefined): Array<{ time: Time; value: number; color: string }> {
+  if (!points) {
+    return []
+  }
+  return points.map((point) => ({
+    time: point.time as Time,
+    value: point.value,
+    color: point.color
+  }))
 }
 
-function isCompleteOhlc(bar: OhlcvBar): bar is OhlcvBar & {
-  open: number
-  high: number
-  low: number
-  close: number
-} {
-  return bar.open !== null && bar.high !== null && bar.low !== null && bar.close !== null
-}
-
-function toLegendBar(bar: OhlcvBar): PriceLegendBar | null {
-  if (!isCompleteOhlc(bar)) {
+function readSeriesValue(param: MouseEventParams<Time>, series: PrimitiveSeries): number | null {
+  const data = param.seriesData.get(series)
+  if (!data || !('value' in data) || typeof data.value !== 'number' || !Number.isFinite(data.value)) {
     return null
   }
-  return {
-    date: yyyymmddToIso(bar.trade_date),
-    open: bar.open,
-    high: bar.high,
-    low: bar.low,
-    close: bar.close,
-    vol: bar.vol,
-    amount: bar.amount
-  }
+  return data.value
 }
 
-function barsToChartData(bars: OhlcvBar[]): { candles: CandlePoint[]; volumes: VolumePoint[] } {
-  const sorted = [...bars].sort((a, b) => a.trade_date.localeCompare(b.trade_date))
-  const candles: CandlePoint[] = []
-  const volumes: VolumePoint[] = []
-  let prevClose: number | null = null
-
-  for (const bar of sorted) {
-    if (!isCompleteOhlc(bar)) {
-      continue
-    }
-    const time = yyyymmddToIso(bar.trade_date) as Time
-    candles.push({
-      time,
-      open: bar.open,
-      high: bar.high,
-      low: bar.low,
-      close: bar.close
-    })
-    const down = prevClose !== null ? bar.close < prevClose : bar.close < bar.open
-    volumes.push({
-      time,
-      value: bar.vol ?? 0,
-      color: down ? DOWN_COLOR : UP_COLOR
-    })
-    prevClose = bar.close
+function primitiveColor(primitive: ChartInput['primitives'][number], points: ValuePoint[]): string {
+  if (primitive.style?.color) {
+    return primitive.style.color
   }
-
-  return { candles, volumes }
+  if (primitive.kind === 'histogram') {
+    const last = points[points.length - 1]
+    return last?.color ?? DEFAULT_HISTOGRAM_COLOR
+  }
+  return DEFAULT_LINE_COLOR
 }
 
-function buildTimeToBar(bars: OhlcvBar[]): Map<string, OhlcvBar> {
-  const map = new Map<string, OhlcvBar>()
-  for (const bar of bars) {
-    if (!isCompleteOhlc(bar)) {
-      continue
-    }
-    map.set(yyyymmddToIso(bar.trade_date), bar)
-  }
-  return map
+function buildOverlays(
+  input: ChartInput,
+  values: Record<string, number | null>
+): PriceLegendOverlay[] {
+  return input.primitives
+    .filter((primitive) => primitive.pane === 'main')
+    .map((primitive) => ({
+      id: primitive.id,
+      label: primitive.id.toUpperCase(),
+      color: primitiveColor(primitive, input.series[primitive.id] ?? []),
+      value: values[primitive.id] ?? null
+    }))
 }
 
-function lastLegendBar(bars: OhlcvBar[]): PriceLegendBar | null {
-  const sorted = [...bars].sort((a, b) => a.trade_date.localeCompare(b.trade_date))
-  for (let i = sorted.length - 1; i >= 0; i -= 1) {
-    const legend = toLegendBar(sorted[i])
-    if (legend) {
-      return legend
+function buildSubpaneLegends(
+  input: ChartInput,
+  values: Record<string, number | null>,
+  tops: Array<{ paneIndex: number; top: number }>
+): SubpaneLegendPane[] {
+  const subpanes = subplotPaneOrder(input.primitives)
+  return subpanes.map((pane, index) => {
+    const paneIndex = index + 1
+    const top = tops.find((entry) => entry.paneIndex === paneIndex)?.top ?? 0
+    const items = input.primitives
+      .filter((primitive) => primitive.pane === pane)
+      .map((primitive) => ({
+        id: primitive.id,
+        label: primitive.id.toUpperCase(),
+        color: primitiveColor(primitive, input.series[primitive.id] ?? []),
+        value: values[primitive.id] ?? null
+      }))
+    return {
+      pane,
+      title: pane.toUpperCase(),
+      top,
+      items
     }
-  }
-  return null
+  })
 }
 
 interface KlineChartProps {
-  bars: OhlcvBar[]
+  input: ChartInput
 }
 
-export function KlineChart({ bars }: KlineChartProps): React.JSX.Element {
+export function KlineChart({ input }: KlineChartProps): React.JSX.Element {
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<IChartApi | null>(null)
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
   const volumeRef = useRef<ISeriesApi<'Histogram'> | null>(null)
-  const barsRef = useRef(bars)
-  const timeToBarRef = useRef<Map<string, OhlcvBar>>(new Map())
+  const primitiveSeriesRef = useRef<Map<string, PrimitiveSeries>>(new Map())
+  const primitivesRef = useRef(input.primitives)
+  const inputRef = useRef(input)
+  const candleByTimeRef = useRef<Map<string, CandlePoint>>(new Map())
   const hoverDateRef = useRef<string | null>(null)
-  barsRef.current = bars
+  const paneLayoutObserverRef = useRef<ResizeObserver | null>(null)
+  const rebindPaneLayoutObserverRef = useRef<(() => void) | null>(null)
+  inputRef.current = input
 
   const [hoverBar, setHoverBar] = useState<PriceLegendBar | null>(null)
-  const [hoverSource, setHoverSource] = useState(bars)
-  if (bars !== hoverSource) {
-    setHoverSource(bars)
+  const [hoverValues, setHoverValues] = useState<Record<string, number | null> | null>(null)
+  const [subpaneTops, setSubpaneTops] = useState<Array<{ paneIndex: number; top: number }>>([])
+  const [hoverSource, setHoverSource] = useState(input)
+  if (input !== hoverSource) {
+    setHoverSource(input)
     setHoverBar(null)
+    setHoverValues(null)
     hoverDateRef.current = null
   }
 
-  const timeToBar = useMemo(() => buildTimeToBar(bars), [bars])
-  const defaultBar = useMemo(() => lastLegendBar(bars), [bars])
-  timeToBarRef.current = timeToBar
+  const candleByTime = useMemo(() => {
+    const map = new Map<string, CandlePoint>()
+    for (const point of input.candle) {
+      map.set(point.time, point)
+    }
+    return map
+  }, [input])
+  const defaultBar = useMemo(() => lastLegendBar(input), [input])
+  const defaultValues = useMemo(() => lastPrimitiveValues(input), [input])
+  candleByTimeRef.current = candleByTime
+
+  const activeValues = hoverValues ?? defaultValues
+  const overlays = useMemo(() => buildOverlays(input, activeValues), [input, activeValues])
+  const subpaneLegends = useMemo(
+    () => buildSubpaneLegends(input, activeValues, subpaneTops),
+    [input, activeValues, subpaneTops]
+  )
 
   useEffect(() => {
     const el = containerRef.current
@@ -183,18 +243,36 @@ export function KlineChart({ bars }: KlineChartProps): React.JSX.Element {
       }
     })
 
+    const initial = inputRef.current
+    const subpanes = subplotPaneOrder(initial.primitives)
+    const primitiveSeries = new Map<string, PrimitiveSeries>()
+    for (const primitive of initial.primitives) {
+      const series = addPrimitiveSeries(chart, primitive, paneIndexOf(primitive.pane, subpanes))
+      primitiveSeries.set(primitive.id, series)
+    }
+    applyPaneStretch(chart)
+
+    chartRef.current = chart
     candleRef.current = candle
     volumeRef.current = volume
+    primitiveSeriesRef.current = primitiveSeries
+    primitivesRef.current = initial.primitives
 
-    const initial = barsToChartData(barsRef.current)
-    candle.setData(initial.candles)
-    volume.setData(initial.volumes)
+    candle.setData(toCandleData(initial.candle))
+    volume.setData(toVolumeData(initial.volume))
+    for (const primitive of initial.primitives) {
+      const series = primitiveSeries.get(primitive.id)
+      if (series) {
+        applyPrimitiveData(series, primitive, initial.series[primitive.id] ?? [])
+      }
+    }
 
     const onCrosshairMove = (param: MouseEventParams<Time>): void => {
       if (!param.time) {
         if (hoverDateRef.current !== null) {
           hoverDateRef.current = null
           setHoverBar(null)
+          setHoverValues(null)
         }
         return
       }
@@ -211,6 +289,7 @@ export function KlineChart({ bars }: KlineChartProps): React.JSX.Element {
         if (hoverDateRef.current !== null) {
           hoverDateRef.current = null
           setHoverBar(null)
+          setHoverValues(null)
         }
         return
       }
@@ -220,7 +299,12 @@ export function KlineChart({ bars }: KlineChartProps): React.JSX.Element {
         return
       }
 
-      const orig = timeToBarRef.current.get(date)
+      const orig = candleByTimeRef.current.get(date)
+      const values: Record<string, number | null> = {}
+      for (const [id, series] of primitiveSeriesRef.current.entries()) {
+        values[id] = readSeriesValue(param, series)
+      }
+
       hoverDateRef.current = date
       setHoverBar({
         date,
@@ -231,41 +315,93 @@ export function KlineChart({ bars }: KlineChartProps): React.JSX.Element {
         vol: orig?.vol ?? null,
         amount: orig?.amount ?? null
       })
+      setHoverValues(values)
     }
 
     chart.subscribeCrosshairMove(onCrosshairMove)
 
+    const refreshSubpaneTops = (): void => {
+      if (chartRef.current !== chart) {
+        return
+      }
+      setSubpaneTops(computeSubpaneTops(chart, wrapperRef.current))
+    }
+
+    const rebindPaneLayoutObserver = (): void => {
+      paneLayoutObserverRef.current?.disconnect()
+      paneLayoutObserverRef.current = observePaneLayout(chart, () => {
+        requestAnimationFrame(refreshSubpaneTops)
+      })
+      requestAnimationFrame(refreshSubpaneTops)
+    }
+
     const resize = (): void => {
       if (el.clientWidth > 0 && el.clientHeight > 0) {
         chart.resize(el.clientWidth, el.clientHeight)
+        requestAnimationFrame(refreshSubpaneTops)
       }
     }
     const observer = new ResizeObserver(resize)
     observer.observe(el)
     resize()
+    rebindPaneLayoutObserver()
+    rebindPaneLayoutObserverRef.current = rebindPaneLayoutObserver
 
     return () => {
       observer.disconnect()
+      paneLayoutObserverRef.current?.disconnect()
+      paneLayoutObserverRef.current = null
+      rebindPaneLayoutObserverRef.current = null
       chart.unsubscribeCrosshairMove(onCrosshairMove)
       chart.remove()
+      chartRef.current = null
       candleRef.current = null
       volumeRef.current = null
+      primitiveSeriesRef.current = new Map()
+      primitivesRef.current = []
     }
   }, [])
 
   useEffect(() => {
-    const { candles, volumes } = barsToChartData(bars)
-    candleRef.current?.setData(candles)
-    volumeRef.current?.setData(volumes)
-  }, [bars])
+    const chart = chartRef.current
+    if (!chart) {
+      return
+    }
+
+    candleRef.current?.setData(toCandleData(input.candle))
+    volumeRef.current?.setData(toVolumeData(input.volume))
+
+    syncPrimitiveSeries({
+      chart,
+      seriesById: primitiveSeriesRef.current,
+      prevPrimitives: primitivesRef.current,
+      nextPrimitives: input.primitives,
+      seriesData: input.series
+    })
+    primitivesRef.current = input.primitives
+
+    if (rebindPaneLayoutObserverRef.current) {
+      rebindPaneLayoutObserverRef.current()
+    } else {
+      requestAnimationFrame(() => {
+        if (chartRef.current === chart) {
+          setSubpaneTops(computeSubpaneTops(chart, wrapperRef.current))
+        }
+      })
+    }
+  }, [input])
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 0 }}>
+    <div
+      ref={wrapperRef}
+      style={{ position: 'relative', width: '100%', height: '100%', minHeight: 0 }}
+    >
       <div
         ref={containerRef}
         style={{ width: '100%', height: '100%', minHeight: 0 }}
       />
-      <PriceLegend bar={hoverBar ?? defaultBar} />
+      <PriceLegend bar={hoverBar ?? defaultBar} overlays={overlays} />
+      <SubpaneLegend panes={subpaneLegends} />
     </div>
   )
 }

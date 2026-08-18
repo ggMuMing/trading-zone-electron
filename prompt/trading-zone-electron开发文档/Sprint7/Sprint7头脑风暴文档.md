@@ -2,7 +2,7 @@
 
 > 状态：头脑风暴（非正式迭代文档）  
 > 来源：Sprint6 / 6.1 落地之后，关于「如何封装 lightweight-charts」的讨论  
-> 关联：[Sprint6 迭代文档](../Sprint6/Sprint6迭代文档.md)、[Sprint6.1 迭代文档](../Sprint6/Sprint6.1迭代文档.md)、[架构文档](../trading-zone-electron架构文档.md)
+> 关联：[Sprint7 迭代文档](./Sprint7迭代文档.md)、[Sprint7 启动摘要](./sprint7启动.md)、[Sprint6 迭代文档](../Sprint6/Sprint6迭代文档.md)、[Sprint6.1 迭代文档](../Sprint6/Sprint6.1迭代文档.md)、[架构文档](../trading-zone-electron架构文档.md)
 
 本文只沉淀讨论结论，不代替 Sprint7 启动摘要与迭代文档。参考项目仅作功能对照，**不作为本仓库图表架构的蓝本**。
 

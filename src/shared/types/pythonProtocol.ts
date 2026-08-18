@@ -145,5 +145,6 @@ export const PYTHON_METHODS = {
   syncMarketDay: 'data.sync.market_day',
   clearMarket: 'data.admin.clear_market',
   queryOhlcv: 'data.query.ohlcv',
-  metaMarketCoverage: 'data.meta.market_coverage'
+  metaMarketCoverage: 'data.meta.market_coverage',
+  computeChartInput: 'compute.chart_input'
 } as const

@@ -13,6 +13,7 @@ if str(_ROOT) not in sys.path:
 from pydantic import ValidationError  # noqa: E402
 
 from worker.codec import emit, read_message  # noqa: E402
+from worker.handlers.compute_chart_input import compute_chart_input  # noqa: E402
 from worker.handlers.market_clear import clear_market  # noqa: E402
 from worker.handlers.market_day import market_day  # noqa: E402
 from worker.handlers.market_meta import market_coverage  # noqa: E402
@@ -35,6 +36,7 @@ HANDLERS: dict[str, Handler] = {
     "data.meta.market_coverage": market_coverage,
     "data.test.seed_market_fixture": seed_market_fixture,
     "data.test.seed_sync_fixture": seed_sync_fixture,
+    "compute.chart_input": compute_chart_input,
 }
 
 

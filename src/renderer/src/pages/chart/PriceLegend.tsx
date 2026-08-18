@@ -14,6 +14,13 @@ export interface PriceLegendBar {
   amount: number | null
 }
 
+export interface PriceLegendOverlay {
+  id: string
+  label: string
+  color: string
+  value: number | null
+}
+
 function formatNumber(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return '--'
@@ -33,9 +40,10 @@ function formatInt(value: number | null | undefined): string {
 
 interface PriceLegendProps {
   bar: PriceLegendBar | null
+  overlays?: PriceLegendOverlay[]
 }
 
-export function PriceLegend({ bar }: PriceLegendProps): React.JSX.Element | null {
+export function PriceLegend({ bar, overlays = [] }: PriceLegendProps): React.JSX.Element | null {
   if (!bar) {
     return null
   }
@@ -54,9 +62,9 @@ export function PriceLegend({ bar }: PriceLegendProps): React.JSX.Element | null
         zIndex: 2,
         pointerEvents: 'none',
         display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'center',
-        gap: 8,
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        gap: 2,
         padding: '4px 8px',
         fontSize: 13,
         lineHeight: '18px',
@@ -65,26 +73,37 @@ export function PriceLegend({ bar }: PriceLegendProps): React.JSX.Element | null
         backgroundColor: 'rgba(255, 255, 255, 0.85)'
       }}
     >
-      <span>{bar.date}</span>
-      <span style={{ color: LABEL_COLOR }}>
-        O<span style={{ color: ocColor }}>{formatNumber(bar.open)}</span>
-      </span>
-      <span style={{ color: LABEL_COLOR }}>
-        H<span style={{ color: ocColor }}>{formatNumber(bar.high)}</span>
-      </span>
-      <span style={{ color: LABEL_COLOR }}>
-        L<span style={{ color: ocColor }}>{formatNumber(bar.low)}</span>
-      </span>
-      <span style={{ color: LABEL_COLOR }}>
-        C<span style={{ color: ocColor }}>{formatNumber(bar.close)}</span>
-      </span>
-      <span style={{ color: ocColor }}>
-        {`${sign}${formatNumber(diff)} (${sign}${formatNumber(pct)}%)`}
-      </span>
-      <span style={{ color: LABEL_COLOR }}>VOL: {formatInt(bar.vol)}</span>
-      <span style={{ color: LABEL_COLOR }}>
-        AMT: {formatNumber((bar.amount ?? 0) / 100000)}亿
-      </span>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+        <span>{bar.date}</span>
+        <span style={{ color: LABEL_COLOR }}>
+          O<span style={{ color: ocColor }}>{formatNumber(bar.open)}</span>
+        </span>
+        <span style={{ color: LABEL_COLOR }}>
+          H<span style={{ color: ocColor }}>{formatNumber(bar.high)}</span>
+        </span>
+        <span style={{ color: LABEL_COLOR }}>
+          L<span style={{ color: ocColor }}>{formatNumber(bar.low)}</span>
+        </span>
+        <span style={{ color: LABEL_COLOR }}>
+          C<span style={{ color: ocColor }}>{formatNumber(bar.close)}</span>
+        </span>
+        <span style={{ color: ocColor }}>
+          {`${sign}${formatNumber(diff)} (${sign}${formatNumber(pct)}%)`}
+        </span>
+        <span style={{ color: LABEL_COLOR }}>VOL: {formatInt(bar.vol)}</span>
+        <span style={{ color: LABEL_COLOR }}>
+          AMT: {formatNumber((bar.amount ?? 0) / 100000)}亿
+        </span>
+      </div>
+      {overlays.length > 0 ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+          {overlays.map((item) => (
+            <span key={item.id} style={{ color: item.color }}>
+              {item.label}: {formatNumber(item.value)}
+            </span>
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }

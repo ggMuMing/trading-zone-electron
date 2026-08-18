@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trading-zone.local/contracts/chart_input.json",
+  "title": "ChartInput",
+  "description": "Logical chart-channel input (v1). Candle and volume are first-class; primitives are overlays and subplots only. Produced by Python compute.chart_input (or fixtures); consumed by the Renderer chart channel.",
+  "type": "object",
+  "required": ["schemaVersion", "timeDomain", "candle", "primitives", "series"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "timeDomain": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/isoDate" }
+    },
+    "candle": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/candlePoint" }
+    },
+    "volume": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/volumePoint" }
+    },
+    "primitives": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/primitive" }
+    },
+    "series": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "$ref": "#/$defs/valuePoint" }
+      }
+    }
+  },
+  "$defs": {
+    "isoDate": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "candlePoint": {
+      "type": "object",
+      "required": ["time", "open", "high", "low", "close"],
+      "additionalProperties": false,
+      "properties": {
+        "time": { "$ref": "#/$defs/isoDate" },
+        "open": { "type": "number" },
+        "high": { "type": "number" },
+        "low": { "type": "number" },
+        "close": { "type": "number" },
+        "vol": { "type": ["number", "null"] },
+        "amount": { "type": ["number", "null"] }
+      }
+    },
+    "volumePoint": {
+      "type": "object",
+      "required": ["time", "value", "color"],
+      "additionalProperties": false,
+      "properties": {
+        "time": { "$ref": "#/$defs/isoDate" },
+        "value": { "type": "number" },
+        "color": { "type": "string", "minLength": 1 }
+      }
+    },
+    "valuePoint": {
+      "type": "object",
+      "required": ["time", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "time": { "$ref": "#/$defs/isoDate" },
+        "value": { "type": "number" },
+        "color": { "type": "string", "minLength": 1 }
+      }
+    },
+    "primitive": {
+      "type": "object",
+      "required": ["id", "pane", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "pane": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["line", "histogram"] },
+        "style": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "color": { "type": "string", "minLength": 1 },
+            "lineWidth": { "type": "integer", "minimum": 1, "maximum": 4 }
+          }
+        }
+      }
+    }
+  }
+}

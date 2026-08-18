@@ -11,12 +11,27 @@ import Typography from '@mui/material/Typography'
 import GroupAddIcon from '@mui/icons-material/GroupAdd'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { validateChartInput } from '../../../shared/chart/validateChartInput'
 import { MARKET_SYNC_START, todayYyyymmdd } from '../../../shared/constants/market'
-import type { AdjustType, MarketCoverageResult, OhlcvBar } from '../../../shared/types/market'
+import type { ChartInput } from '../../../shared/types/chart'
+import type { AdjustType, MarketCoverageResult } from '../../../shared/types/market'
 import type { Stock } from '../../../shared/types/stock'
 import { KlineChart } from './chart/KlineChart'
 import { StockPicker } from './StockPicker'
+
+function stripMacdPane(input: ChartInput): ChartInput {
+  const primitives = input.primitives.filter((primitive) => primitive.pane !== 'macd')
+  const series: ChartInput['series'] = {}
+  for (const primitive of primitives) {
+    series[primitive.id] = input.series[primitive.id] ?? []
+  }
+  return {
+    ...input,
+    primitives,
+    series
+  }
+}
 
 const PICKER_WIDTH_STORAGE_KEY = 'trading-zone.chart.stockPickerWidth'
 const PICKER_WIDTH_MIN = 180
@@ -51,9 +66,10 @@ export function ChartPage(): React.JSX.Element {
   const [coverage, setCoverage] = useState<MarketCoverageResult | null>(null)
   const [selectedCode, setSelectedCode] = useState<string | null>(null)
   const [adjust, setAdjust] = useState<AdjustType>('none')
-  const [bars, setBars] = useState<OhlcvBar[]>([])
+  const [chartRaw, setChartRaw] = useState<ChartInput | null>(null)
   const [pickerWidth, setPickerWidth] = useState(loadPickerWidth)
   const [resizing, setResizing] = useState(false)
+  const [showMacd, setShowMacd] = useState(true)
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const pickerWidthRef = useRef(pickerWidth)
   pickerWidthRef.current = pickerWidth
@@ -87,19 +103,19 @@ export function ChartPage(): React.JSX.Element {
 
   const queryEnd = coverage?.max_date || todayYyyymmdd()
 
-  const loadBars = useCallback(async (tsCode: string, adj: AdjustType, endDate: string): Promise<void> => {
+  const loadChart = useCallback(async (tsCode: string, adj: AdjustType, endDate: string): Promise<void> => {
     setQuerying(true)
     setError(null)
     try {
-      const result = await window.api.market.query({
+      const result = await window.api.chart.build({
         ts_code: tsCode,
         adjust: adj,
         start_date: MARKET_SYNC_START,
         end_date: endDate
       })
-      setBars(result.bars)
+      setChartRaw(result)
     } catch (err: unknown) {
-      setBars([])
+      setChartRaw(null)
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setQuerying(false)
@@ -112,11 +128,11 @@ export function ChartPage(): React.JSX.Element {
 
   useEffect(() => {
     if (selectedCode) {
-      void loadBars(selectedCode, adjust, queryEnd)
+      void loadChart(selectedCode, adjust, queryEnd)
     } else {
-      setBars([])
+      setChartRaw(null)
     }
-  }, [selectedCode, adjust, queryEnd, loadBars])
+  }, [selectedCode, adjust, queryEnd, loadChart])
 
   useEffect(() => {
     if (!resizing) {
@@ -165,6 +181,17 @@ export function ChartPage(): React.JSX.Element {
 
   const isEmpty = stocks.length === 0
   const selected = stocks.find((stock) => stock.ts_code === selectedCode)
+  const chartInput = useMemo(() => {
+    if (!chartRaw) {
+      return null
+    }
+    const result = validateChartInput(chartRaw)
+    if (!result.ok) {
+      return { error: result.issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ') }
+    }
+    const value = showMacd ? result.value : stripMacdPane(result.value)
+    return { value }
+  }, [chartRaw, showMacd])
 
   return (
     <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -282,6 +309,14 @@ export function ChartPage(): React.JSX.Element {
               <Button size="small" startIcon={<TrendingUpIcon />} disabled>
                 指标
               </Button>
+              <Chip
+                size="small"
+                label="MACD"
+                color={showMacd ? 'primary' : 'default'}
+                variant={showMacd ? 'filled' : 'outlined'}
+                onClick={() => setShowMacd((prev) => !prev)}
+                disabled={!selectedCode || querying || !chartRaw}
+              />
               <ToggleButtonGroup
                 size="small"
                 exclusive
@@ -313,7 +348,7 @@ export function ChartPage(): React.JSX.Element {
                     请从左侧选择股票
                   </Typography>
                 </Box>
-              ) : bars.length === 0 ? (
+              ) : !chartRaw ? (
                 <Box
                   sx={{
                     height: '100%',
@@ -326,9 +361,23 @@ export function ChartPage(): React.JSX.Element {
                     {querying || loading ? '加载中…' : '暂无日线数据'}
                   </Typography>
                 </Box>
+              ) : chartInput && 'error' in chartInput ? (
+                <Box
+                  sx={{
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    px: 2
+                  }}
+                >
+                  <Typography variant="body2" color="error">
+                    图表数据无效：{chartInput.error}
+                  </Typography>
+                </Box>
               ) : (
                 <Box sx={{ position: 'absolute', inset: 0, opacity: querying ? 0.7 : 1 }}>
-                  <KlineChart bars={bars} />
+                  {chartInput && 'value' in chartInput ? <KlineChart input={chartInput.value} /> : null}
                 </Box>
               )}
             </Box>

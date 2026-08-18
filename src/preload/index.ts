@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { Stock } from '../shared/types/stock'
 import type { MarketClearResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
+import type { ChartInput } from '../shared/types/chart'
 import type {
   BoardStats,
   MarketCoverageResult,
@@ -48,6 +49,10 @@ const api = {
         ipcRenderer.removeListener('market:syncProgress', listener)
       }
     }
+  },
+  chart: {
+    build: (params: MarketQueryParams): Promise<ChartInput | null> =>
+      ipcRenderer.invoke('chart:build', params)
   },
   config: {
     hasTushareToken: (): Promise<boolean> => ipcRenderer.invoke('config:hasTushareToken'),

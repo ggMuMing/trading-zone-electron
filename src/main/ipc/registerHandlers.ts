@@ -3,7 +3,29 @@ import { getTushareToken, hasTushareToken, setTushareToken } from '../config/app
 import { stocksRepository } from '../db/stocksRepository'
 import { applicationService } from '../services/applicationService'
 import { pythonBridge } from '../bridge/pythonBridge'
-import type { AdjustType } from '../../shared/types/market'
+import type { AdjustType, MarketQueryParams } from '../../shared/types/market'
+
+function parseMarketQueryParams(params: unknown, channel: string): MarketQueryParams {
+  if (!params || typeof params !== 'object') {
+    throw new Error(`${channel} requires params object`)
+  }
+  const p = params as Record<string, unknown>
+  if (typeof p.ts_code !== 'string' || !p.ts_code.trim()) {
+    throw new Error('ts_code must be a non-empty string')
+  }
+  const adjust = p.adjust
+  if (adjust !== undefined && adjust !== 'none' && adjust !== 'qfq' && adjust !== 'hfq') {
+    throw new Error('adjust must be none | qfq | hfq')
+  }
+  return {
+    ts_code: p.ts_code,
+    adjust: adjust as AdjustType | undefined,
+    start_date: typeof p.start_date === 'string' ? p.start_date : undefined,
+    end_date: typeof p.end_date === 'string' ? p.end_date : undefined,
+    limit:
+      typeof p.limit === 'number' && Number.isInteger(p.limit) && p.limit >= 1 ? p.limit : undefined
+  }
+}
 
 export function registerHandlers(): void {
   ipcMain.on('ping', () => console.log('pong'))
@@ -57,31 +79,11 @@ export function registerHandlers(): void {
   })
 
   ipcMain.handle('market:query', async (_event, params: unknown) => {
-    if (!params || typeof params !== 'object') {
-      throw new Error('market:query requires params object')
-    }
-    const p = params as Record<string, unknown>
-    if (typeof p.ts_code !== 'string' || !p.ts_code.trim()) {
-      throw new Error('ts_code must be a non-empty string')
-    }
-    const adjust = p.adjust
-    if (
-      adjust !== undefined &&
-      adjust !== 'none' &&
-      adjust !== 'qfq' &&
-      adjust !== 'hfq'
-    ) {
-      throw new Error('adjust must be none | qfq | hfq')
-    }
-    return applicationService.queryOhlcv({
-      ts_code: p.ts_code,
-      adjust: adjust as AdjustType | undefined,
-      start_date: typeof p.start_date === 'string' ? p.start_date : undefined,
-      end_date: typeof p.end_date === 'string' ? p.end_date : undefined,
-      limit: typeof p.limit === 'number' && Number.isInteger(p.limit) && p.limit >= 1
-        ? p.limit
-        : undefined
-    })
+    return applicationService.queryOhlcv(parseMarketQueryParams(params, 'market:query'))
+  })
+
+  ipcMain.handle('chart:build', async (_event, params: unknown) => {
+    return applicationService.buildChartInput(parseMarketQueryParams(params, 'chart:build'))
   })
 
   ipcMain.handle('market:coverage', async () => {

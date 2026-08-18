@@ -1,6 +1,7 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type { Stock } from '../shared/types/stock'
 import type { MarketClearResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
+import type { ChartInput } from '../shared/types/chart'
 import type {
   BoardStats,
   MarketCoverageResult,
@@ -35,6 +36,9 @@ export interface AppApi {
     coverage: () => Promise<MarketCoverageResult>
     syncStatus: () => Promise<MarketSyncStatus>
     onSyncProgress: (callback: (progress: MarketSyncProgress) => void) => () => void
+  }
+  chart: {
+    build: (params: MarketQueryParams) => Promise<ChartInput | null>
   }
   config: {
     hasTushareToken: () => Promise<boolean>

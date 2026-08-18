@@ -14,6 +14,7 @@ import type {
   SyncMarketPoolResult,
   SyncMarketWindowResult
 } from '../../shared/types/market'
+import type { ChartInput } from '../../shared/types/chart'
 import type { Stock } from '../../shared/types/stock'
 import {
   PYTHON_METHODS,
@@ -296,6 +297,17 @@ export const applicationService = {
       count: result.count,
       bars
     }
+  },
+
+  async buildChartInput(params: MarketQueryParams): Promise<ChartInput | null> {
+    const query = await this.queryOhlcv(params)
+    if (query.bars.length === 0) {
+      return null
+    }
+    const chart = await pythonBridge.call<ChartInput>(PYTHON_METHODS.computeChartInput, {
+      bars: query.bars
+    })
+    return chart
   },
 
   async getMarketCoverage(tsCodes?: string[] | null): Promise<MarketCoverageResult> {
