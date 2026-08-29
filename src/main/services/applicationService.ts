@@ -444,7 +444,7 @@ export const applicationService = {
       query.limit = params.limit
     }
 
-    const layout = await ensureScriptLayoutDefaults()
+    const layout = withNormalizedScriptParams(await ensureScriptLayoutDefaults())
     const instances: Array<{
       id: string
       kind: LayoutItemKind
@@ -491,18 +491,20 @@ async function loadScriptManifest(source: string): Promise<IndicatorManifest> {
   return parseIndicatorManifest(result.manifest)
 }
 
-let scriptLayoutDefaults: Promise<ChartLayout> | null = null
+let scriptLayoutSeeded: Promise<void> | null = null
 
+/** Seed once, then always read the current layout from SQLite (never cache items). */
 async function ensureScriptLayoutDefaults(): Promise<ChartLayout> {
-  if (!scriptLayoutDefaults) {
-    scriptLayoutDefaults = seedScriptLayoutDefaults()
+  if (!scriptLayoutSeeded) {
+    scriptLayoutSeeded = seedScriptLayoutDefaults().then(() => undefined)
   }
   try {
-    return await scriptLayoutDefaults
+    await scriptLayoutSeeded
   } catch (err) {
-    scriptLayoutDefaults = null
+    scriptLayoutSeeded = null
     throw err
   }
+  return chartLayoutRepository.get()
 }
 
 async function seedScriptLayoutDefaults(): Promise<ChartLayout> {

@@ -234,6 +234,7 @@ npm run typecheck
 - 全流程起窗（改 period3、重启仍在）仍需手工补跑。
 - 用户删除 `seed-ma` 后空图没有引导。
 - 沙箱失败仍会在 worker stderr 打出完整 traceback（既有行为）。
+- 已修：`ensureScriptLayoutDefaults` 曾缓存首次布局快照，导致后来「添加脚本」写进 SQLite，但 `chart:build` 仍按旧 items 构图，新均线不上图。现改为种子只跑一次，构图始终 `get()` 当前布局。
 
 ---
 
