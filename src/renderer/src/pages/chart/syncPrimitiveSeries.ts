@@ -167,6 +167,11 @@ export function syncPrimitiveSeries({
     if (!series) {
       series = addPrimitiveSeries(chart, primitive, paneIndexOf(primitive.pane, subpanes))
       seriesById.set(primitive.id, series)
+    } else if (primitive.kind === 'line') {
+      ;(series as ISeriesApi<'Line'>).applyOptions({
+        color: primitive.style?.color ?? DEFAULT_LINE_COLOR,
+        lineWidth: toLineWidth(primitive.style?.lineWidth)
+      })
     }
     applyPrimitiveData(series, primitive, seriesData[primitive.id] ?? [])
   }

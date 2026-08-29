@@ -3,6 +3,8 @@ import { electronAPI } from '@electron-toolkit/preload'
 import type { Stock } from '../shared/types/stock'
 import type { MarketClearResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
 import type { ChartInput } from '../shared/types/chart'
+import type { ChartLayout, LayoutItemParams } from '../shared/types/chartLayout'
+import type { IndicatorScript, ScriptTryParams, ScriptTryResult } from '../shared/types/indicatorScript'
 import type {
   BoardStats,
   MarketCoverageResult,
@@ -53,6 +55,27 @@ const api = {
   chart: {
     build: (params: MarketQueryParams): Promise<ChartInput | null> =>
       ipcRenderer.invoke('chart:build', params)
+  },
+  chartLayout: {
+    get: (): Promise<ChartLayout> => ipcRenderer.invoke('chartLayout:get'),
+    add: (params: { kind: 'script'; ref: string }): Promise<ChartLayout> =>
+      ipcRenderer.invoke('chartLayout:add', params),
+    remove: (params: { id: string }): Promise<ChartLayout> =>
+      ipcRenderer.invoke('chartLayout:remove', params),
+    update: (params: { id: string; params: LayoutItemParams }): Promise<ChartLayout> =>
+      ipcRenderer.invoke('chartLayout:update', params)
+  },
+  indicatorScript: {
+    list: (): Promise<IndicatorScript[]> => ipcRenderer.invoke('indicatorScript:list'),
+    exampleSource: (): Promise<string> => ipcRenderer.invoke('indicatorScript:exampleSource'),
+    try: (params: ScriptTryParams): Promise<ScriptTryResult> =>
+      ipcRenderer.invoke('indicatorScript:try', params),
+    create: (params: { title: string; source: string }): Promise<IndicatorScript[]> =>
+      ipcRenderer.invoke('indicatorScript:create', params),
+    update: (params: { id: string; title?: string; source?: string }): Promise<IndicatorScript[]> =>
+      ipcRenderer.invoke('indicatorScript:update', params),
+    remove: (params: { id: string }): Promise<IndicatorScript[]> =>
+      ipcRenderer.invoke('indicatorScript:remove', params)
   },
   config: {
     hasTushareToken: (): Promise<boolean> => ipcRenderer.invoke('config:hasTushareToken'),

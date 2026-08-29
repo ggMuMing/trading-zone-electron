@@ -138,6 +138,21 @@ export interface MarketClearResult {
   db_path: string
 }
 
+export interface ComputeIndicatorInstance {
+  id: string
+  kind: 'script'
+  ref: string
+  params: Record<string, unknown>
+  source: string
+}
+
+/** XOR: exactly one of `query` or `bars`. Empty query window → null ChartInput. */
+export interface ComputeIndicatorParams {
+  instances: ComputeIndicatorInstance[]
+  query?: MarketQueryParams
+  bars?: Record<string, unknown>[]
+}
+
 export const PYTHON_METHODS = {
   syncStockList: 'data.sync.stock_list',
   syncMarketPool: 'data.sync.market_pool',
@@ -146,5 +161,6 @@ export const PYTHON_METHODS = {
   clearMarket: 'data.admin.clear_market',
   queryOhlcv: 'data.query.ohlcv',
   metaMarketCoverage: 'data.meta.market_coverage',
-  computeChartInput: 'compute.chart_input'
+  computeIndicator: 'compute.indicator',
+  computeScriptTry: 'compute.script_try'
 } as const

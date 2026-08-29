@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 import { randomUUID } from 'crypto'
@@ -279,9 +279,7 @@ export class PythonBridge {
 }
 
 function resolvePythonPaths(): { python: string; cwd: string; script: string } {
-  const root = app.isPackaged
-    ? join(process.resourcesPath, 'python')
-    : join(app.getAppPath(), 'python')
+  const root = pythonPackageRoot()
 
   const script = join(root, 'worker', 'main.py')
   if (!existsSync(script)) {
@@ -305,6 +303,18 @@ function resolvePythonPaths(): { python: string; cwd: string; script: string } {
   throw new Error(
     `Python venv not found at ${venvPython}. Create it with: cd python && python -m venv .venv && pip install -r requirements.txt`
   )
+}
+
+export function pythonPackageRoot(): string {
+  return app.isPackaged ? join(process.resourcesPath, 'python') : join(app.getAppPath(), 'python')
+}
+
+export function readExampleMaSource(): string {
+  const path = join(pythonPackageRoot(), 'worker', 'indicators', 'examples', 'ma.py')
+  if (!existsSync(path)) {
+    throw new Error(`example MA script not found: ${path}`)
+  }
+  return readFileSync(path, 'utf8')
 }
 
 export const pythonBridge = new PythonBridge()

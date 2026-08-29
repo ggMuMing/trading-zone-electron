@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from worker.plot.models import CandlePoint, VolumePoint
@@ -9,6 +10,8 @@ from worker.plot.models import CandlePoint, VolumePoint
 UP_COLOR = "#ef5350"
 DOWN_COLOR = "#26a69a"
 MA_COLOR = "#2962FF"
+MA5_COLOR = "#FF9800"
+MA250_COLOR = "#7E57C2"
 DIF_COLOR = "#f5a623"
 DEA_COLOR = "#4a90d9"
 
@@ -71,7 +74,7 @@ def prepare_ohlcv(bars: list[dict[str, Any]]) -> tuple[list[str], list[float], l
     return time_domain, closes, candle, volume
 
 
-def sma(values: list[float], period: int) -> list[float | None]:
+def sma(values: Sequence[float], period: int) -> list[float | None]:
     out: list[float | None] = [None] * len(values)
     if len(values) < period:
         return out
@@ -85,7 +88,7 @@ def sma(values: list[float], period: int) -> list[float | None]:
     return out
 
 
-def ema(values: list[float], period: int) -> list[float | None]:
+def ema(values: Sequence[float], period: int) -> list[float | None]:
     out: list[float | None] = [None] * len(values)
     if len(values) < period:
         return out

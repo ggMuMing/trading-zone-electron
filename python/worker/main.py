@@ -13,7 +13,7 @@ if str(_ROOT) not in sys.path:
 from pydantic import ValidationError  # noqa: E402
 
 from worker.codec import emit, read_message  # noqa: E402
-from worker.handlers.compute_chart_input import compute_chart_input  # noqa: E402
+from worker.handlers.compute_indicator import compute_indicator  # noqa: E402
 from worker.handlers.market_clear import clear_market  # noqa: E402
 from worker.handlers.market_day import market_day  # noqa: E402
 from worker.handlers.market_meta import market_coverage  # noqa: E402
@@ -22,6 +22,7 @@ from worker.handlers.market_query import query_ohlcv  # noqa: E402
 from worker.handlers.market_seed import seed_market_fixture, seed_sync_fixture  # noqa: E402
 from worker.handlers.market_sync import sync_market_pool  # noqa: E402
 from worker.handlers.stock_list import sync_stock_list  # noqa: E402
+from worker.handlers.try_script import try_script  # noqa: E402
 from worker.models import ReadyMessage, WorkerError, WorkerRequest, WorkerResponse  # noqa: E402
 
 Handler = Callable[[dict[str, Any]], Any]
@@ -36,7 +37,8 @@ HANDLERS: dict[str, Handler] = {
     "data.meta.market_coverage": market_coverage,
     "data.test.seed_market_fixture": seed_market_fixture,
     "data.test.seed_sync_fixture": seed_sync_fixture,
-    "compute.chart_input": compute_chart_input,
+    "compute.indicator": compute_indicator,
+    "compute.script_try": try_script,
 }
 
 

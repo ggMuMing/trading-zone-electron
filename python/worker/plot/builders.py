@@ -106,6 +106,20 @@ def histogram(
     )
 
 
+def overlay(*parts: PlotFragment) -> PlotFragment:
+    merged = PlotFragment()
+    for part in parts:
+        for primitive in part.primitives:
+            if any(existing.id == primitive.id for existing in merged.primitives):
+                raise ValueError(f"duplicate primitive id {primitive.id}")
+            merged.primitives.append(primitive)
+        for key, points in part.series.items():
+            if key in merged.series:
+                raise ValueError(f"duplicate series id {key}")
+            merged.series[key] = points
+    return merged
+
+
 def subplot(pane: str, *parts: PlotFragment) -> PlotFragment:
     if not pane or pane == "main":
         raise ValueError('subplot pane must be a non-empty key other than "main"')

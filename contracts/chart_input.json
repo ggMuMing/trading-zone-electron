@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://trading-zone.local/contracts/chart_input.json",
   "title": "ChartInput",
-  "description": "Logical chart-channel input (v1). Candle and volume are first-class; primitives are overlays and subplots only. Produced by Python compute.chart_input (or fixtures); consumed by the Renderer chart channel.",
+  "description": "Logical chart-channel input (v1). Candle and volume are first-class; primitives are overlays and subplots only. Produced by Python compute.indicator (or fixtures); consumed by the Renderer chart channel.",
   "type": "object",
   "required": ["schemaVersion", "timeDomain", "candle", "primitives", "series"],
   "additionalProperties": false,

@@ -2,6 +2,8 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 import type { Stock } from '../shared/types/stock'
 import type { MarketClearResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
 import type { ChartInput } from '../shared/types/chart'
+import type { ChartLayout, LayoutItemParams } from '../shared/types/chartLayout'
+import type { IndicatorScript, ScriptTryParams, ScriptTryResult } from '../shared/types/indicatorScript'
 import type {
   BoardStats,
   MarketCoverageResult,
@@ -39,6 +41,20 @@ export interface AppApi {
   }
   chart: {
     build: (params: MarketQueryParams) => Promise<ChartInput | null>
+  }
+  chartLayout: {
+    get: () => Promise<ChartLayout>
+    add: (params: { kind: 'script'; ref: string }) => Promise<ChartLayout>
+    remove: (params: { id: string }) => Promise<ChartLayout>
+    update: (params: { id: string; params: LayoutItemParams }) => Promise<ChartLayout>
+  }
+  indicatorScript: {
+    list: () => Promise<IndicatorScript[]>
+    exampleSource: () => Promise<string>
+    try: (params: ScriptTryParams) => Promise<ScriptTryResult>
+    create: (params: { title: string; source: string }) => Promise<IndicatorScript[]>
+    update: (params: { id: string; title?: string; source?: string }) => Promise<IndicatorScript[]>
+    remove: (params: { id: string }) => Promise<IndicatorScript[]>
   }
   config: {
     hasTushareToken: () => Promise<boolean>

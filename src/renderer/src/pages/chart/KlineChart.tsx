@@ -9,6 +9,9 @@ import {
   type Time
 } from 'lightweight-charts'
 import type { CandlePoint, ChartInput, ValuePoint, VolumePoint } from '../../../../shared/types/chart'
+import type { ChartLayout } from '../../../../shared/types/chartLayout'
+import type { IndicatorScript } from '../../../../shared/types/indicatorScript'
+import { legendLabel, subplotLegendTitle } from '../../../../shared/chart/legendLabel'
 import { LWC_FONT_STACK } from '../../theme/lwcFont'
 import { PriceLegend, type PriceLegendBar, type PriceLegendOverlay } from './PriceLegend'
 import { SubpaneLegend, type SubpaneLegendPane } from './SubpaneLegend'
@@ -104,13 +107,14 @@ function primitiveColor(primitive: ChartInput['primitives'][number], points: Val
 
 function buildOverlays(
   input: ChartInput,
-  values: Record<string, number | null>
+  values: Record<string, number | null>,
+  layout: ChartLayout | null
 ): PriceLegendOverlay[] {
   return input.primitives
     .filter((primitive) => primitive.pane === 'main')
     .map((primitive) => ({
       id: primitive.id,
-      label: primitive.id.toUpperCase(),
+      label: legendLabel(primitive.id, layout),
       color: primitiveColor(primitive, input.series[primitive.id] ?? []),
       value: values[primitive.id] ?? null
     }))
@@ -119,23 +123,24 @@ function buildOverlays(
 function buildSubpaneLegends(
   input: ChartInput,
   values: Record<string, number | null>,
-  tops: Array<{ paneIndex: number; top: number }>
+  tops: Array<{ paneIndex: number; top: number }>,
+  layout: ChartLayout | null,
+  scripts: IndicatorScript[]
 ): SubpaneLegendPane[] {
   const subpanes = subplotPaneOrder(input.primitives)
   return subpanes.map((pane, index) => {
     const paneIndex = index + 1
     const top = tops.find((entry) => entry.paneIndex === paneIndex)?.top ?? 0
-    const items = input.primitives
-      .filter((primitive) => primitive.pane === pane)
-      .map((primitive) => ({
-        id: primitive.id,
-        label: primitive.id.toUpperCase(),
-        color: primitiveColor(primitive, input.series[primitive.id] ?? []),
-        value: values[primitive.id] ?? null
-      }))
+    const panePrimitives = input.primitives.filter((primitive) => primitive.pane === pane)
+    const items = panePrimitives.map((primitive) => ({
+      id: primitive.id,
+      label: legendLabel(primitive.id, layout),
+      color: primitiveColor(primitive, input.series[primitive.id] ?? []),
+      value: values[primitive.id] ?? null
+    }))
     return {
       pane,
-      title: pane.toUpperCase(),
+      title: subplotLegendTitle(panePrimitives, layout, scripts),
       top,
       items
     }
@@ -144,9 +149,11 @@ function buildSubpaneLegends(
 
 interface KlineChartProps {
   input: ChartInput
+  layout: ChartLayout | null
+  scripts?: IndicatorScript[]
 }
 
-export function KlineChart({ input }: KlineChartProps): React.JSX.Element {
+export function KlineChart({ input, layout, scripts = [] }: KlineChartProps): React.JSX.Element {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -184,10 +191,10 @@ export function KlineChart({ input }: KlineChartProps): React.JSX.Element {
   candleByTimeRef.current = candleByTime
 
   const activeValues = hoverValues ?? defaultValues
-  const overlays = useMemo(() => buildOverlays(input, activeValues), [input, activeValues])
+  const overlays = useMemo(() => buildOverlays(input, activeValues, layout), [input, activeValues, layout])
   const subpaneLegends = useMemo(
-    () => buildSubpaneLegends(input, activeValues, subpaneTops),
-    [input, activeValues, subpaneTops]
+    () => buildSubpaneLegends(input, activeValues, subpaneTops, layout, scripts),
+    [input, activeValues, subpaneTops, layout, scripts]
   )
 
   useEffect(() => {

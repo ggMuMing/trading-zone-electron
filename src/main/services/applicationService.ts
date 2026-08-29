@@ -14,7 +14,21 @@ import type {
   SyncMarketPoolResult,
   SyncMarketWindowResult
 } from '../../shared/types/market'
+import { parseIndicatorManifest, assertParams, normalizeParams } from '../../shared/chart/indicatorScript'
 import type { ChartInput } from '../../shared/types/chart'
+import type {
+  ChartLayout,
+  ChartLayoutItem,
+  LayoutItemKind,
+  LayoutItemParams
+} from '../../shared/types/chartLayout'
+import { SEED_MA_SCRIPT_ID, SEED_MA_SCRIPT_TITLE } from '../../shared/types/chartLayout'
+import type {
+  IndicatorManifest,
+  IndicatorScript,
+  ScriptTryParams,
+  ScriptTryResult
+} from '../../shared/types/indicatorScript'
 import type { Stock } from '../../shared/types/stock'
 import {
   PYTHON_METHODS,
@@ -26,8 +40,10 @@ import {
   type MarketSyncPlanResult,
   type StockListResult
 } from '../../shared/types/pythonProtocol'
-import { pythonBridge } from '../bridge/pythonBridge'
+import { pythonBridge, readExampleMaSource } from '../bridge/pythonBridge'
 import { getTushareToken } from '../config/appConfig'
+import { chartLayoutRepository } from '../db/chartLayoutRepository'
+import { indicatorScriptRepository } from '../db/indicatorScriptRepository'
 import { marketPoolRepository } from '../db/marketPoolRepository'
 import { stocksRepository } from '../db/stocksRepository'
 import { decodeOhlcvArrow } from '../market/arrowOhlcv'
@@ -299,13 +315,159 @@ export const applicationService = {
     }
   },
 
-  async buildChartInput(params: MarketQueryParams): Promise<ChartInput | null> {
-    const query = await this.queryOhlcv(params)
-    if (query.bars.length === 0) {
-      return null
+  exampleIndicatorSource(): string {
+    return readExampleMaSource()
+  },
+
+  async getChartLayout(): Promise<ChartLayout> {
+    return withNormalizedScriptParams(await ensureScriptLayoutDefaults())
+  },
+
+  addChartIndicator(kind: LayoutItemKind, ref: string): ChartLayout {
+    if (kind !== 'script') {
+      throw new Error('kind must be script')
     }
-    const chart = await pythonBridge.call<ChartInput>(PYTHON_METHODS.computeChartInput, {
-      bars: query.bars
+    const script = indicatorScriptRepository.get(ref)
+    if (!script) {
+      throw new Error(`脚本不存在：${ref}`)
+    }
+    return withNormalizedScriptParams(
+      chartLayoutRepository.add({
+        kind,
+        ref,
+        params: { ...script.manifest.defaultParams }
+      })
+    )
+  },
+
+  removeChartIndicator(id: string): ChartLayout {
+    if (!id.trim()) {
+      throw new Error('id is required')
+    }
+    return withNormalizedScriptParams(chartLayoutRepository.remove(id.trim()))
+  },
+
+  updateChartIndicator(id: string, params: LayoutItemParams): ChartLayout {
+    if (!id.trim()) {
+      throw new Error('id is required')
+    }
+    const layout = chartLayoutRepository.get()
+    const item = layout.items.find((entry) => entry.id === id.trim())
+    if (!item) {
+      throw new Error(`指标不存在：${id}`)
+    }
+    const script = indicatorScriptRepository.get(item.ref)
+    if (!script) {
+      throw new Error(`脚本不存在：${item.ref}`)
+    }
+    const next = assertParams(script.manifest.fields, params)
+    return withNormalizedScriptParams(chartLayoutRepository.update(id.trim(), next))
+  },
+
+  listIndicatorScripts(): IndicatorScript[] {
+    return indicatorScriptRepository.list()
+  },
+
+  async tryIndicatorScript(params: ScriptTryParams): Promise<ScriptTryResult> {
+    if (typeof params.source !== 'string') {
+      throw new Error('source must be a string')
+    }
+    const payload: Record<string, unknown> = { source: params.source }
+    if (params.params !== undefined) {
+      payload.params = params.params
+    }
+    if (params.query !== undefined) {
+      const query: Record<string, unknown> = {
+        ts_code: params.query.ts_code.trim(),
+        start_date: params.query.start_date ?? MARKET_SYNC_START,
+        end_date: params.query.end_date ?? MARKET_SYNC_END,
+        adjust: params.query.adjust ?? 'none'
+      }
+      if (params.query.limit !== undefined) {
+        query.limit = params.query.limit
+      }
+      payload.query = query
+    }
+    return pythonBridge.call<ScriptTryResult>(PYTHON_METHODS.computeScriptTry, payload)
+  },
+
+  async createIndicatorScript(title: string, source: string): Promise<IndicatorScript[]> {
+    const manifest = await loadScriptManifest(source)
+    return indicatorScriptRepository.create({ title, source, manifest })
+  },
+
+  async updateIndicatorScript(
+    id: string,
+    patch: { title?: string; source?: string }
+  ): Promise<IndicatorScript[]> {
+    if (!id.trim()) {
+      throw new Error('id is required')
+    }
+    const existing = indicatorScriptRepository.get(id.trim())
+    if (!existing) {
+      throw new Error(`脚本不存在：${id}`)
+    }
+    const source = patch.source !== undefined ? patch.source : existing.source
+    const manifest = await loadScriptManifest(source)
+    const scripts = indicatorScriptRepository.update(id.trim(), {
+      title: patch.title,
+      source: patch.source,
+      manifest
+    })
+    rematerializeScriptLayoutItems(id.trim(), manifest)
+    return scripts
+  },
+
+  removeIndicatorScript(id: string): IndicatorScript[] {
+    if (!id.trim()) {
+      throw new Error('id is required')
+    }
+    const scriptId = id.trim()
+    if (chartLayoutRepository.isScriptReferenced(scriptId)) {
+      throw new Error('脚本仍被布局引用，无法删除')
+    }
+    return indicatorScriptRepository.remove(scriptId)
+  },
+
+  async buildChartInput(params: MarketQueryParams): Promise<ChartInput | null> {
+    if (!params.ts_code?.trim()) {
+      throw new Error('ts_code is required')
+    }
+
+    const query: Record<string, unknown> = {
+      ts_code: params.ts_code.trim(),
+      start_date: params.start_date ?? MARKET_SYNC_START,
+      end_date: params.end_date ?? MARKET_SYNC_END,
+      adjust: params.adjust ?? 'none'
+    }
+    if (params.limit !== undefined) {
+      query.limit = params.limit
+    }
+
+    const layout = await ensureScriptLayoutDefaults()
+    const instances: Array<{
+      id: string
+      kind: LayoutItemKind
+      ref: string
+      params: ChartLayout['items'][number]['params']
+      source: string
+    }> = []
+    for (const item of layout.items) {
+      const script = indicatorScriptRepository.get(item.ref)
+      if (!script?.source.trim()) {
+        continue
+      }
+      instances.push({
+        id: item.id,
+        kind: 'script',
+        ref: item.ref,
+        params: item.params,
+        source: script.source
+      })
+    }
+    const chart = await pythonBridge.call<ChartInput | null>(PYTHON_METHODS.computeIndicator, {
+      query,
+      instances
     })
     return chart
   },
@@ -315,6 +477,91 @@ export const applicationService = {
       ts_codes: tsCodes && tsCodes.length > 0 ? tsCodes : null
     })
     return result
+  }
+}
+
+async function loadScriptManifest(source: string): Promise<IndicatorManifest> {
+  const result = await applicationService.tryIndicatorScript({ source })
+  if (!result.ok) {
+    throw new Error(result.error || '脚本 load 失败')
+  }
+  if (!result.manifest) {
+    throw new Error('script try did not return manifest')
+  }
+  return parseIndicatorManifest(result.manifest)
+}
+
+let scriptLayoutDefaults: Promise<ChartLayout> | null = null
+
+async function ensureScriptLayoutDefaults(): Promise<ChartLayout> {
+  if (!scriptLayoutDefaults) {
+    scriptLayoutDefaults = seedScriptLayoutDefaults()
+  }
+  try {
+    return await scriptLayoutDefaults
+  } catch (err) {
+    scriptLayoutDefaults = null
+    throw err
+  }
+}
+
+async function seedScriptLayoutDefaults(): Promise<ChartLayout> {
+  chartLayoutRepository.deleteBuiltinItems()
+  chartLayoutRepository.ensureDefault()
+  if (!indicatorScriptRepository.get(SEED_MA_SCRIPT_ID)) {
+    const source = readExampleMaSource()
+    const manifest = await loadScriptManifest(source)
+    indicatorScriptRepository.createWithId({
+      id: SEED_MA_SCRIPT_ID,
+      title: SEED_MA_SCRIPT_TITLE,
+      source,
+      manifest
+    })
+  }
+  const current = chartLayoutRepository.get()
+  if (current.items.length > 0) {
+    return current
+  }
+  const script = indicatorScriptRepository.get(SEED_MA_SCRIPT_ID)
+  if (!script) {
+    return current
+  }
+  return chartLayoutRepository.add({
+    kind: 'script',
+    ref: SEED_MA_SCRIPT_ID,
+    params: { ...script.manifest.defaultParams }
+  })
+}
+
+function rematerializeScriptLayoutItems(scriptId: string, manifest: IndicatorManifest): void {
+  const layout = chartLayoutRepository.get()
+  for (const item of layout.items) {
+    if (item.kind === 'script' && item.ref === scriptId) {
+      const next = normalizeParams(manifest.fields, manifest.defaultParams, item.params)
+      chartLayoutRepository.update(item.id, next)
+    }
+  }
+}
+
+function normalizeScriptLayoutItem(item: ChartLayoutItem): ChartLayoutItem {
+  const script = indicatorScriptRepository.get(item.ref)
+  if (!script) {
+    return item
+  }
+  try {
+    return {
+      ...item,
+      params: normalizeParams(script.manifest.fields, script.manifest.defaultParams, item.params)
+    }
+  } catch {
+    return item
+  }
+}
+
+function withNormalizedScriptParams(layout: ChartLayout): ChartLayout {
+  return {
+    ...layout,
+    items: layout.items.map((item) => normalizeScriptLayoutItem(item))
   }
 }
 

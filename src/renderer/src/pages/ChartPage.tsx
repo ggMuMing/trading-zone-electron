@@ -15,23 +15,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { validateChartInput } from '../../../shared/chart/validateChartInput'
 import { MARKET_SYNC_START, todayYyyymmdd } from '../../../shared/constants/market'
 import type { ChartInput } from '../../../shared/types/chart'
-import type { AdjustType, MarketCoverageResult } from '../../../shared/types/market'
+import type { ChartLayout, LayoutItemParams } from '../../../shared/types/chartLayout'
+import type { IndicatorScript, ScriptTryParams, ScriptTryResult } from '../../../shared/types/indicatorScript'
+import type { AdjustType, MarketCoverageResult, MarketQueryParams } from '../../../shared/types/market'
 import type { Stock } from '../../../shared/types/stock'
+import { IndicatorDialog } from './chart/IndicatorDialog'
 import { KlineChart } from './chart/KlineChart'
 import { StockPicker } from './StockPicker'
-
-function stripMacdPane(input: ChartInput): ChartInput {
-  const primitives = input.primitives.filter((primitive) => primitive.pane !== 'macd')
-  const series: ChartInput['series'] = {}
-  for (const primitive of primitives) {
-    series[primitive.id] = input.series[primitive.id] ?? []
-  }
-  return {
-    ...input,
-    primitives,
-    series
-  }
-}
 
 const PICKER_WIDTH_STORAGE_KEY = 'trading-zone.chart.stockPickerWidth'
 const PICKER_WIDTH_MIN = 180
@@ -67,20 +57,29 @@ export function ChartPage(): React.JSX.Element {
   const [selectedCode, setSelectedCode] = useState<string | null>(null)
   const [adjust, setAdjust] = useState<AdjustType>('none')
   const [chartRaw, setChartRaw] = useState<ChartInput | null>(null)
+  const [layout, setLayout] = useState<ChartLayout | null>(null)
+  const [scripts, setScripts] = useState<IndicatorScript[]>([])
+  const [exampleSource, setExampleSource] = useState('')
+  const [indicatorOpen, setIndicatorOpen] = useState(false)
   const [pickerWidth, setPickerWidth] = useState(loadPickerWidth)
   const [resizing, setResizing] = useState(false)
-  const [showMacd, setShowMacd] = useState(true)
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const pickerWidthRef = useRef(pickerWidth)
   pickerWidthRef.current = pickerWidth
 
   const loadStocksAndCoverage = async (): Promise<void> => {
-    const [listed, cov] = await Promise.all([
+    const [listed, cov, currentLayout, example, listedScripts] = await Promise.all([
       window.api.stocks.list(),
-      window.api.market.coverage()
+      window.api.market.coverage(),
+      window.api.chartLayout.get(),
+      window.api.indicatorScript.exampleSource(),
+      window.api.indicatorScript.list()
     ])
     setStocks(listed)
     setCoverage(cov)
+    setLayout(currentLayout)
+    setExampleSource(example)
+    setScripts(listedScripts)
     setSelectedCode((prev) => {
       if (prev && listed.some((stock) => stock.ts_code === prev)) {
         return prev
@@ -179,6 +178,95 @@ export function ChartPage(): React.JSX.Element {
     }
   }
 
+  const applyLayoutAndReload = (next: ChartLayout): void => {
+    setLayout(next)
+    if (selectedCode) {
+      void loadChart(selectedCode, adjust, queryEnd)
+    }
+  }
+
+  const handleAddIndicator = async (ref: string): Promise<void> => {
+    try {
+      const next = await window.api.chartLayout.add({ kind: 'script', ref })
+      applyLayoutAndReload(next)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleRemoveIndicator = async (id: string): Promise<void> => {
+    try {
+      const next = await window.api.chartLayout.remove({ id })
+      applyLayoutAndReload(next)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleUpdateIndicator = async (id: string, params: LayoutItemParams): Promise<void> => {
+    try {
+      const next = await window.api.chartLayout.update({ id, params })
+      applyLayoutAndReload(next)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const applyScripts = (next: IndicatorScript[]): void => {
+    setScripts(next)
+  }
+
+  const handleCreateScript = async (title: string, source: string): Promise<void> => {
+    try {
+      applyScripts(await window.api.indicatorScript.create({ title, source }))
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleUpdateScript = async (id: string, patch: { title: string; source: string }): Promise<void> => {
+    try {
+      applyScripts(await window.api.indicatorScript.update({ id, title: patch.title, source: patch.source }))
+      const nextLayout = await window.api.chartLayout.get()
+      applyLayoutAndReload(nextLayout)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleRemoveScript = async (id: string): Promise<void> => {
+    try {
+      applyScripts(await window.api.indicatorScript.remove({ id }))
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleTryScript = async (params: ScriptTryParams): Promise<ScriptTryResult> => {
+    return window.api.indicatorScript.try(params)
+  }
+
+  const tryQuery: MarketQueryParams | null = selectedCode
+    ? {
+        ts_code: selectedCode,
+        adjust,
+        start_date: MARKET_SYNC_START,
+        end_date: queryEnd
+      }
+    : null
+
+  useEffect(() => {
+    if (!indicatorOpen) {
+      return
+    }
+    void window.api.indicatorScript
+      .list()
+      .then(applyScripts)
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : String(err))
+      })
+  }, [indicatorOpen])
+
   const isEmpty = stocks.length === 0
   const selected = stocks.find((stock) => stock.ts_code === selectedCode)
   const chartInput = useMemo(() => {
@@ -189,9 +277,8 @@ export function ChartPage(): React.JSX.Element {
     if (!result.ok) {
       return { error: result.issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ') }
     }
-    const value = showMacd ? result.value : stripMacdPane(result.value)
-    return { value }
-  }, [chartRaw, showMacd])
+    return { value: result.value }
+  }, [chartRaw])
 
   return (
     <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -306,17 +393,14 @@ export function ChartPage(): React.JSX.Element {
               <Button size="small" startIcon={<GroupAddIcon />} disabled>
                 加入分组
               </Button>
-              <Button size="small" startIcon={<TrendingUpIcon />} disabled>
+              <Button
+                size="small"
+                startIcon={<TrendingUpIcon />}
+                onClick={() => setIndicatorOpen(true)}
+                disabled={loading}
+              >
                 指标
               </Button>
-              <Chip
-                size="small"
-                label="MACD"
-                color={showMacd ? 'primary' : 'default'}
-                variant={showMacd ? 'filled' : 'outlined'}
-                onClick={() => setShowMacd((prev) => !prev)}
-                disabled={!selectedCode || querying || !chartRaw}
-              />
               <ToggleButtonGroup
                 size="small"
                 exclusive
@@ -377,13 +461,31 @@ export function ChartPage(): React.JSX.Element {
                 </Box>
               ) : (
                 <Box sx={{ position: 'absolute', inset: 0, opacity: querying ? 0.7 : 1 }}>
-                  {chartInput && 'value' in chartInput ? <KlineChart input={chartInput.value} /> : null}
+                  {chartInput && 'value' in chartInput ? (
+                    <KlineChart input={chartInput.value} layout={layout} scripts={scripts} />
+                  ) : null}
                 </Box>
               )}
             </Box>
           </Paper>
         </Box>
       )}
+      <IndicatorDialog
+        open={indicatorOpen}
+        exampleSource={exampleSource}
+        layout={layout}
+        scripts={scripts}
+        disabled={querying}
+        onClose={() => setIndicatorOpen(false)}
+        onAdd={(ref) => void handleAddIndicator(ref)}
+        onRemove={(id) => void handleRemoveIndicator(id)}
+        onUpdate={(id, params) => void handleUpdateIndicator(id, params)}
+        onCreateScript={(title, source) => void handleCreateScript(title, source)}
+        onUpdateScript={(id, patch) => void handleUpdateScript(id, patch)}
+        onRemoveScript={(id) => void handleRemoveScript(id)}
+        tryQuery={tryQuery}
+        onTry={handleTryScript}
+      />
     </Box>
   )
 }
