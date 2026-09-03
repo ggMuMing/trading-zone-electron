@@ -192,5 +192,18 @@ export const chartLayoutRepository = {
       )
       .get(scriptId) as { ok: number } | undefined
     return Boolean(row)
+  },
+
+  clearItems(): void {
+    const db = getDb()
+    const updatedAt = nowIso()
+    const run = db.transaction(() => {
+      db.prepare('DELETE FROM chart_layout_item').run()
+      db.prepare('UPDATE chart_layout SET updated_at = @updated_at WHERE id = @id').run({
+        id: DEFAULT_LAYOUT_ID,
+        updated_at: updatedAt
+      })
+    })
+    run()
   }
 }

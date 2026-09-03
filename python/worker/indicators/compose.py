@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from worker.indicators.model import Indicator, Ohlcv
+from worker.indicators.model import Ohlcv
 from worker.indicators.sandbox import run_script
 from worker.plot import ChartInput, PlotFragment, output
 from worker.plot.models import PlotPrimitive
@@ -28,38 +28,30 @@ def _prefix_fragment(fragment: PlotFragment, instance_id: str) -> PlotFragment:
     return PlotFragment(primitives=primitives, series=series)
 
 
-def to_chart_input(
-    bars: list[dict[str, Any]], items: list[tuple[str, Indicator | PlotFragment]]
-) -> ChartInput:
+def to_chart_input(bars: list[dict[str, Any]], items: list[tuple[str, PlotFragment]]) -> ChartInput:
     seen: set[str] = set()
-    normalized: list[tuple[str, Indicator | PlotFragment]] = []
+    normalized: list[tuple[str, PlotFragment]] = []
     for index, item in enumerate(items):
         if not isinstance(item, tuple) or len(item) != 2:
-            raise ValueError(f"items[{index}] must be (instance_id, indicator)")
+            raise ValueError(f"items[{index}] must be (instance_id, fragment)")
         instance_id, payload = item
         if not isinstance(instance_id, str) or not instance_id:
             raise ValueError(f"items[{index}] instance id must be a non-empty string")
-        if not isinstance(payload, (Indicator, PlotFragment)):
-            raise ValueError(f"items[{index}] must be an Indicator or PlotFragment")
+        if not isinstance(payload, PlotFragment):
+            raise ValueError(f"items[{index}] must be a PlotFragment")
         if instance_id in seen:
             raise ValueError(f"duplicate id {instance_id}")
         seen.add(instance_id)
         normalized.append((instance_id, payload))
 
     ohlcv = Ohlcv.from_bars(bars)
-    fragments: list[PlotFragment] = []
-    for instance_id, payload in normalized:
-        if isinstance(payload, PlotFragment):
-            fragment = payload
-        else:
-            fragment = payload.compute(ohlcv)
-        fragments.append(_prefix_fragment(fragment, instance_id))
+    fragments = [_prefix_fragment(payload, instance_id) for instance_id, payload in normalized]
     return output(*fragments, candle=ohlcv.candle, volume=ohlcv.volume_points)
 
 
 def compose(bars: list[dict[str, Any]], instances: list[dict[str, Any]]) -> ChartInput:
     seen: set[str] = set()
-    items: list[tuple[str, Indicator | PlotFragment]] = []
+    items: list[tuple[str, PlotFragment]] = []
     ohlcv = Ohlcv.from_bars(bars)
     for index, raw in enumerate(instances):
         if not isinstance(raw, dict):

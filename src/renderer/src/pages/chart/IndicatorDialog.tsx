@@ -11,7 +11,13 @@ import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import { useEffect, useState } from 'react'
-import { normalizeParams, DEFAULT_SCRIPT_TITLE, formatIndicatorCaption, scriptDisplayKey } from '../../../../shared/chart/indicatorScript'
+import {
+  normalizeParams,
+  defaultScriptParams,
+  DEFAULT_SCRIPT_TITLE,
+  formatIndicatorCaption,
+  scriptDisplayKey
+} from '../../../../shared/chart/indicatorScript'
 import type { ChartLayout, ChartLayoutItem, LayoutItemParams } from '../../../../shared/types/chartLayout'
 import type {
   IndicatorManifest,
@@ -47,7 +53,7 @@ function paramsSummary(item: ChartLayoutItem, fields: ParamField[]): string {
     return '用户脚本'
   }
   return numeric
-    .map((field) => `${field.title} ${String(item.params[field.name] ?? '')}`)
+    .map((field) => `${field.title} ${String(item.params.inputs[field.name] ?? '')}`)
     .join(' · ')
 }
 
@@ -119,7 +125,7 @@ export function IndicatorDialog({
       return
     }
     setEditing(item)
-    setDraft(normalizeParams(manifest.fields, manifest.defaultParams, item.params))
+    setDraft(normalizeParams(manifest, item.params))
   }
 
   const closeSettings = (): void => {
@@ -198,7 +204,7 @@ export function IndicatorDialog({
       }
       const result = await onTry({
         source: scriptDraft.source,
-        params: loaded.manifest?.defaultParams ?? {},
+        params: loaded.manifest ? defaultScriptParams(loaded.manifest) : { inputs: {}, styles: {} },
         query: tryQuery
       })
       setTryResult(result)
@@ -317,10 +323,10 @@ export function IndicatorDialog({
       <Dialog open={Boolean(editing && draft)} onClose={closeSettings} fullWidth maxWidth="sm">
         <DialogTitle>设置 {editing ? titleOf(editing) : ''}</DialogTitle>
         <DialogContent dividers>
-          {editing && draft ? (
+          {editing && draft && resolveManifest(editing) ? (
             <ManifestFieldsForm
-              fields={fieldsOf(editing)}
-              value={{ ...draft }}
+              manifest={resolveManifest(editing)!}
+              value={draft}
               onChange={(next) => setDraft(next)}
             />
           ) : null}

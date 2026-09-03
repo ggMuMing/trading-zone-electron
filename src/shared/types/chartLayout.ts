@@ -10,7 +10,17 @@ export type LineWidth = 1 | 2 | 3 | 4
 
 export type LayoutItemKind = 'script'
 
-export type ScriptParams = Record<string, number | string>
+export interface PlotStyleParams {
+  color?: string
+  lineWidth?: LineWidth
+  colorUp?: string
+  colorDown?: string
+}
+
+export interface ScriptParams {
+  inputs: Record<string, number | boolean>
+  styles: Record<string, PlotStyleParams>
+}
 
 export type LayoutItemParams = ScriptParams
 

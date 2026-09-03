@@ -142,5 +142,9 @@ export const indicatorScriptRepository = {
     }
     getDb().prepare('DELETE FROM indicator_script WHERE id = ?').run(id)
     return this.list()
+  },
+
+  removeAll(): void {
+    getDb().prepare('DELETE FROM indicator_script').run()
   }
 }

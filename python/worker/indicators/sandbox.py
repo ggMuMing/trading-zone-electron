@@ -16,11 +16,10 @@ PYTHON_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
-from pydantic import Field, ValidationError
-
 from worker.indicators.base import ema, sma
-from worker.indicators.model import Indicator, Ohlcv
-from worker.plot import PlotFragment, histogram, line, overlay, subplot
+from worker.indicators.model import Indicator, IndicatorManifest, Ohlcv
+from worker.indicators.runtime import dummy_ohlcv, execute_indicator, input, plot
+from worker.plot import PlotFragment
 from worker.plot.models import CandlePoint, PlotPrimitive, ValuePoint, VolumePoint
 
 USER_SCRIPT_FILENAME = "<user_indicator>"
@@ -127,14 +126,10 @@ def load_indicator_class(source: str) -> type[Indicator]:
         "__builtins__": _restricted_builtins(),
         "Indicator": Indicator,
         "Ohlcv": Ohlcv,
-        "PlotFragment": PlotFragment,
-        "line": line,
-        "histogram": histogram,
-        "overlay": overlay,
-        "subplot": subplot,
+        "input": input,
+        "plot": plot,
         "sma": sma,
         "ema": ema,
-        "Field": Field,
         "ClassVar": ClassVar,
     }
     exec(compile(source, USER_SCRIPT_FILENAME, "exec"), namespace, namespace)
@@ -145,18 +140,13 @@ def load_indicator_class(source: str) -> type[Indicator]:
     return cls
 
 
-def _exec_source(source: str, ohlcv: Ohlcv, params: dict[str, Any]) -> PlotFragment:
+def _exec_source(
+    source: str, ohlcv: Ohlcv, params: dict[str, Any]
+) -> tuple[IndicatorManifest, PlotFragment]:
     if not isinstance(params, dict):
         raise ValueError("params must be an object")
     cls = load_indicator_class(source)
-    try:
-        instance = cls.model_validate(params)
-    except ValidationError as exc:
-        raise ValueError(f"invalid script params: {exc}") from exc
-    result = instance.compute(ohlcv)
-    if not isinstance(result, PlotFragment):
-        raise TypeError("compute() must return PlotFragment")
-    return result
+    return execute_indicator(cls, ohlcv, params)
 
 
 def _error_message(exc: BaseException) -> str:
@@ -201,23 +191,7 @@ def user_script_diagnostic(exc: BaseException) -> dict[str, Any]:
     }
 
 
-def try_source(
-    source: str,
-    params: dict[str, Any] | None = None,
-    ohlcv: Ohlcv | None = None,
-) -> dict[str, Any]:
-    try:
-        if ohlcv is None:
-            cls = load_indicator_class(source)
-            manifest = cls.manifest().model_dump()
-            return {"ok": True, "manifest": manifest}
-        run_script(source, ohlcv, params or {})
-        return {"ok": True}
-    except Exception as exc:
-        return user_script_diagnostic(exc)
-
-
-def run_script(source: str, ohlcv: Ohlcv, params: dict[str, Any]) -> PlotFragment:
+def _run_child(source: str, ohlcv: Ohlcv, params: dict[str, Any]) -> dict[str, Any]:
     payload = json.dumps(
         {"source": source, "params": params, "ohlcv": _dump_ohlcv(ohlcv)},
         ensure_ascii=False,
@@ -253,10 +227,33 @@ def run_script(source: str, ohlcv: Ohlcv, params: dict[str, Any]) -> PlotFragmen
     if not message.get("ok"):
         error = message.get("error") or "script failed"
         trace = message.get("traceback")
-        extra = f"\n{trace}" if isinstance(trace, str) and trace else ""
+        extra_text = f"\n{trace}" if isinstance(trace, str) and trace else ""
         if stderr:
-            extra += f"\n{stderr}"
-        raise ValueError(f"{error}{extra}")
+            extra_text += f"\n{stderr}"
+        raise ValueError(f"{error}{extra_text}")
+    return message
+
+
+def try_source(
+    source: str,
+    params: dict[str, Any] | None = None,
+    ohlcv: Ohlcv | None = None,
+) -> dict[str, Any]:
+    try:
+        if ohlcv is None:
+            message = _run_child(source, dummy_ohlcv(), {})
+            manifest = message.get("manifest")
+            if not isinstance(manifest, dict):
+                raise ValueError("script ok payload must include manifest")
+            return {"ok": True, "manifest": manifest}
+        run_script(source, ohlcv, params or {})
+        return {"ok": True}
+    except Exception as exc:
+        return user_script_diagnostic(exc)
+
+
+def run_script(source: str, ohlcv: Ohlcv, params: dict[str, Any]) -> PlotFragment:
+    message = _run_child(source, ohlcv, params)
     fragment_raw = message.get("fragment")
     if not isinstance(fragment_raw, dict):
         raise ValueError("script ok payload must include fragment")
@@ -280,10 +277,18 @@ def _child_main() -> int:
         real_stdout = sys.stdout
         sys.stdout = sys.stderr
         try:
-            fragment = _exec_source(source, _load_ohlcv(ohlcv_raw), params)
+            manifest, fragment = _exec_source(source, _load_ohlcv(ohlcv_raw), params)
         finally:
             sys.stdout = real_stdout
-        json.dump({"ok": True, "fragment": _dump_fragment(fragment)}, sys.stdout, ensure_ascii=False)
+        json.dump(
+            {
+                "ok": True,
+                "fragment": _dump_fragment(fragment),
+                "manifest": manifest.model_dump(exclude_none=True),
+            },
+            sys.stdout,
+            ensure_ascii=False,
+        )
         sys.stdout.write("\n")
         return 0
     except Exception as exc:

@@ -4,7 +4,7 @@ import { stocksRepository } from '../db/stocksRepository'
 import { applicationService } from '../services/applicationService'
 import { pythonBridge } from '../bridge/pythonBridge'
 import type { AdjustType, MarketQueryParams } from '../../shared/types/market'
-import type { LayoutItemParams } from '../../shared/types/chartLayout'
+import type { LayoutItemParams, ScriptParams } from '../../shared/types/chartLayout'
 import type { ScriptTryParams } from '../../shared/types/indicatorScript'
 
 function parseMarketQueryParams(params: unknown, channel: string): MarketQueryParams {
@@ -154,7 +154,7 @@ export function registerHandlers(): void {
       if (!p.params || typeof p.params !== 'object' || Array.isArray(p.params)) {
         throw new Error('params must be an object')
       }
-      payload.params = p.params as Record<string, unknown>
+      payload.params = p.params as ScriptParams
     }
     if (p.query !== undefined) {
       payload.query = parseMarketQueryParams(p.query, 'indicatorScript:try')

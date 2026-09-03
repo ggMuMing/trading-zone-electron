@@ -14,7 +14,7 @@ import type {
   SyncMarketPoolResult,
   SyncMarketWindowResult
 } from '../../shared/types/market'
-import { parseIndicatorManifest, assertParams, normalizeParams } from '../../shared/chart/indicatorScript'
+import { parseIndicatorManifest, assertParams, normalizeParams, defaultScriptParams, isLegacyIndicatorSource } from '../../shared/chart/indicatorScript'
 import type { ChartInput } from '../../shared/types/chart'
 import type {
   ChartLayout,
@@ -335,7 +335,7 @@ export const applicationService = {
       chartLayoutRepository.add({
         kind,
         ref,
-        params: { ...script.manifest.defaultParams }
+        params: defaultScriptParams(script.manifest)
       })
     )
   },
@@ -360,11 +360,12 @@ export const applicationService = {
     if (!script) {
       throw new Error(`脚本不存在：${item.ref}`)
     }
-    const next = assertParams(script.manifest.fields, params)
+    const next = assertParams(script.manifest, params)
     return withNormalizedScriptParams(chartLayoutRepository.update(id.trim(), next))
   },
 
-  listIndicatorScripts(): IndicatorScript[] {
+  async listIndicatorScripts(): Promise<IndicatorScript[]> {
+    await ensureScriptLayoutDefaults()
     return indicatorScriptRepository.list()
   },
 
@@ -510,6 +511,11 @@ async function ensureScriptLayoutDefaults(): Promise<ChartLayout> {
 async function seedScriptLayoutDefaults(): Promise<ChartLayout> {
   chartLayoutRepository.deleteBuiltinItems()
   chartLayoutRepository.ensureDefault()
+  const existingSeed = indicatorScriptRepository.get(SEED_MA_SCRIPT_ID)
+  if (existingSeed && isLegacyIndicatorSource(existingSeed.source)) {
+    indicatorScriptRepository.removeAll()
+    chartLayoutRepository.clearItems()
+  }
   if (!indicatorScriptRepository.get(SEED_MA_SCRIPT_ID)) {
     const source = readExampleMaSource()
     const manifest = await loadScriptManifest(source)
@@ -531,7 +537,7 @@ async function seedScriptLayoutDefaults(): Promise<ChartLayout> {
   return chartLayoutRepository.add({
     kind: 'script',
     ref: SEED_MA_SCRIPT_ID,
-    params: { ...script.manifest.defaultParams }
+    params: defaultScriptParams(script.manifest)
   })
 }
 
@@ -539,7 +545,7 @@ function rematerializeScriptLayoutItems(scriptId: string, manifest: IndicatorMan
   const layout = chartLayoutRepository.get()
   for (const item of layout.items) {
     if (item.kind === 'script' && item.ref === scriptId) {
-      const next = normalizeParams(manifest.fields, manifest.defaultParams, item.params)
+      const next = normalizeParams(manifest, item.params)
       chartLayoutRepository.update(item.id, next)
     }
   }
@@ -553,7 +559,7 @@ function normalizeScriptLayoutItem(item: ChartLayoutItem): ChartLayoutItem {
   try {
     return {
       ...item,
-      params: normalizeParams(script.manifest.fields, script.manifest.defaultParams, item.params)
+      params: normalizeParams(script.manifest, item.params)
     }
   } catch {
     return item

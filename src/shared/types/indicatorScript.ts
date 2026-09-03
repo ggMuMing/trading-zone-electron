@@ -1,23 +1,38 @@
 /** User-authored indicator scripts persisted in SQLite. Layout refs this id when kind=script. */
 
+import type { LineWidth, PlotStyleParams, ScriptParams } from './chartLayout'
 import type { MarketQueryParams } from './market'
 
-export type ParamWidget = 'int' | 'float' | 'color' | 'lineWidth'
+export type ParamWidget = 'int' | 'float' | 'bool'
+
+export type PlotKind = 'line' | 'histogram'
 
 export interface ParamField {
   name: string
   widget: ParamWidget
   title: string
-  default: number | string
+  default: number | boolean
   min?: number
   max?: number
+}
+
+export interface PlotStyleField {
+  id: string
+  title: string
+  kind: PlotKind
+  color?: string
+  lineWidth?: LineWidth
+  colorUp?: string
+  colorDown?: string
 }
 
 export interface IndicatorManifest {
   key: string
   title: string
+  overlay: boolean
   fields: ParamField[]
-  defaultParams: Record<string, number | string>
+  plots: PlotStyleField[]
+  defaultParams: Record<string, number | boolean>
 }
 
 export interface IndicatorScript {
@@ -30,7 +45,7 @@ export interface IndicatorScript {
 
 export interface ScriptTryParams {
   source: string
-  params?: Record<string, unknown>
+  params?: ScriptParams
   query?: MarketQueryParams
 }
 
@@ -42,3 +57,5 @@ export interface ScriptTryResult {
   column?: number | null
   manifest?: IndicatorManifest
 }
+
+export type { PlotStyleParams, ScriptParams }
