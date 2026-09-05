@@ -133,6 +133,20 @@ export function registerHandlers(): void {
     return applicationService.updateChartIndicator(p.id, p.params as LayoutItemParams)
   })
 
+  ipcMain.handle('chartLayout:reorder', (_event, params: unknown) => {
+    if (!params || typeof params !== 'object') {
+      throw new Error('chartLayout:reorder requires params object')
+    }
+    const p = params as Record<string, unknown>
+    if (typeof p.id !== 'string' || !p.id.trim()) {
+      throw new Error('id must be a non-empty string')
+    }
+    if (p.direction !== 'up' && p.direction !== 'down') {
+      throw new Error('direction must be up or down')
+    }
+    return applicationService.reorderChartIndicator(p.id.trim(), p.direction)
+  })
+
   ipcMain.handle('indicatorScript:list', () => {
     return applicationService.listIndicatorScripts()
   })

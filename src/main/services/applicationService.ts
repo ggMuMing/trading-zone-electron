@@ -20,7 +20,8 @@ import type {
   ChartLayout,
   ChartLayoutItem,
   LayoutItemKind,
-  LayoutItemParams
+  LayoutItemParams,
+  LayoutReorderDirection
 } from '../../shared/types/chartLayout'
 import { SEED_MA_SCRIPT_ID, SEED_MA_SCRIPT_TITLE } from '../../shared/types/chartLayout'
 import type {
@@ -362,6 +363,39 @@ export const applicationService = {
     }
     const next = assertParams(script.manifest, params)
     return withNormalizedScriptParams(chartLayoutRepository.update(id.trim(), next))
+  },
+
+  reorderChartIndicator(id: string, direction: LayoutReorderDirection): ChartLayout {
+    if (!id.trim()) {
+      throw new Error('id is required')
+    }
+    if (direction !== 'up' && direction !== 'down') {
+      throw new Error('direction must be up or down')
+    }
+    const layout = chartLayoutRepository.get()
+    const item = layout.items.find((entry) => entry.id === id.trim())
+    if (!item) {
+      throw new Error(`指标不存在：${id}`)
+    }
+    const script = indicatorScriptRepository.get(item.ref)
+    if (!script) {
+      throw new Error(`脚本不存在：${item.ref}`)
+    }
+    if (script.manifest.overlay) {
+      throw new Error('主图指标不能调整窗格顺序')
+    }
+    const subplotItems = layout.items.filter((entry) => {
+      const entryScript = indicatorScriptRepository.get(entry.ref)
+      return Boolean(entryScript && !entryScript.manifest.overlay)
+    })
+    const index = subplotItems.findIndex((entry) => entry.id === item.id)
+    const neighborIndex = direction === 'up' ? index - 1 : index + 1
+    if (index < 0 || neighborIndex < 0 || neighborIndex >= subplotItems.length) {
+      throw new Error(direction === 'up' ? '已经是最上方的副图' : '已经是最下方的副图')
+    }
+    return withNormalizedScriptParams(
+      chartLayoutRepository.swapSortOrder(item.id, subplotItems[neighborIndex].id)
+    )
   },
 
   async listIndicatorScripts(): Promise<IndicatorScript[]> {

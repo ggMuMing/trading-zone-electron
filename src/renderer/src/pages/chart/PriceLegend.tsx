@@ -1,4 +1,5 @@
 import { APP_FONT_STACK } from '../../theme/lwcFont'
+import { LegendActionButtons } from './LegendActionButtons'
 
 const UP_COLOR = '#ef5350'
 const DOWN_COLOR = '#26a69a'
@@ -21,6 +22,12 @@ export interface PriceLegendOverlay {
   value: number | null
 }
 
+export interface PriceLegendOverlayGroup {
+  instanceId: string
+  title: string
+  items: PriceLegendOverlay[]
+}
+
 function formatNumber(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return '--'
@@ -40,10 +47,17 @@ function formatInt(value: number | null | undefined): string {
 
 interface PriceLegendProps {
   bar: PriceLegendBar | null
-  overlays?: PriceLegendOverlay[]
+  overlays?: PriceLegendOverlayGroup[]
+  onOpenSettings?: (instanceId: string) => void
+  onRemove?: (instanceId: string) => void
 }
 
-export function PriceLegend({ bar, overlays = [] }: PriceLegendProps): React.JSX.Element | null {
+export function PriceLegend({
+  bar,
+  overlays = [],
+  onOpenSettings,
+  onRemove
+}: PriceLegendProps): React.JSX.Element | null {
   if (!bar) {
     return null
   }
@@ -97,9 +111,18 @@ export function PriceLegend({ bar, overlays = [] }: PriceLegendProps): React.JSX
       </div>
       {overlays.length > 0 ? (
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-          {overlays.map((item) => (
-            <span key={item.id} style={{ color: item.color }}>
-              {item.label}: {formatNumber(item.value)}
+          {overlays.map((group) => (
+            <span key={group.instanceId} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ color: LABEL_COLOR }}>{group.title}</span>
+              {group.items.map((item) => (
+                <span key={item.id} style={{ color: item.color }}>
+                  {item.label}: {formatNumber(item.value)}
+                </span>
+              ))}
+              <LegendActionButtons
+                onOpenSettings={onOpenSettings ? () => onOpenSettings(group.instanceId) : undefined}
+                onRemove={onRemove ? () => onRemove(group.instanceId) : undefined}
+              />
             </span>
           ))}
         </div>

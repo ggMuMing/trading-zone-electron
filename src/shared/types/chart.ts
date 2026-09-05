@@ -4,6 +4,9 @@ export const CHART_INPUT_SCHEMA_VERSION = 1 as const
 
 export const ISO_DATE_PATTERN = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/
 
+/** Chart timeframe UI placeholder. Only `day` is wired to data this sprint. */
+export type ChartPeriod = 'day' | 'week' | 'month' | 'quarter' | 'year'
+
 export type PlotKind = 'line' | 'histogram'
 
 export interface PlotPrimitiveStyle {

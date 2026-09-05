@@ -6,6 +6,7 @@ import {
   type Time
 } from 'lightweight-charts'
 import type { PlotPrimitive, ValuePoint } from '../../../../shared/types/chart'
+import type { ChartLayout } from '../../../../shared/types/chartLayout'
 
 export const DEFAULT_LINE_COLOR = '#2962FF'
 export const DEFAULT_HISTOGRAM_COLOR = '#26a69a'
@@ -38,7 +39,10 @@ function toHistogramData(points: ValuePoint[]): Array<{ time: Time; value: numbe
   })
 }
 
-export function subplotPaneOrder(primitives: PlotPrimitive[]): string[] {
+export function subplotPaneOrder(
+  primitives: PlotPrimitive[],
+  layout?: ChartLayout | null
+): string[] {
   const panes: string[] = []
   for (const primitive of primitives) {
     if (primitive.pane === 'main') {
@@ -48,7 +52,81 @@ export function subplotPaneOrder(primitives: PlotPrimitive[]): string[] {
       panes.push(primitive.pane)
     }
   }
-  return panes
+  if (!layout) {
+    return panes
+  }
+  const rank = new Map(layout.items.map((item, index) => [item.id, item.sortOrder * 10000 + index]))
+  return [...panes].sort((a, b) => {
+    const left = rank.get(a)
+    const right = rank.get(b)
+    if (left === undefined && right === undefined) {
+      return panes.indexOf(a) - panes.indexOf(b)
+    }
+    if (left === undefined) {
+      return 1
+    }
+    if (right === undefined) {
+      return -1
+    }
+    return left - right
+  })
+}
+
+function currentSubpaneOrder(
+  chart: IChartApi,
+  seriesById: Map<string, PrimitiveSeries>,
+  primitives: PlotPrimitive[]
+): string[] {
+  const paneBySeries = new Map<ISeriesApi<'Line'> | ISeriesApi<'Histogram'>, string>()
+  for (const primitive of primitives) {
+    if (primitive.pane === 'main') {
+      continue
+    }
+    const series = seriesById.get(primitive.id)
+    if (series) {
+      paneBySeries.set(series, primitive.pane)
+    }
+  }
+  const result: string[] = []
+  const panes = chart.panes()
+  for (let index = 1; index < panes.length; index += 1) {
+    for (const series of panes[index].getSeries()) {
+      const paneId = paneBySeries.get(series as PrimitiveSeries)
+      if (paneId && !result.includes(paneId)) {
+        result.push(paneId)
+        break
+      }
+    }
+  }
+  return result
+}
+
+/** Move existing LWC subpanes to match layout.sortOrder. Pane 0 stays main. */
+export function alignSubpaneOrder(
+  chart: IChartApi,
+  desired: string[],
+  seriesById: Map<string, PrimitiveSeries>,
+  primitives: PlotPrimitive[]
+): void {
+  const working = currentSubpaneOrder(chart, seriesById, primitives)
+  if (working.length === 0 || desired.length === 0) {
+    return
+  }
+  for (let target = 0; target < desired.length; target += 1) {
+    const paneId = desired[target]
+    const from = working.indexOf(paneId)
+    if (from === -1 || from === target) {
+      continue
+    }
+    const pane = chart.panes()[from + 1]
+    if (!pane) {
+      continue
+    }
+    pane.moveTo(target + 1)
+    working.splice(from, 1)
+    working.splice(target, 0, paneId)
+  }
+  applyPaneStretch(chart)
 }
 
 export function paneIndexOf(pane: string, subpanes: string[]): number {
@@ -129,6 +207,7 @@ export interface SyncPrimitiveSeriesArgs {
   prevPrimitives: PlotPrimitive[]
   nextPrimitives: PlotPrimitive[]
   seriesData: Record<string, ValuePoint[]>
+  layout?: ChartLayout | null
 }
 
 /** Diff LWC series by primitive id; mutates seriesById. */
@@ -137,7 +216,8 @@ export function syncPrimitiveSeries({
   seriesById,
   prevPrimitives,
   nextPrimitives,
-  seriesData
+  seriesData,
+  layout
 }: SyncPrimitiveSeriesArgs): void {
   const prevById = new Map(prevPrimitives.map((primitive) => [primitive.id, primitive]))
   const nextById = new Map(nextPrimitives.map((primitive) => [primitive.id, primitive]))
@@ -151,7 +231,7 @@ export function syncPrimitiveSeries({
   }
   removeEmptySubPanes(chart)
 
-  const subpanes = subplotPaneOrder(nextPrimitives)
+  const subpanes = subplotPaneOrder(nextPrimitives, layout)
   ensurePaneCount(chart, subpanes.length + 1)
 
   for (const primitive of nextPrimitives) {
@@ -177,7 +257,7 @@ export function syncPrimitiveSeries({
   }
 
   removeEmptySubPanes(chart)
-  applyPaneStretch(chart)
+  alignSubpaneOrder(chart, subpanes, seriesById, nextPrimitives)
 }
 
 export function computeSubpaneTops(

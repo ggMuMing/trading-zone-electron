@@ -1,26 +1,30 @@
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
-import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import IconButton from '@mui/material/IconButton'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
-import ToggleButton from '@mui/material/ToggleButton'
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Typography from '@mui/material/Typography'
-import GroupAddIcon from '@mui/icons-material/GroupAdd'
 import RefreshIcon from '@mui/icons-material/Refresh'
-import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { DEFAULT_SCRIPT_TITLE } from '../../../shared/chart/indicatorScript'
 import { validateChartInput } from '../../../shared/chart/validateChartInput'
 import { MARKET_SYNC_START, todayYyyymmdd } from '../../../shared/constants/market'
-import type { ChartInput } from '../../../shared/types/chart'
-import type { ChartLayout, LayoutItemParams } from '../../../shared/types/chartLayout'
+import type { ChartInput, ChartPeriod } from '../../../shared/types/chart'
+import type {
+  ChartLayout,
+  ChartLayoutItem,
+  LayoutItemParams,
+  LayoutReorderDirection
+} from '../../../shared/types/chartLayout'
 import type { IndicatorScript, ScriptTryParams, ScriptTryResult } from '../../../shared/types/indicatorScript'
 import type { AdjustType, MarketCoverageResult, MarketQueryParams } from '../../../shared/types/market'
 import type { Stock } from '../../../shared/types/stock'
+import { ChartToolbar } from './chart/ChartToolbar'
 import { IndicatorDialog } from './chart/IndicatorDialog'
+import { IndicatorSettingsDialog } from './chart/IndicatorSettingsDialog'
 import { KlineChart } from './chart/KlineChart'
+import { ScriptEditorPanel, type ScriptDraft } from './chart/scriptEditor/ScriptEditorPanel'
 import { StockPicker } from './StockPicker'
 
 const PICKER_WIDTH_STORAGE_KEY = 'trading-zone.chart.stockPickerWidth'
@@ -30,6 +34,10 @@ const PICKER_WIDTH_DEFAULT = 220
 
 function clampPickerWidth(value: number): number {
   return Math.min(PICKER_WIDTH_MAX, Math.max(PICKER_WIDTH_MIN, Math.round(value)))
+}
+
+function paramsEqual(left: LayoutItemParams, right: LayoutItemParams): boolean {
+  return JSON.stringify(left) === JSON.stringify(right)
 }
 
 function loadPickerWidth(): number {
@@ -56,13 +64,17 @@ export function ChartPage(): React.JSX.Element {
   const [coverage, setCoverage] = useState<MarketCoverageResult | null>(null)
   const [selectedCode, setSelectedCode] = useState<string | null>(null)
   const [adjust, setAdjust] = useState<AdjustType>('none')
+  const [period, setPeriod] = useState<ChartPeriod>('day')
   const [chartRaw, setChartRaw] = useState<ChartInput | null>(null)
   const [layout, setLayout] = useState<ChartLayout | null>(null)
   const [scripts, setScripts] = useState<IndicatorScript[]>([])
   const [exampleSource, setExampleSource] = useState('')
   const [indicatorOpen, setIndicatorOpen] = useState(false)
+  const [settingsItem, setSettingsItem] = useState<ChartLayoutItem | null>(null)
+  const [scriptDraft, setScriptDraft] = useState<ScriptDraft | null>(null)
   const [pickerWidth, setPickerWidth] = useState(loadPickerWidth)
   const [resizing, setResizing] = useState(false)
+  const [scriptRunNonce, setScriptRunNonce] = useState(0)
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const pickerWidthRef = useRef(pickerWidth)
   pickerWidthRef.current = pickerWidth
@@ -101,8 +113,10 @@ export function ChartPage(): React.JSX.Element {
   }
 
   const queryEnd = coverage?.max_date || todayYyyymmdd()
+  const queryEndRef = useRef(queryEnd)
+  queryEndRef.current = queryEnd
 
-  const loadChart = useCallback(async (tsCode: string, adj: AdjustType, endDate: string): Promise<void> => {
+  const executeScripts = useCallback(async (tsCode: string, adj: AdjustType): Promise<void> => {
     setQuerying(true)
     setError(null)
     try {
@@ -110,7 +124,7 @@ export function ChartPage(): React.JSX.Element {
         ts_code: tsCode,
         adjust: adj,
         start_date: MARKET_SYNC_START,
-        end_date: endDate
+        end_date: queryEndRef.current
       })
       setChartRaw(result)
     } catch (err: unknown) {
@@ -121,17 +135,23 @@ export function ChartPage(): React.JSX.Element {
     }
   }, [])
 
+  const handleRefresh = async (): Promise<void> => {
+    await refreshAll()
+    setScriptRunNonce((nonce) => nonce + 1)
+  }
+
   useEffect(() => {
     void refreshAll()
   }, [])
 
   useEffect(() => {
-    if (selectedCode) {
-      void loadChart(selectedCode, adjust, queryEnd)
-    } else {
+    if (!selectedCode) {
       setChartRaw(null)
+      return
     }
-  }, [selectedCode, adjust, queryEnd, loadChart])
+    void period
+    void executeScripts(selectedCode, adjust)
+  }, [selectedCode, adjust, period, scriptRunNonce, executeScripts])
 
   useEffect(() => {
     if (!resizing) {
@@ -178,17 +198,17 @@ export function ChartPage(): React.JSX.Element {
     }
   }
 
-  const applyLayoutAndReload = (next: ChartLayout): void => {
+  const applyLayoutAndExecute = (next: ChartLayout): void => {
     setLayout(next)
     if (selectedCode) {
-      void loadChart(selectedCode, adjust, queryEnd)
+      void executeScripts(selectedCode, adjust)
     }
   }
 
   const handleAddIndicator = async (ref: string): Promise<void> => {
     try {
       const next = await window.api.chartLayout.add({ kind: 'script', ref })
-      applyLayoutAndReload(next)
+      applyLayoutAndExecute(next)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
     }
@@ -197,16 +217,28 @@ export function ChartPage(): React.JSX.Element {
   const handleRemoveIndicator = async (id: string): Promise<void> => {
     try {
       const next = await window.api.chartLayout.remove({ id })
-      applyLayoutAndReload(next)
+      applyLayoutAndExecute(next)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
     }
   }
 
   const handleUpdateIndicator = async (id: string, params: LayoutItemParams): Promise<void> => {
+    const current = layout?.items.find((item) => item.id === id)
+    if (current && paramsEqual(current.params, params)) {
+      return
+    }
     try {
       const next = await window.api.chartLayout.update({ id, params })
-      applyLayoutAndReload(next)
+      applyLayoutAndExecute(next)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleMovePane = async (id: string, direction: LayoutReorderDirection): Promise<void> => {
+    try {
+      setLayout(await window.api.chartLayout.reorder({ id, direction }))
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
     }
@@ -216,21 +248,49 @@ export function ChartPage(): React.JSX.Element {
     setScripts(next)
   }
 
-  const handleCreateScript = async (title: string, source: string): Promise<void> => {
+  const handleCreateScript = async (title: string, source: string): Promise<IndicatorScript | null> => {
     try {
-      applyScripts(await window.api.indicatorScript.create({ title, source }))
+      const knownIds = new Set(scripts.map((script) => script.id))
+      const next = await window.api.indicatorScript.create({ title, source })
+      applyScripts(next)
+      return next.find((script) => !knownIds.has(script.id)) ?? null
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
+      return null
     }
   }
 
   const handleUpdateScript = async (id: string, patch: { title: string; source: string }): Promise<void> => {
     try {
       applyScripts(await window.api.indicatorScript.update({ id, title: patch.title, source: patch.source }))
-      const nextLayout = await window.api.chartLayout.get()
-      applyLayoutAndReload(nextLayout)
+      applyLayoutAndExecute(await window.api.chartLayout.get())
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleRenameScript = async (id: string, title: string): Promise<void> => {
+    try {
+      applyScripts(await window.api.indicatorScript.update({ id, title }))
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const openNewScriptEditor = (): void => {
+    setIndicatorOpen(false)
+    setScriptDraft({ id: null, title: DEFAULT_SCRIPT_TITLE, source: exampleSource })
+  }
+
+  const openEditScriptEditor = (script: IndicatorScript): void => {
+    setIndicatorOpen(false)
+    setScriptDraft({ id: script.id, title: script.title, source: script.source })
+  }
+
+  const openLayoutSettings = (instanceId: string): void => {
+    const item = layout?.items.find((entry) => entry.id === instanceId)
+    if (item) {
+      setSettingsItem(item)
     }
   }
 
@@ -302,7 +362,7 @@ export function ChartPage(): React.JSX.Element {
         />
         <Chip size="small" variant="outlined" label={`${MARKET_SYNC_START}–${queryEnd}`} />
         <Box sx={{ flexGrow: 1 }} />
-        <IconButton aria-label="刷新" onClick={() => void refreshAll()} disabled={loading || querying}>
+        <IconButton aria-label="刷新" onClick={() => void handleRefresh()} disabled={loading || querying}>
           <RefreshIcon />
         </IconButton>
       </Stack>
@@ -327,7 +387,7 @@ export function ChartPage(): React.JSX.Element {
           </Paper>
         </Box>
       ) : (
-        <Box sx={{ flex: 1, display: 'flex', minHeight: 0, px: 2, py: 2, gap: 0.5 }}>
+        <Box sx={{ flex: 1, display: 'flex', minHeight: 0, px: 2, py: 2, gap: 0.5, position: 'relative' }}>
           <StockPicker
             stocks={stocks}
             selectedCode={selectedCode}
@@ -381,44 +441,20 @@ export function ChartPage(): React.JSX.Element {
               overflow: 'hidden'
             }}
           >
-            <Stack
-              direction={{ xs: 'column', sm: 'row' }}
-              spacing={1}
-              alignItems={{ sm: 'center' }}
-              sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}
-            >
-              <Typography variant="subtitle2" noWrap sx={{ flexGrow: 1, minWidth: 0 }}>
-                {selected ? `${selected.name ?? selected.ts_code}（${selected.ts_code}）` : '请选择股票'}
-              </Typography>
-              <Button size="small" startIcon={<GroupAddIcon />} disabled>
-                加入分组
-              </Button>
-              <Button
-                size="small"
-                startIcon={<TrendingUpIcon />}
-                onClick={() => setIndicatorOpen(true)}
-                disabled={loading}
-              >
-                指标
-              </Button>
-              <ToggleButtonGroup
-                size="small"
-                exclusive
-                value={adjust}
-                onChange={(_e, value: AdjustType | null) => {
-                  if (value) {
-                    setAdjust(value)
-                  }
-                }}
-                disabled={!selectedCode || querying}
-              >
-                <ToggleButton value="none">未复权</ToggleButton>
-                <ToggleButton value="qfq">前复权</ToggleButton>
-                <ToggleButton value="hfq">后复权</ToggleButton>
-              </ToggleButtonGroup>
-            </Stack>
+            <ChartToolbar
+              symbolLabel={
+                selected ? `${selected.name ?? selected.ts_code}（${selected.ts_code}）` : '请选择股票'
+              }
+              period={period}
+              onPeriodChange={setPeriod}
+              adjust={adjust}
+              onAdjustChange={setAdjust}
+              adjustDisabled={!selectedCode || querying}
+              onOpenIndicators={() => setIndicatorOpen(true)}
+              indicatorsDisabled={loading}
+            />
 
-            <Box sx={{ flex: 1, minHeight: 0, position: 'relative' }}>
+            <Box sx={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
               {!selectedCode ? (
                 <Box
                   sx={{
@@ -462,12 +498,33 @@ export function ChartPage(): React.JSX.Element {
               ) : (
                 <Box sx={{ position: 'absolute', inset: 0, opacity: querying ? 0.7 : 1 }}>
                   {chartInput && 'value' in chartInput ? (
-                    <KlineChart input={chartInput.value} layout={layout} scripts={scripts} />
+                    <KlineChart
+                      input={chartInput.value}
+                      layout={layout}
+                      scripts={scripts}
+                      onOpenSettings={openLayoutSettings}
+                      onRemove={(id) => void handleRemoveIndicator(id)}
+                      onMovePane={(id, direction) => void handleMovePane(id, direction)}
+                    />
                   ) : null}
                 </Box>
               )}
             </Box>
           </Paper>
+          {scriptDraft ? (
+            <ScriptEditorPanel
+              draft={scriptDraft}
+              scripts={scripts}
+              disabled={querying}
+              tryQuery={tryQuery}
+              onDraftChange={setScriptDraft}
+              onClose={() => setScriptDraft(null)}
+              onTry={handleTryScript}
+              onCreate={handleCreateScript}
+              onUpdate={handleUpdateScript}
+              onRename={handleRenameScript}
+            />
+          ) : null}
         </Box>
       )}
       <IndicatorDialog
@@ -479,12 +536,20 @@ export function ChartPage(): React.JSX.Element {
         onClose={() => setIndicatorOpen(false)}
         onAdd={(ref) => void handleAddIndicator(ref)}
         onRemove={(id) => void handleRemoveIndicator(id)}
-        onUpdate={(id, params) => void handleUpdateIndicator(id, params)}
-        onCreateScript={(title, source) => void handleCreateScript(title, source)}
-        onUpdateScript={(id, patch) => void handleUpdateScript(id, patch)}
+        onOpenSettings={(item) => openLayoutSettings(item.id)}
+        onCreateEditor={openNewScriptEditor}
+        onEditEditor={openEditScriptEditor}
         onRemoveScript={(id) => void handleRemoveScript(id)}
-        tryQuery={tryQuery}
-        onTry={handleTryScript}
+      />
+      <IndicatorSettingsDialog
+        item={settingsItem}
+        scripts={scripts}
+        disabled={querying}
+        onClose={() => setSettingsItem(null)}
+        onSave={(id, params) => {
+          setSettingsItem(null)
+          void handleUpdateIndicator(id, params)
+        }}
       />
     </Box>
   )

@@ -2,7 +2,7 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 import type { Stock } from '../shared/types/stock'
 import type { MarketClearResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
 import type { ChartInput } from '../shared/types/chart'
-import type { ChartLayout, LayoutItemParams } from '../shared/types/chartLayout'
+import type { ChartLayout, LayoutItemParams, LayoutReorderDirection } from '../shared/types/chartLayout'
 import type { IndicatorScript, ScriptTryParams, ScriptTryResult } from '../shared/types/indicatorScript'
 import type {
   BoardStats,
@@ -47,6 +47,7 @@ export interface AppApi {
     add: (params: { kind: 'script'; ref: string }) => Promise<ChartLayout>
     remove: (params: { id: string }) => Promise<ChartLayout>
     update: (params: { id: string; params: LayoutItemParams }) => Promise<ChartLayout>
+    reorder: (params: { id: string; direction: LayoutReorderDirection }) => Promise<ChartLayout>
   }
   indicatorScript: {
     list: () => Promise<IndicatorScript[]>

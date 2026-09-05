@@ -185,6 +185,41 @@ export const chartLayoutRepository = {
     return this.get()
   },
 
+  swapSortOrder(idA: string, idB: string): ChartLayout {
+    this.ensureDefault()
+    const db = getDb()
+    const rowA = db
+      .prepare(
+        `SELECT id, sort_order FROM chart_layout_item WHERE layout_id = ? AND id = ?`
+      )
+      .get(DEFAULT_LAYOUT_ID, idA) as { id: string; sort_order: number } | undefined
+    const rowB = db
+      .prepare(
+        `SELECT id, sort_order FROM chart_layout_item WHERE layout_id = ? AND id = ?`
+      )
+      .get(DEFAULT_LAYOUT_ID, idB) as { id: string; sort_order: number } | undefined
+    if (!rowA || !rowB) {
+      throw new Error('指标不存在')
+    }
+    const updatedAt = nowIso()
+    const run = db.transaction(() => {
+      db.prepare('UPDATE chart_layout_item SET sort_order = @sort_order WHERE id = @id').run({
+        id: rowA.id,
+        sort_order: rowB.sort_order
+      })
+      db.prepare('UPDATE chart_layout_item SET sort_order = @sort_order WHERE id = @id').run({
+        id: rowB.id,
+        sort_order: rowA.sort_order
+      })
+      db.prepare('UPDATE chart_layout SET updated_at = @updated_at WHERE id = @id').run({
+        id: DEFAULT_LAYOUT_ID,
+        updated_at: updatedAt
+      })
+    })
+    run()
+    return this.get()
+  },
+
   isScriptReferenced(scriptId: string): boolean {
     const row = getDb()
       .prepare(

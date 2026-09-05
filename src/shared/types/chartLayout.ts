@@ -10,6 +10,8 @@ export type LineWidth = 1 | 2 | 3 | 4
 
 export type LayoutItemKind = 'script'
 
+export type LayoutReorderDirection = 'up' | 'down'
+
 export interface PlotStyleParams {
   color?: string
   lineWidth?: LineWidth

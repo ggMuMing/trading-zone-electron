@@ -1,6 +1,7 @@
 import './monacoSetup'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import Box from '@mui/material/Box'
+import type { SxProps, Theme } from '@mui/material/styles'
 import type { editor as MonacoEditor } from 'monaco-editor'
 import type * as Monaco from 'monaco-editor'
 import { useEffect, useRef } from 'react'
@@ -17,12 +18,14 @@ export function ScriptSourceEditor({
   value,
   onChange,
   diagnostic,
-  readOnly = false
+  readOnly = false,
+  sx
 }: {
   value: string
   onChange: (value: string) => void
   diagnostic: ScriptEditorDiagnostic | null
   readOnly?: boolean
+  sx?: SxProps<Theme>
 }): React.JSX.Element {
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
   const monacoRef = useRef<typeof Monaco | null>(null)
@@ -44,13 +47,16 @@ export function ScriptSourceEditor({
 
   return (
     <Box
-      sx={{
-        height: 360,
-        border: 1,
-        borderColor: 'divider',
-        borderRadius: 1,
-        overflow: 'hidden'
-      }}
+      sx={[
+        {
+          height: 360,
+          border: 1,
+          borderColor: 'divider',
+          borderRadius: 1,
+          overflow: 'hidden'
+        },
+        ...(Array.isArray(sx) ? sx : sx ? [sx] : [])
+      ]}
     >
       <Editor
         height="100%"

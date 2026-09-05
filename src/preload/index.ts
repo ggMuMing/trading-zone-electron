@@ -3,7 +3,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 import type { Stock } from '../shared/types/stock'
 import type { MarketClearResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
 import type { ChartInput } from '../shared/types/chart'
-import type { ChartLayout, LayoutItemParams } from '../shared/types/chartLayout'
+import type { ChartLayout, LayoutItemParams, LayoutReorderDirection } from '../shared/types/chartLayout'
 import type { IndicatorScript, ScriptTryParams, ScriptTryResult } from '../shared/types/indicatorScript'
 import type {
   BoardStats,
@@ -63,7 +63,9 @@ const api = {
     remove: (params: { id: string }): Promise<ChartLayout> =>
       ipcRenderer.invoke('chartLayout:remove', params),
     update: (params: { id: string; params: LayoutItemParams }): Promise<ChartLayout> =>
-      ipcRenderer.invoke('chartLayout:update', params)
+      ipcRenderer.invoke('chartLayout:update', params),
+    reorder: (params: { id: string; direction: LayoutReorderDirection }): Promise<ChartLayout> =>
+      ipcRenderer.invoke('chartLayout:reorder', params)
   },
   indicatorScript: {
     list: (): Promise<IndicatorScript[]> => ipcRenderer.invoke('indicatorScript:list'),
