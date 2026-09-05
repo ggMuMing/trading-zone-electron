@@ -1,5 +1,5 @@
 import { APP_FONT_STACK } from '../../theme/lwcFont'
-import { LegendActionButtons } from './LegendActionButtons'
+import { LegendNameHoverBox } from './LegendNameHoverBox'
 
 const UP_COLOR = '#ef5350'
 const DOWN_COLOR = '#26a69a'
@@ -49,6 +49,7 @@ interface PriceLegendProps {
   bar: PriceLegendBar | null
   overlays?: PriceLegendOverlayGroup[]
   onOpenSettings?: (instanceId: string) => void
+  onOpenEditor?: (instanceId: string) => void
   onRemove?: (instanceId: string) => void
 }
 
@@ -56,6 +57,7 @@ export function PriceLegend({
   bar,
   overlays = [],
   onOpenSettings,
+  onOpenEditor,
   onRemove
 }: PriceLegendProps): React.JSX.Element | null {
   if (!bar) {
@@ -80,8 +82,8 @@ export function PriceLegend({
         alignItems: 'flex-start',
         gap: 2,
         padding: '4px 8px',
-        fontSize: 13,
-        lineHeight: '18px',
+        fontSize: 15,
+        lineHeight: '20px',
         fontFamily: APP_FONT_STACK,
         color: '#333333',
         backgroundColor: 'rgba(255, 255, 255, 0.85)'
@@ -113,16 +115,17 @@ export function PriceLegend({
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
           {overlays.map((group) => (
             <span key={group.instanceId} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ color: LABEL_COLOR }}>{group.title}</span>
+              <LegendNameHoverBox
+                name={group.title}
+                onOpenSettings={onOpenSettings ? () => onOpenSettings(group.instanceId) : undefined}
+                onOpenEditor={onOpenEditor ? () => onOpenEditor(group.instanceId) : undefined}
+                onRemove={onRemove ? () => onRemove(group.instanceId) : undefined}
+              />
               {group.items.map((item) => (
                 <span key={item.id} style={{ color: item.color }}>
                   {item.label}: {formatNumber(item.value)}
                 </span>
               ))}
-              <LegendActionButtons
-                onOpenSettings={onOpenSettings ? () => onOpenSettings(group.instanceId) : undefined}
-                onRemove={onRemove ? () => onRemove(group.instanceId) : undefined}
-              />
             </span>
           ))}
         </div>

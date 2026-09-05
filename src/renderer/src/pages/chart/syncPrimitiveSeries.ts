@@ -5,6 +5,7 @@ import {
   type ISeriesApi,
   type Time
 } from 'lightweight-charts'
+import { instanceIdOf } from '../../../../shared/chart/legendLabel'
 import type { PlotPrimitive, ValuePoint } from '../../../../shared/types/chart'
 import type { ChartLayout } from '../../../../shared/types/chartLayout'
 
@@ -37,6 +38,18 @@ function toHistogramData(points: ValuePoint[]): Array<{ time: Time; value: numbe
     }
     return item
   })
+}
+
+/** Drop primitives whose layout instance was already removed (before chart:build returns). */
+export function filterPrimitivesByLayout(
+  primitives: PlotPrimitive[],
+  layout?: ChartLayout | null
+): PlotPrimitive[] {
+  if (!layout) {
+    return primitives
+  }
+  const ids = new Set(layout.items.map((item) => item.id))
+  return primitives.filter((primitive) => ids.has(instanceIdOf(primitive.id)))
 }
 
 export function subplotPaneOrder(
@@ -109,23 +122,24 @@ export function alignSubpaneOrder(
   primitives: PlotPrimitive[]
 ): void {
   const working = currentSubpaneOrder(chart, seriesById, primitives)
-  if (working.length === 0 || desired.length === 0) {
-    return
-  }
-  for (let target = 0; target < desired.length; target += 1) {
-    const paneId = desired[target]
-    const from = working.indexOf(paneId)
-    if (from === -1 || from === target) {
-      continue
+  if (working.length > 0 && desired.length > 0) {
+    for (let target = 0; target < desired.length; target += 1) {
+      const paneId = desired[target]
+      const from = working.indexOf(paneId)
+      if (from === -1 || from === target) {
+        continue
+      }
+      const pane = chart.panes()[from + 1]
+      if (!pane) {
+        continue
+      }
+      pane.moveTo(target + 1)
+      working.splice(from, 1)
+      working.splice(target, 0, paneId)
     }
-    const pane = chart.panes()[from + 1]
-    if (!pane) {
-      continue
-    }
-    pane.moveTo(target + 1)
-    working.splice(from, 1)
-    working.splice(target, 0, paneId)
   }
+  // LWC 5.1 removeSeries splices an empty pane from the model without fullUpdate.
+  // setStretchFactor triggers fullUpdate so stale pane widgets are destroyed.
   applyPaneStretch(chart)
 }
 

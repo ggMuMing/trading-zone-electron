@@ -1,6 +1,6 @@
 import { scriptDisplayKey } from './indicatorScript'
 import type { ChartLayout, ChartLayoutItem } from '../types/chartLayout'
-import type { IndicatorScript } from '../types/indicatorScript'
+import type { IndicatorScript, ParamField } from '../types/indicatorScript'
 
 /** Display localName after instance prefix; series id stays `{instanceId}:{localName}`. */
 export function localNameOf(primitiveId: string): string {
@@ -23,7 +23,28 @@ export function legendLabel(primitiveId: string, _layout?: ChartLayout | null): 
   return localNameOf(primitiveId).toUpperCase()
 }
 
-/** Subpane title: scripts use class key, never title. */
+function formatLegendInputValues(item: ChartLayoutItem, fields: ParamField[]): string {
+  return fields
+    .filter((field) => field.widget === 'int' || field.widget === 'float')
+    .map((field) => item.params.inputs[field.name])
+    .filter((value) => value !== undefined && value !== null)
+    .map((value) => String(value))
+    .join(' ')
+}
+
+/** Script legend title: `MACD (9 26 9)` — key plus current numeric inputs. */
+export function legendScriptTitle(item: ChartLayoutItem, scripts?: IndicatorScript[]): string {
+  const script = scripts?.find((entry) => entry.id === item.ref)
+  const key = script ? scriptDisplayKey(script) : ''
+  const displayKey = key ? key.toUpperCase() : ''
+  const values = formatLegendInputValues(item, script?.manifest.fields ?? [])
+  if (displayKey && values) {
+    return `${displayKey} (${values})`
+  }
+  return displayKey || values || item.id
+}
+
+/** Subpane title: scripts use class key plus params, never title. */
 export function subplotLegendTitle(
   panePrimitives: Array<{ id: string; kind: string }>,
   layout?: ChartLayout | null,
@@ -35,9 +56,7 @@ export function subplotLegendTitle(
   }
   const item = findLayoutItem(layout, source.id)
   if (item?.kind === 'script') {
-    const script = scripts?.find((entry) => entry.id === item.ref)
-    const key = script ? scriptDisplayKey(script) : ''
-    return key || localNameOf(source.id)
+    return legendScriptTitle(item, scripts) || localNameOf(source.id)
   }
   return legendLabel(source.id, layout)
 }

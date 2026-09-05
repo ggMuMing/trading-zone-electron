@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   CandlestickSeries,
   HistogramSeries,
@@ -11,19 +12,19 @@ import {
 import type { CandlePoint, ChartInput, ValuePoint, VolumePoint } from '../../../../shared/types/chart'
 import type { ChartLayout } from '../../../../shared/types/chartLayout'
 import type { IndicatorScript } from '../../../../shared/types/indicatorScript'
-import { scriptDisplayKey } from '../../../../shared/chart/indicatorScript'
-import { instanceIdOf, legendLabel, subplotLegendTitle } from '../../../../shared/chart/legendLabel'
+import { instanceIdOf, legendLabel, legendScriptTitle, subplotLegendTitle } from '../../../../shared/chart/legendLabel'
 import { LWC_FONT_STACK } from '../../theme/lwcFont'
+import { PaneCornerActions } from './PaneCornerActions'
 import { PriceLegend, type PriceLegendBar, type PriceLegendOverlayGroup } from './PriceLegend'
 import { SubpaneLegend, type SubpaneLegendPane } from './SubpaneLegend'
 import {
   DEFAULT_HISTOGRAM_COLOR,
   DEFAULT_LINE_COLOR,
   addPrimitiveSeries,
-  alignSubpaneOrder,
   applyPaneStretch,
   applyPrimitiveData,
   computeSubpaneTops,
+  filterPrimitivesByLayout,
   observePaneLayout,
   paneIndexOf,
   subplotPaneOrder,
@@ -33,6 +34,14 @@ import {
 
 const UP_COLOR = '#ef5350'
 const DOWN_COLOR = '#26a69a'
+
+function plotCellOf(row: HTMLElement): HTMLElement {
+  const cells = Array.from(row.querySelectorAll(':scope > td'))
+  if (cells.length <= 1) {
+    return cells[0] ?? row
+  }
+  return cells[cells.length - 2]
+}
 
 function candleToLegend(point: CandlePoint): PriceLegendBar {
   return {
@@ -113,11 +122,8 @@ function overlayGroupTitle(
   scripts: IndicatorScript[]
 ): string {
   const item = layout?.items.find((entry) => entry.id === instanceId)
-  if (item) {
-    const script = scripts.find((entry) => entry.id === item.ref)
-    if (script) {
-      return scriptDisplayKey(script)
-    }
+  if (item?.kind === 'script') {
+    return legendScriptTitle(item, scripts)
   }
   return instanceId
 }
@@ -190,6 +196,7 @@ interface KlineChartProps {
   layout: ChartLayout | null
   scripts?: IndicatorScript[]
   onOpenSettings?: (instanceId: string) => void
+  onOpenEditor?: (instanceId: string) => void
   onRemove?: (instanceId: string) => void
   onMovePane?: (instanceId: string, direction: 'up' | 'down') => void
 }
@@ -199,6 +206,7 @@ export function KlineChart({
   layout,
   scripts = [],
   onOpenSettings,
+  onOpenEditor,
   onRemove,
   onMovePane
 }: KlineChartProps): React.JSX.Element {
@@ -221,6 +229,8 @@ export function KlineChart({
   const [hoverBar, setHoverBar] = useState<PriceLegendBar | null>(null)
   const [hoverValues, setHoverValues] = useState<Record<string, number | null> | null>(null)
   const [subpaneTops, setSubpaneTops] = useState<Array<{ paneIndex: number; top: number }>>([])
+  const [subpaneHosts, setSubpaneHosts] = useState<Array<{ paneIndex: number; host: HTMLElement }>>([])
+  const [hoveredSubpaneIndex, setHoveredSubpaneIndex] = useState<number | null>(null)
   const [hoverSource, setHoverSource] = useState(input)
   if (input !== hoverSource) {
     setHoverSource(input)
@@ -236,18 +246,22 @@ export function KlineChart({
     }
     return map
   }, [input])
-  const defaultBar = useMemo(() => lastLegendBar(input), [input])
-  const defaultValues = useMemo(() => lastPrimitiveValues(input), [input])
+  const visibleInput = useMemo((): ChartInput => {
+    const primitives = filterPrimitivesByLayout(input.primitives, layout)
+    return primitives === input.primitives ? input : { ...input, primitives }
+  }, [input, layout])
+  const defaultBar = useMemo(() => lastLegendBar(visibleInput), [visibleInput])
+  const defaultValues = useMemo(() => lastPrimitiveValues(visibleInput), [visibleInput])
   candleByTimeRef.current = candleByTime
 
   const activeValues = hoverValues ?? defaultValues
   const overlays = useMemo(
-    () => buildOverlays(input, activeValues, layout, scripts),
-    [input, activeValues, layout, scripts]
+    () => buildOverlays(visibleInput, activeValues, layout, scripts),
+    [visibleInput, activeValues, layout, scripts]
   )
   const subpaneLegends = useMemo(
-    () => buildSubpaneLegends(input, activeValues, subpaneTops, layout, scripts),
-    [input, activeValues, subpaneTops, layout, scripts]
+    () => buildSubpaneLegends(visibleInput, activeValues, subpaneTops, layout, scripts),
+    [visibleInput, activeValues, subpaneTops, layout, scripts]
   )
 
   useEffect(() => {
@@ -304,9 +318,10 @@ export function KlineChart({
     })
 
     const initial = inputRef.current
-    const subpanes = subplotPaneOrder(initial.primitives, layoutRef.current)
+    const initialPrimitives = filterPrimitivesByLayout(initial.primitives, layoutRef.current)
+    const subpanes = subplotPaneOrder(initialPrimitives, layoutRef.current)
     const primitiveSeries = new Map<string, PrimitiveSeries>()
-    for (const primitive of initial.primitives) {
+    for (const primitive of initialPrimitives) {
       const series = addPrimitiveSeries(chart, primitive, paneIndexOf(primitive.pane, subpanes))
       primitiveSeries.set(primitive.id, series)
     }
@@ -316,11 +331,11 @@ export function KlineChart({
     candleRef.current = candle
     volumeRef.current = volume
     primitiveSeriesRef.current = primitiveSeries
-    primitivesRef.current = initial.primitives
+    primitivesRef.current = initialPrimitives
 
     candle.setData(toCandleData(initial.candle))
     volume.setData(toVolumeData(initial.volume))
-    for (const primitive of initial.primitives) {
+    for (const primitive of initialPrimitives) {
       const series = primitiveSeries.get(primitive.id)
       if (series) {
         applyPrimitiveData(series, primitive, initial.series[primitive.id] ?? [])
@@ -380,11 +395,32 @@ export function KlineChart({
 
     chart.subscribeCrosshairMove(onCrosshairMove)
 
+    const refreshSubpaneHosts = (): void => {
+      if (chartRef.current !== chart) {
+        return
+      }
+      const next: Array<{ paneIndex: number; host: HTMLElement }> = []
+      chart.panes().forEach((pane, paneIndex) => {
+        if (paneIndex === 0) {
+          return
+        }
+        const row = pane.getHTMLElement()
+        if (!row) {
+          return
+        }
+        const host = plotCellOf(row)
+        host.style.position = 'relative'
+        next.push({ paneIndex, host })
+      })
+      setSubpaneHosts(next)
+    }
+
     const refreshSubpaneTops = (): void => {
       if (chartRef.current !== chart) {
         return
       }
       setSubpaneTops(computeSubpaneTops(chart, wrapperRef.current))
+      refreshSubpaneHosts()
     }
 
     const rebindPaneLayoutObserver = (): void => {
@@ -428,18 +464,18 @@ export function KlineChart({
       return
     }
 
-    candleRef.current?.setData(toCandleData(input.candle))
-    volumeRef.current?.setData(toVolumeData(input.volume))
+    candleRef.current?.setData(toCandleData(visibleInput.candle))
+    volumeRef.current?.setData(toVolumeData(visibleInput.volume))
 
     syncPrimitiveSeries({
       chart,
       seriesById: primitiveSeriesRef.current,
       prevPrimitives: primitivesRef.current,
-      nextPrimitives: input.primitives,
-      seriesData: input.series,
-      layout: layoutRef.current
+      nextPrimitives: visibleInput.primitives,
+      seriesData: visibleInput.series,
+      layout
     })
-    primitivesRef.current = input.primitives
+    primitivesRef.current = visibleInput.primitives
 
     if (rebindPaneLayoutObserverRef.current) {
       rebindPaneLayoutObserverRef.current()
@@ -450,23 +486,30 @@ export function KlineChart({
         }
       })
     }
-  }, [input])
+  }, [visibleInput, layout])
 
   useEffect(() => {
-    const chart = chartRef.current
-    if (!chart) {
-      return
+    const cleanups: Array<() => void> = []
+    for (const { paneIndex, host } of subpaneHosts) {
+      const onEnter = (): void => {
+        setHoveredSubpaneIndex(paneIndex)
+      }
+      const onLeave = (): void => {
+        setHoveredSubpaneIndex((current) => (current === paneIndex ? null : current))
+      }
+      host.addEventListener('mouseenter', onEnter)
+      host.addEventListener('mouseleave', onLeave)
+      cleanups.push(() => {
+        host.removeEventListener('mouseenter', onEnter)
+        host.removeEventListener('mouseleave', onLeave)
+      })
     }
-    alignSubpaneOrder(
-      chart,
-      subplotPaneOrder(input.primitives, layout),
-      primitiveSeriesRef.current,
-      input.primitives
-    )
-    if (rebindPaneLayoutObserverRef.current) {
-      rebindPaneLayoutObserverRef.current()
+    return () => {
+      for (const cleanup of cleanups) {
+        cleanup()
+      }
     }
-  }, [layout, input.primitives])
+  }, [subpaneHosts])
 
   return (
     <div
@@ -481,14 +524,34 @@ export function KlineChart({
         bar={hoverBar ?? defaultBar}
         overlays={overlays}
         onOpenSettings={onOpenSettings}
+        onOpenEditor={onOpenEditor}
         onRemove={onRemove}
       />
       <SubpaneLegend
         panes={subpaneLegends}
         onOpenSettings={onOpenSettings}
+        onOpenEditor={onOpenEditor}
         onRemove={onRemove}
-        onMovePane={onMovePane}
       />
+      {subpaneLegends.map((pane, index) => {
+        const paneIndex = index + 1
+        const host = subpaneHosts.find((entry) => entry.paneIndex === paneIndex)?.host
+        if (!host) {
+          return null
+        }
+        return createPortal(
+          <PaneCornerActions
+            visible={hoveredSubpaneIndex === paneIndex}
+            onMoveUp={onMovePane ? () => onMovePane(pane.instanceId, 'up') : undefined}
+            onMoveDown={onMovePane ? () => onMovePane(pane.instanceId, 'down') : undefined}
+            disableMoveUp={pane.disableMoveUp}
+            disableMoveDown={pane.disableMoveDown}
+            onRemove={onRemove ? () => onRemove(pane.instanceId) : undefined}
+          />,
+          host,
+          pane.instanceId
+        )
+      })}
     </div>
   )
 }

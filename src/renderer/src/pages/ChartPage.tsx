@@ -63,7 +63,7 @@ export function ChartPage(): React.JSX.Element {
   const [stocks, setStocks] = useState<Stock[]>([])
   const [coverage, setCoverage] = useState<MarketCoverageResult | null>(null)
   const [selectedCode, setSelectedCode] = useState<string | null>(null)
-  const [adjust, setAdjust] = useState<AdjustType>('none')
+  const [adjust, setAdjust] = useState<AdjustType>('qfq')
   const [period, setPeriod] = useState<ChartPeriod>('day')
   const [chartRaw, setChartRaw] = useState<ChartInput | null>(null)
   const [layout, setLayout] = useState<ChartLayout | null>(null)
@@ -294,6 +294,17 @@ export function ChartPage(): React.JSX.Element {
     }
   }
 
+  const openLayoutEditor = (instanceId: string): void => {
+    const item = layout?.items.find((entry) => entry.id === instanceId)
+    if (!item) {
+      return
+    }
+    const script = scripts.find((entry) => entry.id === item.ref)
+    if (script) {
+      openEditScriptEditor(script)
+    }
+  }
+
   const handleRemoveScript = async (id: string): Promise<void> => {
     try {
       applyScripts(await window.api.indicatorScript.remove({ id }))
@@ -503,6 +514,7 @@ export function ChartPage(): React.JSX.Element {
                       layout={layout}
                       scripts={scripts}
                       onOpenSettings={openLayoutSettings}
+                      onOpenEditor={openLayoutEditor}
                       onRemove={(id) => void handleRemoveIndicator(id)}
                       onMovePane={(id, direction) => void handleMovePane(id, direction)}
                     />
@@ -519,6 +531,7 @@ export function ChartPage(): React.JSX.Element {
               tryQuery={tryQuery}
               onDraftChange={setScriptDraft}
               onClose={() => setScriptDraft(null)}
+              onCreateNew={openNewScriptEditor}
               onTry={handleTryScript}
               onCreate={handleCreateScript}
               onUpdate={handleUpdateScript}

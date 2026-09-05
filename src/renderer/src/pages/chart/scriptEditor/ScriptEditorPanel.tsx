@@ -12,6 +12,7 @@ import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown'
+import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import CloseIcon from '@mui/icons-material/Close'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import { useEffect, useRef, useState } from 'react'
@@ -33,11 +34,16 @@ export interface ScriptEditorPanelProps {
   tryQuery: MarketQueryParams | null
   onDraftChange: (draft: ScriptDraft) => void
   onClose: () => void
+  onCreateNew: () => void
   onTry: (params: ScriptTryParams) => Promise<ScriptTryResult>
   onCreate: (title: string, source: string) => Promise<IndicatorScript | null>
   onUpdate: (id: string, patch: { title: string; source: string }) => Promise<void>
   onRename: (id: string, title: string) => Promise<void>
 }
+
+type EditorBanner =
+  | { type: 'success'; message: string }
+  | { type: 'error'; error: string; traceback: string }
 
 const EDITOR_WIDTH_STORAGE_KEY = 'trading-zone.chart.scriptEditorWidth'
 const EDITOR_WIDTH_MIN = 320
@@ -71,6 +77,7 @@ export function ScriptEditorPanel({
   tryQuery,
   onDraftChange,
   onClose,
+  onCreateNew,
   onTry,
   onCreate,
   onUpdate,
@@ -85,11 +92,31 @@ export function ScriptEditorPanel({
   )
   const [resizing, setResizing] = useState(false)
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null)
+  const [customMenuAnchor, setCustomMenuAnchor] = useState<HTMLElement | null>(null)
   const [renameOpen, setRenameOpen] = useState(false)
   const [renameValue, setRenameValue] = useState(draft.title)
   const [tryResult, setTryResult] = useState<ScriptTryResult | null>(null)
+  const [banner, setBanner] = useState<EditorBanner | null>(null)
   const [tryBusy, setTryBusy] = useState(false)
   widthRef.current = width
+
+  const applyTryResult = (result: ScriptTryResult, successMessage = '测试通过'): void => {
+    setTryResult(result)
+    if (result.ok) {
+      setBanner({ type: 'success', message: successMessage })
+      return
+    }
+    setBanner({
+      type: 'error',
+      error: result.error || '脚本失败',
+      traceback: result.traceback ?? ''
+    })
+  }
+
+  const closeMenus = (): void => {
+    setMenuAnchor(null)
+    setCustomMenuAnchor(null)
+  }
 
   useEffect(() => {
     // Keep the publish feedback when a new script just got its id.
@@ -99,6 +126,7 @@ export function ScriptEditorPanel({
     }
     keepResultForIdRef.current = null
     setTryResult(null)
+    setBanner(null)
     setTryBusy(false)
   }, [draft.id])
 
@@ -157,7 +185,7 @@ export function ScriptEditorPanel({
     try {
       const loaded = await onTry({ source: draft.source })
       if (!loaded.ok) {
-        setTryResult(loaded)
+        applyTryResult(loaded)
         return
       }
       const result = await onTry({
@@ -165,9 +193,9 @@ export function ScriptEditorPanel({
         params: loaded.manifest ? defaultScriptParams(loaded.manifest) : { inputs: {}, styles: {} },
         query: tryQuery
       })
-      setTryResult(result)
+      applyTryResult(result)
     } catch (err: unknown) {
-      setTryResult({
+      applyTryResult({
         ok: false,
         error: err instanceof Error ? err.message : String(err),
         traceback: '',
@@ -186,21 +214,23 @@ export function ScriptEditorPanel({
     setTryBusy(true)
     try {
       const result = await onTry({ source: draft.source })
-      setTryResult(result)
       if (!result.ok) {
+        applyTryResult(result)
         return
       }
       if (draft.id === null) {
         const created = await onCreate(draft.title, draft.source)
         if (created) {
           keepResultForIdRef.current = created.id
+          applyTryResult(result, `新脚本${created.title}创建成功`)
           onDraftChange({ id: created.id, title: created.title, source: created.source })
         }
       } else {
         await onUpdate(draft.id, { title: draft.title, source: draft.source })
+        applyTryResult(result)
       }
     } catch (err: unknown) {
-      setTryResult({
+      applyTryResult({
         ok: false,
         error: err instanceof Error ? err.message : String(err),
         traceback: '',
@@ -313,16 +343,46 @@ export function ScriptEditorPanel({
             发布脚本
           </Button>
         </Stack>
-        <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={() => setMenuAnchor(null)}>
+        <Menu
+          anchorEl={menuAnchor}
+          open={Boolean(menuAnchor)}
+          onClose={closeMenus}
+        >
           <MenuItem
             onClick={() => {
               setRenameValue(draft.title)
               setRenameOpen(true)
-              setMenuAnchor(null)
+              closeMenus()
             }}
           >
             修改脚本名称
           </MenuItem>
+          <MenuItem
+            onClick={() => {
+              closeMenus()
+              setBanner(null)
+              setTryResult(null)
+              onCreateNew()
+            }}
+          >
+            创建新指标
+          </MenuItem>
+          <MenuItem
+            onClick={(event) => setCustomMenuAnchor(event.currentTarget)}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 2 }}>
+              自定义指标
+              <ChevronRightIcon fontSize="small" />
+            </Box>
+          </MenuItem>
+        </Menu>
+        <Menu
+          anchorEl={customMenuAnchor}
+          open={Boolean(customMenuAnchor)}
+          onClose={() => setCustomMenuAnchor(null)}
+          anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+        >
           {scripts.length > 0 ? (
             scripts.map((script) => (
               <MenuItem
@@ -330,7 +390,7 @@ export function ScriptEditorPanel({
                 selected={script.id === draft.id}
                 onClick={() => {
                   onDraftChange({ id: script.id, title: script.title, source: script.source })
-                  setMenuAnchor(null)
+                  closeMenus()
                 }}
               >
                 {script.title}
@@ -344,6 +404,7 @@ export function ScriptEditorPanel({
           value={draft.source}
           onChange={(source) => {
             setTryResult(null)
+            setBanner(null)
             onDraftChange({ ...draft, source })
           }}
           diagnostic={
@@ -358,15 +419,22 @@ export function ScriptEditorPanel({
           readOnly={tryBusy}
           sx={{ height: 'auto', flex: 1, minHeight: 0, border: 0, borderRadius: 0 }}
         />
-        {tryResult?.ok ? (
-          <Alert severity="success" sx={{ borderRadius: 0 }}>
-            通过
+        {banner?.type === 'success' ? (
+          <Alert severity="success" sx={{ borderRadius: 0 }} onClose={() => setBanner(null)}>
+            {banner.message}
           </Alert>
         ) : null}
-        {tryResult && !tryResult.ok ? (
-          <Alert severity="error" sx={{ borderRadius: 0, whiteSpace: 'pre-wrap' }}>
-            {tryResult.error || '脚本失败'}
-            {tryResult.traceback ? `\n${tryResult.traceback}` : ''}
+        {banner?.type === 'error' ? (
+          <Alert
+            severity="error"
+            sx={{ borderRadius: 0, whiteSpace: 'pre-wrap' }}
+            onClose={() => {
+              setBanner(null)
+              setTryResult(null)
+            }}
+          >
+            {banner.error}
+            {banner.traceback ? `\n${banner.traceback}` : ''}
           </Alert>
         ) : null}
       </Box>
