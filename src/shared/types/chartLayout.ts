@@ -17,6 +17,7 @@ export interface PlotStyleParams {
   lineWidth?: LineWidth
   colorUp?: string
   colorDown?: string
+  visible?: boolean
 }
 
 export interface ScriptParams {

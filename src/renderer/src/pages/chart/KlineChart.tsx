@@ -36,7 +36,9 @@ const UP_COLOR = '#ef5350'
 const DOWN_COLOR = '#26a69a'
 
 function plotCellOf(row: HTMLElement): HTMLElement {
-  const cells = Array.from(row.querySelectorAll(':scope > td'))
+  const cells = Array.from(row.querySelectorAll(':scope > td')).filter(
+    (cell): cell is HTMLTableCellElement => cell instanceof HTMLTableCellElement
+  )
   if (cells.length <= 1) {
     return cells[0] ?? row
   }

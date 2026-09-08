@@ -5,7 +5,7 @@ import {
   type ISeriesApi,
   type Time
 } from 'lightweight-charts'
-import { instanceIdOf } from '../../../../shared/chart/legendLabel'
+import { instanceIdOf, localNameOf } from '../../../../shared/chart/legendLabel'
 import type { PlotPrimitive, ValuePoint } from '../../../../shared/types/chart'
 import type { ChartLayout } from '../../../../shared/types/chartLayout'
 
@@ -40,7 +40,7 @@ function toHistogramData(points: ValuePoint[]): Array<{ time: Time; value: numbe
   })
 }
 
-/** Drop primitives whose layout instance was already removed (before chart:build returns). */
+/** Drop primitives whose layout instance was removed, or whose plot style is hidden. */
 export function filterPrimitivesByLayout(
   primitives: PlotPrimitive[],
   layout?: ChartLayout | null
@@ -48,8 +48,14 @@ export function filterPrimitivesByLayout(
   if (!layout) {
     return primitives
   }
-  const ids = new Set(layout.items.map((item) => item.id))
-  return primitives.filter((primitive) => ids.has(instanceIdOf(primitive.id)))
+  const items = new Map(layout.items.map((item) => [item.id, item]))
+  return primitives.filter((primitive) => {
+    const item = items.get(instanceIdOf(primitive.id))
+    if (!item) {
+      return false
+    }
+    return item.params.styles[localNameOf(primitive.id)]?.visible !== false
+  })
 }
 
 export function subplotPaneOrder(

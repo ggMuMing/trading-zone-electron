@@ -270,7 +270,7 @@ function pickKnown(raw: Record<string, unknown>, allowed: readonly string[]): Re
 }
 
 function defaultPlotStyle(plot: PlotStyleField): PlotStyleParams {
-  const style: PlotStyleParams = {}
+  const style: PlotStyleParams = { visible: true }
   if (plot.color !== undefined) {
     style.color = plot.color
   }
@@ -297,16 +297,26 @@ export function defaultScriptParams(manifest: IndicatorManifest): ScriptParams {
   }
 }
 
+function parseVisible(raw: unknown, plotId: string): boolean {
+  if (raw === undefined) {
+    return true
+  }
+  if (typeof raw !== 'boolean') {
+    throw new Error(`invalid params: styles.${plotId}.visible must be a boolean`)
+  }
+  return raw
+}
+
 function assertPlotStyle(plot: PlotStyleField, raw: unknown): PlotStyleParams {
   if (!isRecord(raw)) {
     throw new Error(`invalid params: styles.${plot.id} must be an object`)
   }
-  const allowed = ['color', 'lineWidth', 'colorUp', 'colorDown']
+  const allowed = ['color', 'lineWidth', 'colorUp', 'colorDown', 'visible']
   const extra = extraKeys(raw, allowed)
   if (extra.length > 0) {
     throw new Error(`invalid params: styles.${plot.id} has unknown keys ${extra.join(', ')}`)
   }
-  const next: PlotStyleParams = {}
+  const next: PlotStyleParams = { visible: parseVisible(raw.visible, plot.id) }
   if (plot.kind === 'line') {
     const color = raw.color ?? plot.color
     if (typeof color !== 'string' || !color.trim()) {

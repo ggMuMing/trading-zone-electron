@@ -45,29 +45,12 @@ type EditorBanner =
   | { type: 'success'; message: string }
   | { type: 'error'; error: string; traceback: string }
 
-const EDITOR_WIDTH_STORAGE_KEY = 'trading-zone.chart.scriptEditorWidth'
 const EDITOR_WIDTH_MIN = 320
 const EDITOR_WIDTH_DEFAULT = 480
 
 function clampEditorWidth(value: number, maxWidth: number): number {
   const max = Math.max(EDITOR_WIDTH_MIN, maxWidth)
   return Math.min(max, Math.max(EDITOR_WIDTH_MIN, Math.round(value)))
-}
-
-function loadEditorWidth(maxWidth: number): number {
-  try {
-    const raw = localStorage.getItem(EDITOR_WIDTH_STORAGE_KEY)
-    if (!raw) {
-      return clampEditorWidth(EDITOR_WIDTH_DEFAULT, maxWidth)
-    }
-    const parsed = Number(raw)
-    if (!Number.isFinite(parsed)) {
-      return clampEditorWidth(EDITOR_WIDTH_DEFAULT, maxWidth)
-    }
-    return clampEditorWidth(parsed, maxWidth)
-  } catch {
-    return clampEditorWidth(EDITOR_WIDTH_DEFAULT, maxWidth)
-  }
 }
 
 export function ScriptEditorPanel({
@@ -87,9 +70,7 @@ export function ScriptEditorPanel({
   const widthRef = useRef(EDITOR_WIDTH_DEFAULT)
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const keepResultForIdRef = useRef<string | null>(null)
-  const [width, setWidth] = useState(() =>
-    typeof window === 'undefined' ? EDITOR_WIDTH_DEFAULT : loadEditorWidth(window.innerWidth)
-  )
+  const [width, setWidth] = useState(EDITOR_WIDTH_DEFAULT)
   const [resizing, setResizing] = useState(false)
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null)
   const [customMenuAnchor, setCustomMenuAnchor] = useState<HTMLElement | null>(null)
@@ -138,43 +119,40 @@ export function ScriptEditorPanel({
     const previousSelect = document.body.style.userSelect
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
+
+    const maxWidthOf = (): number => hostRef.current?.parentElement?.clientWidth ?? window.innerWidth
+
+    const handlePointerMove = (event: PointerEvent): void => {
+      const drag = resizeRef.current
+      if (!drag) {
+        return
+      }
+      const next = clampEditorWidth(drag.startWidth + (drag.startX - event.clientX), maxWidthOf())
+      widthRef.current = next
+      setWidth(next)
+    }
+
+    const handlePointerUp = (): void => {
+      resizeRef.current = null
+      setResizing(false)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
     return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
       document.body.style.cursor = previousCursor
       document.body.style.userSelect = previousSelect
     }
   }, [resizing])
 
-  const persistWidth = (value: number): void => {
-    localStorage.setItem(EDITOR_WIDTH_STORAGE_KEY, String(value))
-  }
-
-  const maxWidthOf = (): number => hostRef.current?.parentElement?.clientWidth ?? window.innerWidth
-
   const handleSplitterPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
     event.preventDefault()
-    event.currentTarget.setPointerCapture(event.pointerId)
-    resizeRef.current = { startX: event.clientX, startWidth: width }
+    resizeRef.current = { startX: event.clientX, startWidth: widthRef.current }
     setResizing(true)
-  }
-
-  const handleSplitterPointerMove = (event: React.PointerEvent<HTMLDivElement>): void => {
-    const drag = resizeRef.current
-    if (!drag) {
-      return
-    }
-    setWidth(clampEditorWidth(drag.startWidth + (drag.startX - event.clientX), maxWidthOf()))
-  }
-
-  const handleSplitterPointerUp = (event: React.PointerEvent<HTMLDivElement>): void => {
-    if (!resizeRef.current) {
-      return
-    }
-    resizeRef.current = null
-    setResizing(false)
-    persistWidth(widthRef.current)
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
   }
 
   const handleExecute = async (): Promise<void> => {
@@ -273,9 +251,6 @@ export function ScriptEditorPanel({
         aria-orientation="vertical"
         aria-label="调整脚本编辑器宽度"
         onPointerDown={handleSplitterPointerDown}
-        onPointerMove={handleSplitterPointerMove}
-        onPointerUp={handleSplitterPointerUp}
-        onPointerCancel={handleSplitterPointerUp}
         sx={{
           width: 8,
           flexShrink: 0,

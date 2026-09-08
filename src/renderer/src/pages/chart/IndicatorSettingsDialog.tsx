@@ -3,6 +3,8 @@ import Dialog from '@mui/material/Dialog'
 import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
+import Typography from '@mui/material/Typography'
+import Close from '@mui/icons-material/Close'
 import { useEffect, useState } from 'react'
 import {
   formatIndicatorCaption,
@@ -11,6 +13,7 @@ import {
 } from '../../../../shared/chart/indicatorScript'
 import type { ChartLayoutItem, LayoutItemParams } from '../../../../shared/types/chartLayout'
 import type { IndicatorScript } from '../../../../shared/types/indicatorScript'
+import { CHART_ICON_SX, ChartIconButton } from './ChartIconButton'
 import { ManifestFieldsForm } from './ManifestFieldsForm'
 
 export interface IndicatorSettingsDialogProps {
@@ -20,6 +23,8 @@ export interface IndicatorSettingsDialogProps {
   onClose: () => void
   onSave: (id: string, params: LayoutItemParams) => void
 }
+
+const SETTINGS_WIDTH = 420
 
 export function IndicatorSettingsDialog({
   item,
@@ -51,8 +56,24 @@ export function IndicatorSettingsDialog({
   })()
 
   return (
-    <Dialog open={Boolean(item && draft && manifest)} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>设置 {title}</DialogTitle>
+    <Dialog
+      open={Boolean(item && draft && manifest)}
+      onClose={onClose}
+      maxWidth={false}
+      slotProps={{
+        paper: {
+          sx: { width: SETTINGS_WIDTH, maxWidth: SETTINGS_WIDTH }
+        }
+      }}
+    >
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', py: 1.25, pr: 1 }}>
+        <Typography component="span" sx={{ flex: 1, fontWeight: 700, pr: 1 }}>
+          设置 {title}
+        </Typography>
+        <ChartIconButton ariaLabel="关闭" title="关闭" roomy onClick={onClose}>
+          <Close sx={CHART_ICON_SX} />
+        </ChartIconButton>
+      </DialogTitle>
       <DialogContent dividers>
         {item && draft && manifest ? (
           <ManifestFieldsForm manifest={manifest} value={draft} onChange={setDraft} />

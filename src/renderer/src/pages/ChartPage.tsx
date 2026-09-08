@@ -1,11 +1,7 @@
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
-import Chip from '@mui/material/Chip'
-import IconButton from '@mui/material/IconButton'
 import Paper from '@mui/material/Paper'
-import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
-import RefreshIcon from '@mui/icons-material/Refresh'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DEFAULT_SCRIPT_TITLE } from '../../../shared/chart/indicatorScript'
 import { validateChartInput } from '../../../shared/chart/validateChartInput'
@@ -74,7 +70,6 @@ export function ChartPage(): React.JSX.Element {
   const [scriptDraft, setScriptDraft] = useState<ScriptDraft | null>(null)
   const [pickerWidth, setPickerWidth] = useState(loadPickerWidth)
   const [resizing, setResizing] = useState(false)
-  const [scriptRunNonce, setScriptRunNonce] = useState(0)
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const pickerWidthRef = useRef(pickerWidth)
   pickerWidthRef.current = pickerWidth
@@ -135,11 +130,6 @@ export function ChartPage(): React.JSX.Element {
     }
   }, [])
 
-  const handleRefresh = async (): Promise<void> => {
-    await refreshAll()
-    setScriptRunNonce((nonce) => nonce + 1)
-  }
-
   useEffect(() => {
     void refreshAll()
   }, [])
@@ -151,7 +141,7 @@ export function ChartPage(): React.JSX.Element {
     }
     void period
     void executeScripts(selectedCode, adjust)
-  }, [selectedCode, adjust, period, scriptRunNonce, executeScripts])
+  }, [selectedCode, adjust, period, executeScripts])
 
   useEffect(() => {
     if (!resizing) {
@@ -319,11 +309,11 @@ export function ChartPage(): React.JSX.Element {
 
   const tryQuery: MarketQueryParams | null = selectedCode
     ? {
-        ts_code: selectedCode,
-        adjust,
-        start_date: MARKET_SYNC_START,
-        end_date: queryEnd
-      }
+      ts_code: selectedCode,
+      adjust,
+      start_date: MARKET_SYNC_START,
+      end_date: queryEnd
+    }
     : null
 
   useEffect(() => {
@@ -353,31 +343,6 @@ export function ChartPage(): React.JSX.Element {
 
   return (
     <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <Stack
-        direction="row"
-        spacing={1}
-        alignItems="center"
-        sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider', flexWrap: 'wrap' }}
-      >
-        <Typography variant="h6" fontWeight={700}>
-          图表
-        </Typography>
-        <Chip
-          size="small"
-          variant="outlined"
-          label={
-            coverage
-              ? `行情 ${coverage.total_bars} 行 / 股票 ${stocks.length}`
-              : `股票 ${stocks.length}`
-          }
-        />
-        <Chip size="small" variant="outlined" label={`${MARKET_SYNC_START}–${queryEnd}`} />
-        <Box sx={{ flexGrow: 1 }} />
-        <IconButton aria-label="刷新" onClick={() => void handleRefresh()} disabled={loading || querying}>
-          <RefreshIcon />
-        </IconButton>
-      </Stack>
-
       {error ? (
         <Box sx={{ px: 2, pt: 1 }}>
           <Alert severity="error" onClose={() => setError(null)}>
@@ -398,7 +363,7 @@ export function ChartPage(): React.JSX.Element {
           </Paper>
         </Box>
       ) : (
-        <Box sx={{ flex: 1, display: 'flex', minHeight: 0, px: 2, py: 2, gap: 0.5, position: 'relative' }}>
+        <Box sx={{ flex: 1, display: 'flex', minHeight: 0, px: 2, py: 2, gap: 0.5, position: 'relative', padding: 0 }}>
           <StockPicker
             stocks={stocks}
             selectedCode={selectedCode}
@@ -548,8 +513,6 @@ export function ChartPage(): React.JSX.Element {
         disabled={querying}
         onClose={() => setIndicatorOpen(false)}
         onAdd={(ref) => void handleAddIndicator(ref)}
-        onRemove={(id) => void handleRemoveIndicator(id)}
-        onOpenSettings={(item) => openLayoutSettings(item.id)}
         onCreateEditor={openNewScriptEditor}
         onEditEditor={openEditScriptEditor}
         onRemoveScript={(id) => void handleRemoveScript(id)}

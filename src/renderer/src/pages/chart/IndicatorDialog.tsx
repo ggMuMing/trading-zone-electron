@@ -1,19 +1,25 @@
-import Button from '@mui/material/Button'
+import Box from '@mui/material/Box'
 import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
 import List from '@mui/material/List'
 import ListItem from '@mui/material/ListItem'
+import ListItemButton from '@mui/material/ListItemButton'
 import ListItemText from '@mui/material/ListItemText'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
-import {
-  formatIndicatorCaption,
-  scriptDisplayKey
-} from '../../../../shared/chart/indicatorScript'
-import type { ChartLayout, ChartLayoutItem } from '../../../../shared/types/chartLayout'
-import type { IndicatorScript, ParamField } from '../../../../shared/types/indicatorScript'
+import Add from '@mui/icons-material/Add'
+import Close from '@mui/icons-material/Close'
+import DeleteOutline from '@mui/icons-material/DeleteOutline'
+import EditOutlined from '@mui/icons-material/EditOutlined'
+import PlaylistAdd from '@mui/icons-material/PlaylistAdd'
+import ShowChart from '@mui/icons-material/ShowChart'
+import Timeline from '@mui/icons-material/Timeline'
+import { useState, type ReactNode } from 'react'
+import { scriptDisplayKey } from '../../../../shared/chart/indicatorScript'
+import type { ChartLayout } from '../../../../shared/types/chartLayout'
+import type { IndicatorScript } from '../../../../shared/types/indicatorScript'
+import { CHART_ICON_SX, ChartIconButton } from './ChartIconButton'
 
 export interface IndicatorDialogProps {
   open: boolean
@@ -23,29 +29,41 @@ export interface IndicatorDialogProps {
   disabled?: boolean
   onClose: () => void
   onAdd: (ref: string) => void
-  onRemove: (id: string) => void
-  onOpenSettings: (item: ChartLayoutItem) => void
   onCreateEditor: () => void
   onEditEditor: (script: IndicatorScript) => void
   onRemoveScript: (id: string) => void
 }
 
-function paramsSummary(item: ChartLayoutItem, fields: ParamField[]): string {
-  const numeric = fields.filter((field) => field.widget === 'int' || field.widget === 'float')
-  if (numeric.length === 0) {
-    return '用户脚本'
-  }
-  return numeric
-    .map((field) => `${field.title} ${String(item.params.inputs[field.name] ?? '')}`)
-    .join(' · ')
-}
+type CatalogTab = 'indicator' | 'strategy'
 
-function formatUpdatedAt(iso: string): string {
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) {
-    return iso
-  }
-  return date.toLocaleString()
+const DIALOG_WIDTH = 600
+const DIALOG_HEIGHT = 480
+const NAV_WIDTH = 120
+
+function EmptyCatalog({
+  icon,
+  message
+}: {
+  icon: ReactNode
+  message: string
+}): React.JSX.Element {
+  return (
+    <Box
+      sx={{
+        height: '100%',
+        minHeight: 240,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 1,
+        color: 'text.secondary'
+      }}
+    >
+      {icon}
+      <Typography variant="body2">{message}</Typography>
+    </Box>
+  )
 }
 
 export function IndicatorDialog({
@@ -56,118 +74,134 @@ export function IndicatorDialog({
   disabled = false,
   onClose,
   onAdd,
-  onRemove,
-  onOpenSettings,
   onCreateEditor,
   onEditEditor,
   onRemoveScript
 }: IndicatorDialogProps): React.JSX.Element {
-  const titleOf = (item: ChartLayoutItem): string => {
-    const script = scripts.find((entry) => entry.id === item.ref)
-    if (!script) {
-      return '用户脚本'
-    }
-    return formatIndicatorCaption(scriptDisplayKey(script), script.title)
-  }
+  const [tab, setTab] = useState<CatalogTab>('indicator')
   const referencedScripts = new Set((layout?.items ?? []).map((item) => item.ref))
 
-  const fieldsOf = (item: ChartLayoutItem): ParamField[] => {
-    return scripts.find((script) => script.id === item.ref)?.manifest.fields ?? []
-  }
-
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>指标</DialogTitle>
-      <DialogContent dividers>
-        <Stack spacing={2}>
-          <div>
-            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.5 }}>
-              <Typography variant="subtitle2">用户脚本</Typography>
-              <Button size="small" disabled={disabled || !exampleSource} onClick={onCreateEditor}>
-                新建
-              </Button>
-            </Stack>
-            {scripts.length > 0 ? (
-              <List dense disablePadding>
-                {scripts.map((script) => (
-                  <ListItem
-                    key={script.id}
-                    disablePadding
-                    secondaryAction={
-                      <Stack direction="row" spacing={0.5}>
-                        <Button size="small" disabled={disabled} onClick={() => onAdd(script.id)}>
-                          添加
-                        </Button>
-                        <Button size="small" disabled={disabled} onClick={() => onEditEditor(script)}>
-                          编辑
-                        </Button>
-                        <Button
-                          size="small"
-                          color="inherit"
-                          disabled={disabled || referencedScripts.has(script.id)}
-                          onClick={() => onRemoveScript(script.id)}
-                        >
-                          删除
-                        </Button>
-                      </Stack>
-                    }
-                    sx={{ pr: 26 }}
-                  >
-                    <ListItemText
-                      primary={formatIndicatorCaption(scriptDisplayKey(script), script.title)}
-                      secondary={formatUpdatedAt(script.updatedAt)}
-                    />
-                  </ListItem>
-                ))}
-              </List>
-            ) : (
-              <Typography variant="body2" color="text.secondary">
-                还没有用户脚本
-              </Typography>
-            )}
-          </div>
-          <div>
-            <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-              当前布局
-            </Typography>
-            {layout && layout.items.length > 0 ? (
-              <List dense disablePadding>
-                {layout.items.map((item) => (
-                  <ListItem
-                    key={item.id}
-                    disablePadding
-                    secondaryAction={
-                      <Stack direction="row" spacing={0.5}>
-                        <Button size="small" disabled={disabled} onClick={() => onOpenSettings(item)}>
-                          设置
-                        </Button>
-                        <Button
-                          size="small"
-                          color="inherit"
-                          disabled={disabled}
-                          onClick={() => onRemove(item.id)}
-                        >
-                          删除
-                        </Button>
-                      </Stack>
-                    }
-                    sx={{ pr: 18 }}
-                  >
-                    <ListItemText primary={titleOf(item)} secondary={paramsSummary(item, fieldsOf(item))} />
-                  </ListItem>
-                ))}
-              </List>
-            ) : (
-              <Typography variant="body2" color="text.secondary">
-                未添加指标，仅显示 K 线与成交量
-              </Typography>
-            )}
-          </div>
-        </Stack>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth={false}
+      slotProps={{
+        paper: {
+          sx: {
+            width: DIALOG_WIDTH,
+            height: DIALOG_HEIGHT,
+            maxWidth: DIALOG_WIDTH,
+            display: 'flex',
+            flexDirection: 'column'
+          }
+        }
+      }}
+    >
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 0.5, py: 1.25, pr: 1 }}>
+        <Typography component="span" sx={{ fontWeight: 700 }}>
+          指标与策略
+        </Typography>
+        <ChartIconButton
+          ariaLabel="新建脚本"
+          title="新建脚本"
+          roomy
+          disabled={disabled || !exampleSource}
+          onClick={onCreateEditor}
+        >
+          <Add sx={CHART_ICON_SX} />
+        </ChartIconButton>
+        <Box sx={{ flex: 1 }} />
+        <ChartIconButton ariaLabel="关闭" title="关闭" roomy onClick={onClose}>
+          <Close sx={CHART_ICON_SX} />
+        </ChartIconButton>
+      </DialogTitle>
+      <DialogContent
+        dividers
+        sx={{ p: 0, display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}
+      >
+        <Box
+          sx={{
+            width: NAV_WIDTH,
+            flexShrink: 0,
+            borderRight: 1,
+            borderColor: 'divider',
+            py: 0.5
+          }}
+        >
+          <List dense disablePadding>
+            <ListItemButton selected={tab === 'indicator'} onClick={() => setTab('indicator')}>
+              <ListItemText primary="指标" />
+            </ListItemButton>
+            <ListItemButton selected={tab === 'strategy'} onClick={() => setTab('strategy')}>
+              <ListItemText primary="策略" />
+            </ListItemButton>
+          </List>
+        </Box>
+        <Box sx={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
+          {tab === 'strategy' ? (
+            <EmptyCatalog
+              icon={<Timeline sx={{ fontSize: 48, color: 'text.disabled' }} />}
+              message="策略功能尚未开放"
+            />
+          ) : scripts.length === 0 ? (
+            <EmptyCatalog
+              icon={<ShowChart sx={{ fontSize: 48, color: 'text.disabled' }} />}
+              message="还没有用户脚本"
+            />
+          ) : (
+            <List dense disablePadding>
+              {scripts.map((script) => (
+                <ListItem
+                  key={script.id}
+                  disablePadding
+                  secondaryAction={
+                    <Stack direction="row" spacing={0.25}>
+                      <ChartIconButton
+                        ariaLabel="添加到图表"
+                        title="添加到图表"
+                        roomy
+                        disabled={disabled}
+                        onClick={() => onAdd(script.id)}
+                      >
+                        <PlaylistAdd sx={CHART_ICON_SX} />
+                      </ChartIconButton>
+                      <ChartIconButton
+                        ariaLabel="编辑脚本"
+                        title="编辑脚本"
+                        roomy
+                        disabled={disabled}
+                        onClick={() => onEditEditor(script)}
+                      >
+                        <EditOutlined sx={CHART_ICON_SX} />
+                      </ChartIconButton>
+                      <ChartIconButton
+                        ariaLabel="删除脚本"
+                        title="删除脚本"
+                        roomy
+                        disabled={disabled || referencedScripts.has(script.id)}
+                        onClick={() => onRemoveScript(script.id)}
+                      >
+                        <DeleteOutline sx={CHART_ICON_SX} />
+                      </ChartIconButton>
+                    </Stack>
+                  }
+                  sx={{
+                    pr: 12,
+                    '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.04)' }
+                  }}
+                >
+                  <ListItemText
+                    primary={script.title.trim() || '未命名'}
+                    secondary={scriptDisplayKey(script) || '—'}
+                    sx={{ px: 1.5, py: 0.5 }}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </Box>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>关闭</Button>
-      </DialogActions>
     </Dialog>
   )
 }

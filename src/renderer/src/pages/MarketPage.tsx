@@ -2,9 +2,7 @@ import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Checkbox from '@mui/material/Checkbox'
-import Chip from '@mui/material/Chip'
 import FormControlLabel from '@mui/material/FormControlLabel'
-import IconButton from '@mui/material/IconButton'
 import Menu from '@mui/material/Menu'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
@@ -19,7 +17,6 @@ import TableSortLabel from '@mui/material/TableSortLabel'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Typography from '@mui/material/Typography'
-import RefreshIcon from '@mui/icons-material/Refresh'
 import ViewColumnIcon from '@mui/icons-material/ViewColumn'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -322,35 +319,6 @@ export function MarketPage(): React.JSX.Element {
 
   return (
     <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <Stack
-        direction="row"
-        spacing={1}
-        alignItems="center"
-        sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider', flexWrap: 'wrap' }}
-      >
-        <Typography variant="h6" fontWeight={700}>
-          行情
-        </Typography>
-        <Chip
-          size="small"
-          variant="outlined"
-          label={
-            coverage
-              ? `行情 ${coverage.total_bars} 行 / 股票 ${stocks.length}`
-              : `股票 ${stocks.length}`
-          }
-        />
-        <Chip
-          size="small"
-          variant="outlined"
-          label={`${MARKET_SYNC_START}–${queryEnd}`}
-        />
-        <Box sx={{ flexGrow: 1 }} />
-        <IconButton aria-label="刷新" onClick={() => void refreshAll()} disabled={loading || querying}>
-          <RefreshIcon />
-        </IconButton>
-      </Stack>
-
       {error ? (
         <Box sx={{ px: 2, pt: 1 }}>
           <Alert severity="error" onClose={() => setError(null)}>
