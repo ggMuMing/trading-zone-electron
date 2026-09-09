@@ -76,7 +76,7 @@ export interface MarketCoverageResult {
   db_path: string
 }
 
-export type MarketSyncStage = 'stock_list' | 'plan' | 'fetch_day' | 'done'
+export type MarketSyncStage = 'stock_list' | 'plan' | 'fetch_day' | 'dashboard_backfill' | 'done'
 
 export interface MarketSyncProgress {
   stage: MarketSyncStage

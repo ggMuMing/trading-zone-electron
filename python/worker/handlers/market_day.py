@@ -6,6 +6,7 @@ from typing import Any
 import tushare as ts
 
 from worker.db import market_db
+from worker.handlers.dashboard_sync import sync_dashboard_for_date
 from worker.models import MarketSyncDayParams, MarketSyncDayResult, MarketSyncDayTimings
 from worker.rate_limit import wait_for_tushare_slot
 
@@ -57,8 +58,29 @@ def market_day(params: dict) -> MarketSyncDayResult:
     except Exception as exc:  # noqa: BLE001
         errors.append(f"adj_factor: {exc}" if str(exc) else "adj_factor failed")
 
+    if bar_count <= 0 and not any(item.startswith("daily:") for item in errors):
+        errors.append(f"daily: empty result for {parsed.trade_date}")
+    if adj_count <= 0 and not any(item.startswith("adj_factor:") for item in errors):
+        errors.append(f"adj_factor: empty result for {parsed.trade_date}")
+
+    index_count = 0
+    margin_count = 0
+    limit_count = 0
+    dashboard_error: str | None = None
+    if bar_count > 0:
+        try:
+            dash = sync_dashboard_for_date(pro, parsed.trade_date)
+            index_count = int(dash["index_count"])
+            margin_count = int(dash["margin_count"])
+            limit_count = int(dash["limit_count"])
+        except Exception as exc:  # noqa: BLE001
+            dashboard_error = f"dashboard: {exc}" if str(exc) else "dashboard failed"
+
     status = "complete" if not errors else "partial"
-    error = "; ".join(errors) if errors else None
+    parts = list(errors)
+    if dashboard_error:
+        parts.append(dashboard_error)
+    error = "; ".join(parts) if parts else None
     market_db.upsert_sync_trade_date(parsed.trade_date, bar_count, adj_count, status)
     return MarketSyncDayResult(
         trade_date=parsed.trade_date,
@@ -66,6 +88,9 @@ def market_day(params: dict) -> MarketSyncDayResult:
         adj_count=adj_count,
         status=status,
         error=error,
+        index_count=index_count,
+        margin_count=margin_count,
+        limit_count=limit_count,
         timings_ms=MarketSyncDayTimings(
             wait=wait_ms,
             daily=daily_ms,

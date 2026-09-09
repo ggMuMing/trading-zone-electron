@@ -15,6 +15,7 @@ import type {
   SyncMarketPoolResult,
   SyncMarketWindowResult
 } from '../shared/types/market'
+import type { DashboardQueryParams, DashboardQueryResult } from '../shared/types/dashboard'
 
 export interface SyncStockListResult {
   count: number
@@ -38,6 +39,9 @@ export interface AppApi {
     coverage: () => Promise<MarketCoverageResult>
     syncStatus: () => Promise<MarketSyncStatus>
     onSyncProgress: (callback: (progress: MarketSyncProgress) => void) => () => void
+  }
+  dashboard: {
+    query: (params?: DashboardQueryParams) => Promise<DashboardQueryResult>
   }
   chart: {
     build: (params: MarketQueryParams) => Promise<ChartInput | null>

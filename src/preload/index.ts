@@ -16,6 +16,7 @@ import type {
   SyncMarketPoolResult,
   SyncMarketWindowResult
 } from '../shared/types/market'
+import type { DashboardQueryParams, DashboardQueryResult } from '../shared/types/dashboard'
 
 export interface SyncStockListResult {
   count: number
@@ -51,6 +52,10 @@ const api = {
         ipcRenderer.removeListener('market:syncProgress', listener)
       }
     }
+  },
+  dashboard: {
+    query: (params?: DashboardQueryParams): Promise<DashboardQueryResult> =>
+      ipcRenderer.invoke('dashboard:query', params ?? {})
   },
   chart: {
     build: (params: MarketQueryParams): Promise<ChartInput | null> =>

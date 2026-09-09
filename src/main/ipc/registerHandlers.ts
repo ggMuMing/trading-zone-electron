@@ -84,6 +84,18 @@ export function registerHandlers(): void {
     return applicationService.queryOhlcv(parseMarketQueryParams(params, 'market:query'))
   })
 
+  ipcMain.handle('dashboard:query', async (_event, params: unknown) => {
+    if (params !== undefined && params !== null && typeof params !== 'object') {
+      throw new Error('dashboard:query requires params object')
+    }
+    const p = (params ?? {}) as Record<string, unknown>
+    return applicationService.queryDashboard({
+      ts_code: typeof p.ts_code === 'string' ? p.ts_code : undefined,
+      start_date: typeof p.start_date === 'string' ? p.start_date : undefined,
+      end_date: typeof p.end_date === 'string' ? p.end_date : undefined
+    })
+  })
+
   ipcMain.handle('chart:build', async (_event, params: unknown) => {
     return applicationService.buildChartInput(parseMarketQueryParams(params, 'chart:build'))
   })

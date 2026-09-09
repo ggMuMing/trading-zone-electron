@@ -2,12 +2,13 @@ import Box from '@mui/material/Box'
 import IconButton from '@mui/material/IconButton'
 import Stack from '@mui/material/Stack'
 import Tooltip from '@mui/material/Tooltip'
+import DashboardIcon from '@mui/icons-material/SpaceDashboard'
 import CandlestickChartIcon from '@mui/icons-material/CandlestickChart'
 import SettingsIcon from '@mui/icons-material/Settings'
 import ShowChartIcon from '@mui/icons-material/ShowChart'
 import type { ReactNode } from 'react'
 
-export type AppPage = 'settings' | 'market' | 'chart'
+export type AppPage = 'dashboard' | 'settings' | 'market' | 'chart'
 
 interface AppShellProps {
   page: AppPage
@@ -46,6 +47,18 @@ export function AppShell({
           gap: 1
         }}
       >
+        <Tooltip title={navigationLocked ? lockedTitle : '仪表盘'} placement="right">
+          <span>
+            <IconButton
+              color={page === 'dashboard' ? 'primary' : 'default'}
+              onClick={() => onPageChange('dashboard')}
+              disabled={navigationLocked}
+              aria-label="仪表盘"
+            >
+              <DashboardIcon />
+            </IconButton>
+          </span>
+        </Tooltip>
         <Tooltip title={navigationLocked ? lockedTitle : '配置'} placement="right">
           <span>
             <IconButton

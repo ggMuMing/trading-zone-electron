@@ -1,7 +1,8 @@
 import {
   MARKET_POOL_SIZE,
   MARKET_SYNC_END,
-  MARKET_SYNC_START
+  MARKET_SYNC_START,
+  todayYyyymmdd
 } from '../../shared/constants/market'
 import type {
   BoardStats,
@@ -48,9 +49,11 @@ import { indicatorScriptRepository } from '../db/indicatorScriptRepository'
 import { marketPoolRepository } from '../db/marketPoolRepository'
 import { stocksRepository } from '../db/stocksRepository'
 import { decodeOhlcvArrow } from '../market/arrowOhlcv'
+import type { DashboardQueryParams, DashboardQueryResult } from '../../shared/types/dashboard'
 
 const MARKET_CALL_TIMEOUT_MS = 180_000
-const MARKET_DAY_TIMEOUT_MS = 60_000
+const MARKET_DAY_TIMEOUT_MS = 120_000
+const DASHBOARD_BACKFILL_TIMEOUT_MS = 1_800_000
 const DATE_RE = /^[0-9]{8}$/
 
 export type SyncProgressHandler = (progress: MarketSyncProgress) => void
@@ -231,6 +234,29 @@ export const applicationService = {
       this.ensureMarketPool()
 
       emit({
+        stage: 'dashboard_backfill',
+        done_days: pending.length,
+        total_pending: pending.length,
+        skipped_days: skippedDays,
+        error_count: errors.length,
+        message: '正在回填指数 / 两融 / 涨跌状态…'
+      })
+
+      try {
+        const backfill = await pythonBridge.call<{ error?: string | null }>(
+          PYTHON_METHODS.syncDashboardBackfill,
+          { token, start_date: startDate, end_date: endDate },
+          DASHBOARD_BACKFILL_TIMEOUT_MS
+        )
+        if (backfill.error) {
+          errors.push({ trade_date: endDate, message: backfill.error })
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        errors.push({ trade_date: endDate, message: `dashboard_backfill: ${message}` })
+      }
+
+      emit({
         stage: 'done',
         done_days: pending.length,
         total_pending: pending.length,
@@ -238,7 +264,7 @@ export const applicationService = {
         error_count: errors.length,
         message:
           pending.length === 0
-            ? `窗口内无需补齐（已跳过 ${skippedDays} 个交易日）`
+            ? `窗口内股票日已齐，已检查看板回填（跳过 ${skippedDays} 个交易日）`
             : `完成：补齐 ${pending.length} 日，跳过 ${skippedDays} 日`
       })
 
@@ -314,6 +340,18 @@ export const applicationService = {
       count: result.count,
       bars
     }
+  },
+
+  async queryDashboard(params: DashboardQueryParams = {}): Promise<DashboardQueryResult> {
+    const tsCode = params.ts_code?.trim()
+    const payload: Record<string, unknown> = {
+      start_date: params.start_date ?? MARKET_SYNC_START,
+      end_date: params.end_date ?? todayYyyymmdd()
+    }
+    if (tsCode) {
+      payload.ts_code = tsCode
+    }
+    return pythonBridge.call<DashboardQueryResult>(PYTHON_METHODS.queryDashboard, payload)
   },
 
   exampleIndicatorSource(): string {

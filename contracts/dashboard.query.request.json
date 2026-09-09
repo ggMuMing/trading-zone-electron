@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trading-zone.local/contracts/dashboard.query.request.json",
+  "title": "DashboardQueryRequest",
+  "description": "Params for method data.query.dashboard",
+  "type": "object",
+  "required": ["start_date", "end_date"],
+  "properties": {
+    "ts_code": { "type": ["string", "null"], "minLength": 1 },
+    "start_date": { "type": "string", "pattern": "^[0-9]{8}$" },
+    "end_date": { "type": "string", "pattern": "^[0-9]{8}$" }
+  },
+  "additionalProperties": false
+}

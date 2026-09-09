@@ -50,6 +50,40 @@ CREATE TABLE IF NOT EXISTS trade_cal (
   trade_date VARCHAR PRIMARY KEY,
   is_open INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS index_daily (
+  ts_code VARCHAR NOT NULL,
+  trade_date VARCHAR NOT NULL,
+  open DOUBLE,
+  high DOUBLE,
+  low DOUBLE,
+  close DOUBLE,
+  pre_close DOUBLE,
+  change DOUBLE,
+  pct_chg DOUBLE,
+  vol DOUBLE,
+  amount DOUBLE,
+  synced_at TIMESTAMP NOT NULL,
+  PRIMARY KEY (ts_code, trade_date)
+);
+
+CREATE TABLE IF NOT EXISTS margin (
+  trade_date VARCHAR NOT NULL,
+  exchange_id VARCHAR NOT NULL,
+  rzye DOUBLE,
+  rqye DOUBLE,
+  rzrqye DOUBLE,
+  synced_at TIMESTAMP NOT NULL,
+  PRIMARY KEY (trade_date, exchange_id)
+);
+
+CREATE TABLE IF NOT EXISTS stock_limit_status (
+  ts_code VARCHAR NOT NULL,
+  trade_date VARCHAR NOT NULL,
+  limit_status INTEGER,
+  synced_at TIMESTAMP NOT NULL,
+  PRIMARY KEY (ts_code, trade_date)
+);
 """
 
 _conn: duckdb.DuckDBPyConnection | None = None
@@ -132,6 +166,296 @@ def upsert_daily_bars(rows: list[dict[str, Any]]) -> int:
     finally:
         conn.unregister(view)
     return len(rows)
+
+
+def upsert_index_daily(rows: list[dict[str, Any]]) -> int:
+    if not rows:
+        return 0
+    conn = get_conn()
+    synced_at = _now_iso()
+    table = pa.table(
+        {
+            "ts_code": [str(r["ts_code"]) for r in rows],
+            "trade_date": [str(r["trade_date"]) for r in rows],
+            "open": pa.array([r.get("open") for r in rows], type=pa.float64()),
+            "high": pa.array([r.get("high") for r in rows], type=pa.float64()),
+            "low": pa.array([r.get("low") for r in rows], type=pa.float64()),
+            "close": pa.array([r.get("close") for r in rows], type=pa.float64()),
+            "pre_close": pa.array([r.get("pre_close") for r in rows], type=pa.float64()),
+            "change": pa.array([r.get("change") for r in rows], type=pa.float64()),
+            "pct_chg": pa.array([r.get("pct_chg") for r in rows], type=pa.float64()),
+            "vol": pa.array([r.get("vol") for r in rows], type=pa.float64()),
+            "amount": pa.array([r.get("amount") for r in rows], type=pa.float64()),
+            "synced_at": [synced_at] * len(rows),
+        }
+    )
+    view = "_tmp_index_daily"
+    conn.register(view, table)
+    try:
+        conn.execute(
+            f"""
+            INSERT OR REPLACE INTO index_daily
+              (ts_code, trade_date, open, high, low, close, pre_close, change, pct_chg,
+               vol, amount, synced_at)
+            SELECT ts_code, trade_date, open, high, low, close, pre_close, change, pct_chg,
+                   vol, amount, synced_at
+            FROM {view}
+            """
+        )
+    finally:
+        conn.unregister(view)
+    return len(rows)
+
+
+def upsert_margin(rows: list[dict[str, Any]]) -> int:
+    if not rows:
+        return 0
+    conn = get_conn()
+    synced_at = _now_iso()
+    table = pa.table(
+        {
+            "trade_date": [str(r["trade_date"]) for r in rows],
+            "exchange_id": [str(r["exchange_id"]) for r in rows],
+            "rzye": pa.array([r.get("rzye") for r in rows], type=pa.float64()),
+            "rqye": pa.array([r.get("rqye") for r in rows], type=pa.float64()),
+            "rzrqye": pa.array([r.get("rzrqye") for r in rows], type=pa.float64()),
+            "synced_at": [synced_at] * len(rows),
+        }
+    )
+    view = "_tmp_margin"
+    conn.register(view, table)
+    try:
+        conn.execute(
+            f"""
+            INSERT OR REPLACE INTO margin
+              (trade_date, exchange_id, rzye, rqye, rzrqye, synced_at)
+            SELECT trade_date, exchange_id, rzye, rqye, rzrqye, synced_at
+            FROM {view}
+            """
+        )
+    finally:
+        conn.unregister(view)
+    return len(rows)
+
+
+def upsert_limit_status(rows: list[dict[str, Any]]) -> int:
+    if not rows:
+        return 0
+    conn = get_conn()
+    synced_at = _now_iso()
+    table = pa.table(
+        {
+            "ts_code": [str(r["ts_code"]) for r in rows],
+            "trade_date": [str(r["trade_date"]) for r in rows],
+            "limit_status": pa.array([r.get("limit_status") for r in rows], type=pa.int32()),
+            "synced_at": [synced_at] * len(rows),
+        }
+    )
+    view = "_tmp_limit_status"
+    conn.register(view, table)
+    try:
+        conn.execute(
+            f"""
+            INSERT OR REPLACE INTO stock_limit_status
+              (ts_code, trade_date, limit_status, synced_at)
+            SELECT ts_code, trade_date, limit_status, synced_at
+            FROM {view}
+            """
+        )
+    finally:
+        conn.unregister(view)
+    return len(rows)
+
+
+def list_index_dates(ts_code: str, start_date: str, end_date: str) -> list[str]:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT trade_date FROM index_daily
+        WHERE ts_code = ?
+          AND trade_date >= ?
+          AND trade_date <= ?
+        ORDER BY trade_date
+        """,
+        [ts_code, start_date, end_date],
+    ).fetchall()
+    return [str(r[0]) for r in rows]
+
+
+def list_margin_dates(start_date: str, end_date: str) -> list[str]:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT DISTINCT trade_date FROM margin
+        WHERE trade_date >= ?
+          AND trade_date <= ?
+        ORDER BY trade_date
+        """,
+        [start_date, end_date],
+    ).fetchall()
+    return [str(r[0]) for r in rows]
+
+
+def list_limit_status_dates(start_date: str, end_date: str) -> list[str]:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT DISTINCT trade_date FROM stock_limit_status
+        WHERE trade_date >= ?
+          AND trade_date <= ?
+        ORDER BY trade_date
+        """,
+        [start_date, end_date],
+    ).fetchall()
+    return [str(r[0]) for r in rows]
+
+
+def fetch_index_bars(ts_code: str, start_date: str, end_date: str) -> list[dict[str, Any]]:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT ts_code, trade_date, open, high, low, close, pre_close, change, pct_chg, vol, amount
+        FROM index_daily
+        WHERE ts_code = ?
+          AND trade_date >= ?
+          AND trade_date <= ?
+        ORDER BY trade_date
+        """,
+        [ts_code, start_date, end_date],
+    ).fetchall()
+    return [_index_row_to_dict(r) for r in rows]
+
+
+def fetch_latest_index_rows(ts_codes: list[str]) -> list[dict[str, Any]]:
+    if not ts_codes:
+        return []
+    conn = get_conn()
+    placeholders = ", ".join(["?"] * len(ts_codes))
+    rows = conn.execute(
+        f"""
+        SELECT i.ts_code, i.trade_date, i.open, i.high, i.low, i.close, i.pre_close,
+               i.change, i.pct_chg, i.vol, i.amount
+        FROM index_daily i
+        INNER JOIN (
+          SELECT ts_code, MAX(trade_date) AS trade_date
+          FROM index_daily
+          WHERE ts_code IN ({placeholders})
+          GROUP BY ts_code
+        ) latest
+          ON i.ts_code = latest.ts_code AND i.trade_date = latest.trade_date
+        """,
+        ts_codes,
+    ).fetchall()
+    return [_index_row_to_dict(r) for r in rows]
+
+
+def fetch_margin_totals(start_date: str, end_date: str) -> list[tuple[str, float | None]]:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT trade_date, SUM(rzrqye) AS rzrqye
+        FROM margin
+        WHERE trade_date >= ?
+          AND trade_date <= ?
+        GROUP BY trade_date
+        ORDER BY trade_date
+        """,
+        [start_date, end_date],
+    ).fetchall()
+    return [(str(r[0]), _as_float(r[1])) for r in rows]
+
+
+def fetch_turnover_totals(
+    ts_codes: list[str], start_date: str, end_date: str
+) -> list[tuple[str, float | None]]:
+    if not ts_codes:
+        return []
+    conn = get_conn()
+    placeholders = ", ".join(["?"] * len(ts_codes))
+    rows = conn.execute(
+        f"""
+        SELECT trade_date, SUM(amount) AS amount
+        FROM index_daily
+        WHERE ts_code IN ({placeholders})
+          AND trade_date >= ?
+          AND trade_date <= ?
+        GROUP BY trade_date
+        ORDER BY trade_date
+        """,
+        [*ts_codes, start_date, end_date],
+    ).fetchall()
+    return [(str(r[0]), _as_float(r[1])) for r in rows]
+
+
+def fetch_breadth_rows(trade_date: str) -> list[tuple[str, float | None, float | None, int | None]]:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT d.ts_code, d.pct_chg, d.vol, s.limit_status
+        FROM daily_bar d
+        INNER JOIN stock_limit_status s
+          ON d.ts_code = s.ts_code AND d.trade_date = s.trade_date
+        WHERE d.trade_date = ?
+          AND d.vol IS NOT NULL
+          AND d.vol > 0
+        """,
+        [trade_date],
+    ).fetchall()
+    result: list[tuple[str, float | None, float | None, int | None]] = []
+    for ts_code, pct_chg, vol, limit_status in rows:
+        result.append(
+            (
+                str(ts_code),
+                _as_float(pct_chg),
+                _as_float(vol),
+                int(limit_status) if limit_status is not None else None,
+            )
+        )
+    return result
+
+
+def latest_index_trade_date(ts_code: str) -> str | None:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT MAX(trade_date) FROM index_daily WHERE ts_code = ?",
+        [ts_code],
+    ).fetchone()
+    if not row or row[0] is None:
+        return None
+    return str(row[0])
+
+
+def latest_limit_trade_date() -> str | None:
+    conn = get_conn()
+    row = conn.execute("SELECT MAX(trade_date) FROM stock_limit_status").fetchone()
+    if not row or row[0] is None:
+        return None
+    return str(row[0])
+
+
+def _index_row_to_dict(row: tuple[Any, ...]) -> dict[str, Any]:
+    return {
+        "ts_code": str(row[0]),
+        "trade_date": str(row[1]),
+        "open": _as_float(row[2]),
+        "high": _as_float(row[3]),
+        "low": _as_float(row[4]),
+        "close": _as_float(row[5]),
+        "pre_close": _as_float(row[6]),
+        "change": _as_float(row[7]),
+        "pct_chg": _as_float(row[8]),
+        "vol": _as_float(row[9]),
+        "amount": _as_float(row[10]),
+    }
+
+
+def _as_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def upsert_adj_factors(rows: list[dict[str, Any]]) -> int:
@@ -340,6 +664,7 @@ def list_complete_dates(start_date: str, end_date: str) -> list[str]:
         """
         SELECT trade_date FROM sync_trade_date
         WHERE status = 'complete'
+          AND bar_count > 0
           AND trade_date >= ?
           AND trade_date <= ?
         ORDER BY trade_date
@@ -352,7 +677,10 @@ def list_complete_dates(start_date: str, end_date: str) -> list[str]:
 def count_complete_days() -> int:
     conn = get_conn()
     row = conn.execute(
-        "SELECT COUNT(*) FROM sync_trade_date WHERE status = 'complete'"
+        """
+        SELECT COUNT(*) FROM sync_trade_date
+        WHERE status = 'complete' AND bar_count > 0
+        """
     ).fetchone()
     return int(row[0]) if row else 0
 
@@ -363,6 +691,9 @@ def clear_market() -> str:
     conn.execute("DELETE FROM adj_factor")
     conn.execute("DELETE FROM sync_trade_date")
     conn.execute("DELETE FROM trade_cal")
+    conn.execute("DELETE FROM index_daily")
+    conn.execute("DELETE FROM margin")
+    conn.execute("DELETE FROM stock_limit_status")
     return str(resolve_db_path())
 
 

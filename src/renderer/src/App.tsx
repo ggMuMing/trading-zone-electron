@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { AppShell, type AppPage } from './layout/AppShell'
 import { ChartPage } from './pages/ChartPage'
+import { DashboardPage } from './pages/dashboard/DashboardPage'
 import { MarketPage } from './pages/MarketPage'
 import { SettingsPage } from './pages/SettingsPage'
 import type { MarketSyncProgress } from '../../shared/types/market'
 
 function App(): React.JSX.Element {
-  const [page, setPage] = useState<AppPage>('settings')
+  const [page, setPage] = useState<AppPage>('dashboard')
   const [syncing, setSyncing] = useState(false)
   const [clearing, setClearing] = useState(false)
   const [progress, setProgress] = useState<MarketSyncProgress | null>(null)
@@ -41,7 +42,9 @@ function App(): React.JSX.Element {
       navigationLocked={interactionLocked}
       navigationLockHint={lockHint}
     >
-      {page === 'settings' ? (
+      {page === 'dashboard' ? (
+        <DashboardPage />
+      ) : page === 'settings' ? (
         <SettingsPage
           syncing={syncing}
           clearing={clearing}

@@ -99,6 +99,17 @@ app.whenReady().then(async () => {
     return
   }
 
+  if (process.env.V02_SPRINT4_ACCEPTANCE === '1') {
+    try {
+      const { runV02Sprint4Acceptance } = await import('./acceptance/runV02Sprint4')
+      await runV02Sprint4Acceptance()
+    } catch (err) {
+      console.error('[acceptance] failed:', err)
+      app.exit(1)
+    }
+    return
+  }
+
   createWindow()
 
   app.on('activate', function () {

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trading-zone.local/contracts/dashboard.query.response.json",
+  "title": "DashboardQueryResponse",
+  "description": "Result for method data.query.dashboard. amount / margin / turnover values are in 亿元.",
+  "type": "object",
+  "required": ["selected_ts_code", "indices", "bars", "margin", "turnover", "breadth"],
+  "properties": {
+    "as_of": { "type": ["string", "null"] },
+    "selected_ts_code": { "type": "string" },
+    "indices": { "type": "array" },
+    "bars": { "type": "array" },
+    "margin": { "type": "object" },
+    "turnover": { "type": "object" },
+    "breadth": { "type": "object" }
+  },
+  "additionalProperties": false
+}

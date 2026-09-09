@@ -147,9 +147,94 @@ class MarketSyncDayResult(BaseModel):
     adj_count: int
     status: Literal["complete", "partial"]
     error: str | None = None
+    index_count: int = 0
+    margin_count: int = 0
+    limit_count: int = 0
     timings_ms: MarketSyncDayTimings = Field(default_factory=MarketSyncDayTimings)
 
 
 class MarketClearResult(BaseModel):
     ok: bool
     db_path: str
+
+
+class DashboardBackfillParams(BaseModel):
+    token: str = Field(min_length=1)
+    start_date: str = Field(min_length=8, max_length=8)
+    end_date: str = Field(min_length=8, max_length=8)
+
+
+class DashboardBackfillResult(BaseModel):
+    start_date: str
+    end_date: str
+    index_count: int = 0
+    margin_count: int = 0
+    limit_count: int = 0
+    index_fetched: bool = False
+    margin_fetched: bool = False
+    limit_days: int = 0
+    error: str | None = None
+
+
+class DashboardQueryParams(BaseModel):
+    ts_code: str | None = None
+    start_date: str = Field(min_length=8, max_length=8)
+    end_date: str = Field(min_length=8, max_length=8)
+
+
+class DashboardIndexQuote(BaseModel):
+    ts_code: str
+    name: str
+    group: Literal["market", "broad"]
+    trade_date: str | None = None
+    close: float | None = None
+    pct_chg: float | None = None
+    change: float | None = None
+    vol: float | None = None
+    amount: float | None = None
+
+
+class DashboardBar(BaseModel):
+    trade_date: str
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    close: float | None = None
+    pct_chg: float | None = None
+    vol: float | None = None
+    amount: float | None = None
+
+
+class DashboardSeriesPoint(BaseModel):
+    trade_date: str
+    value: float | None = None
+    change: float | None = None
+    close: float | None = None
+
+
+class DashboardStatBlock(BaseModel):
+    trade_date: str | None = None
+    value: float | None = None
+    change: float | None = None
+    series: list[DashboardSeriesPoint] = Field(default_factory=list)
+
+
+class DashboardBreadth(BaseModel):
+    trade_date: str | None = None
+    up_count: int = 0
+    limit_up_count: int = 0
+    down_count: int = 0
+    limit_down_count: int = 0
+    flat_count: int = 0
+    histogram: list[int] = Field(default_factory=lambda: [0] * 9)
+    labels: list[str] = Field(default_factory=list)
+
+
+class DashboardQueryResult(BaseModel):
+    as_of: str | None = None
+    selected_ts_code: str
+    indices: list[DashboardIndexQuote] = Field(default_factory=list)
+    bars: list[DashboardBar] = Field(default_factory=list)
+    margin: DashboardStatBlock = Field(default_factory=DashboardStatBlock)
+    turnover: DashboardStatBlock = Field(default_factory=DashboardStatBlock)
+    breadth: DashboardBreadth = Field(default_factory=DashboardBreadth)

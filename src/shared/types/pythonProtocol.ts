@@ -130,6 +130,9 @@ export interface MarketSyncDayResult {
   adj_count: number
   status: 'complete' | 'partial'
   error?: string | null
+  index_count?: number
+  margin_count?: number
+  limit_count?: number
   timings_ms?: MarketSyncDayTimings
 }
 
@@ -158,8 +161,10 @@ export const PYTHON_METHODS = {
   syncMarketPool: 'data.sync.market_pool',
   syncMarketPlan: 'data.sync.market_plan',
   syncMarketDay: 'data.sync.market_day',
+  syncDashboardBackfill: 'data.sync.dashboard_backfill',
   clearMarket: 'data.admin.clear_market',
   queryOhlcv: 'data.query.ohlcv',
+  queryDashboard: 'data.query.dashboard',
   metaMarketCoverage: 'data.meta.market_coverage',
   computeIndicator: 'compute.indicator',
   computeScriptTry: 'compute.script_try'
