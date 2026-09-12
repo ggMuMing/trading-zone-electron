@@ -150,8 +150,16 @@ def seed_dashboard_fixture(params: dict) -> dict:
             )
     margin_count = market_db.upsert_margin(margin_rows)
 
+    prev_date = days[-2]
     breadth_date = days[-1]
-    daily_rows = [
+    prev_daily = [
+        _bar("000002.SZ", prev_date, 9.5, 2),
+        _bar("000003.SZ", prev_date, 10.0, 3),
+        _bar("000008.SZ", prev_date, -9.5, 5),
+        _bar("000010.SZ", prev_date, 1.2, 1),
+    ]
+    prev_limits = [2, 3, 5, 1]
+    last_daily = [
         _bar("000001.SZ", breadth_date, 0.0, 0),
         _bar("000002.SZ", breadth_date, 6.0, 2),
         _bar("000003.SZ", breadth_date, 3.0, 1),
@@ -163,9 +171,11 @@ def seed_dashboard_fixture(params: dict) -> dict:
         _bar("000009.SZ", breadth_date, -10.0, 6),
         _bar("000010.SZ", breadth_date, 1.2, 1),
     ]
+    last_limits = [0, 2, 1, 1, 0, 4, 4, 5, 6, 1]
+    daily_rows = prev_daily + last_daily
     limit_rows = [
-        {"ts_code": row["ts_code"], "trade_date": breadth_date, "limit_status": status}
-        for row, status in zip(daily_rows, [0, 2, 1, 1, 0, 4, 4, 5, 6, 1])
+        {"ts_code": row["ts_code"], "trade_date": row["trade_date"], "limit_status": status}
+        for row, status in zip(daily_rows, prev_limits + last_limits)
     ]
     bar_count = market_db.upsert_daily_bars(daily_rows)
     limit_count = market_db.upsert_limit_status(limit_rows)

@@ -47,6 +47,12 @@ export interface DashboardStatBlock {
   series: DashboardSeriesPoint[]
 }
 
+export interface DashboardBreadthPoint {
+  trade_date: string
+  limit_up_count: number
+  limit_down_count: number
+}
+
 export interface DashboardBreadth {
   trade_date: string | null
   up_count: number
@@ -56,6 +62,7 @@ export interface DashboardBreadth {
   flat_count: number
   histogram: number[]
   labels: string[]
+  series: DashboardBreadthPoint[]
 }
 
 export interface DashboardQueryResult {

@@ -414,6 +414,33 @@ def fetch_breadth_rows(trade_date: str) -> list[tuple[str, float | None, float |
     return result
 
 
+def fetch_breadth_limit_series(
+    start_date: str, end_date: str
+) -> list[tuple[str, int, int]]:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT d.trade_date,
+               SUM(CASE WHEN s.limit_status IN (2, 3) THEN 1 ELSE 0 END) AS limit_up_count,
+               SUM(CASE WHEN s.limit_status IN (5, 6) THEN 1 ELSE 0 END) AS limit_down_count
+        FROM daily_bar d
+        INNER JOIN stock_limit_status s
+          ON d.ts_code = s.ts_code AND d.trade_date = s.trade_date
+        WHERE d.trade_date >= ?
+          AND d.trade_date <= ?
+          AND d.vol IS NOT NULL
+          AND d.vol > 0
+        GROUP BY d.trade_date
+        ORDER BY d.trade_date
+        """,
+        [start_date, end_date],
+    ).fetchall()
+    result: list[tuple[str, int, int]] = []
+    for trade_date, limit_up_count, limit_down_count in rows:
+        result.append((str(trade_date), int(limit_up_count or 0), int(limit_down_count or 0)))
+    return result
+
+
 def latest_index_trade_date(ts_code: str) -> str | None:
     conn = get_conn()
     row = conn.execute(

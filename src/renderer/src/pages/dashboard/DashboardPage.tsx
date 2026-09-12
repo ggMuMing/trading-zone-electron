@@ -12,7 +12,7 @@ import { MiniKline } from './MiniKline'
 import { StatsPanel } from './StatsPanel'
 
 const DEFAULT_LEFT_RATIO = 0.5
-const DEFAULT_TOP_RATIO = 0.75
+const DEFAULT_TOP_RATIO = 0.5
 
 export function DashboardPage(): React.JSX.Element {
   const [selected, setSelected] = useState(DASHBOARD_DEFAULT_TS_CODE)
@@ -91,7 +91,8 @@ export function DashboardPage(): React.JSX.Element {
                   limit_down_count: 0,
                   flat_count: 0,
                   histogram: [0, 0, 0, 0, 0, 0, 0, 0, 0],
-                  labels: []
+                  labels: [],
+                  series: []
                 }
               }
             />

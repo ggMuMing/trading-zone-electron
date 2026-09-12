@@ -15,6 +15,7 @@ from worker.db import market_db
 from worker.models import (
     DashboardBar,
     DashboardBreadth,
+    DashboardBreadthPoint,
     DashboardIndexQuote,
     DashboardQueryParams,
     DashboardQueryResult,
@@ -97,6 +98,16 @@ def query_dashboard(params: dict) -> DashboardQueryResult:
     as_of = market_db.latest_index_trade_date(DASHBOARD_DEFAULT_TS_CODE)
     breadth_date = market_db.latest_limit_trade_date() or as_of
     breadth = _compute_breadth(breadth_date)
+    breadth.series = [
+        DashboardBreadthPoint(
+            trade_date=trade_date,
+            limit_up_count=limit_up_count,
+            limit_down_count=limit_down_count,
+        )
+        for trade_date, limit_up_count, limit_down_count in market_db.fetch_breadth_limit_series(
+            parsed.start_date, parsed.end_date
+        )
+    ]
 
     return DashboardQueryResult(
         as_of=as_of,

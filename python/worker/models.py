@@ -219,6 +219,12 @@ class DashboardStatBlock(BaseModel):
     series: list[DashboardSeriesPoint] = Field(default_factory=list)
 
 
+class DashboardBreadthPoint(BaseModel):
+    trade_date: str
+    limit_up_count: int = 0
+    limit_down_count: int = 0
+
+
 class DashboardBreadth(BaseModel):
     trade_date: str | None = None
     up_count: int = 0
@@ -228,6 +234,7 @@ class DashboardBreadth(BaseModel):
     flat_count: int = 0
     histogram: list[int] = Field(default_factory=lambda: [0] * 9)
     labels: list[str] = Field(default_factory=list)
+    series: list[DashboardBreadthPoint] = Field(default_factory=list)
 
 
 class DashboardQueryResult(BaseModel):

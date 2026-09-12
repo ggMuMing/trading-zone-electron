@@ -12,7 +12,10 @@
     "bars": { "type": "array" },
     "margin": { "type": "object" },
     "turnover": { "type": "object" },
-    "breadth": { "type": "object" }
+    "breadth": {
+      "type": "object",
+      "description": "Latest-day counts plus limit-up/limit-down history. series items are { trade_date, limit_up_count, limit_down_count }."
+    }
   },
   "additionalProperties": false
 }

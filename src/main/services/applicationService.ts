@@ -2,6 +2,7 @@ import {
   MARKET_POOL_SIZE,
   MARKET_SYNC_END,
   MARKET_SYNC_START,
+  oneYearAgoYyyymmdd,
   todayYyyymmdd
 } from '../../shared/constants/market'
 import type {
@@ -345,7 +346,7 @@ export const applicationService = {
   async queryDashboard(params: DashboardQueryParams = {}): Promise<DashboardQueryResult> {
     const tsCode = params.ts_code?.trim()
     const payload: Record<string, unknown> = {
-      start_date: params.start_date ?? MARKET_SYNC_START,
+      start_date: params.start_date ?? oneYearAgoYyyymmdd(),
       end_date: params.end_date ?? todayYyyymmdd()
     }
     if (tsCode) {

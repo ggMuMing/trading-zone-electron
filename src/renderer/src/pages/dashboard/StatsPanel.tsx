@@ -3,6 +3,7 @@ import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import type { DashboardBreadth, DashboardStatBlock } from '../../../../shared/types/dashboard'
 import { BreadthHistogram } from './BreadthHistogram'
+import { BreadthHistoryChart } from './BreadthHistoryChart'
 import { formatSignedYi, formatYi, signedColor } from './format'
 import { AlignedStatChart, STAT_CLOSE_COLOR, STAT_VALUE_COLOR } from './StatCharts'
 
@@ -45,7 +46,7 @@ export function StatsPanel({ margin, turnover, breadth }: StatsPanelProps): Reac
           legends={[{ color: STAT_VALUE_COLOR, label: '成交额' }]}
         />
       </Box>
-      <Box sx={{ flex: 1, minHeight: 160 }}>
+      <Box sx={{ flex: 2, minHeight: 280, display: 'flex', flexDirection: 'column' }}>
         <BreadthBlock breadth={breadth} />
       </Box>
     </Box>
@@ -107,8 +108,11 @@ function BreadthBlock({ breadth }: { breadth: DashboardBreadth }): React.JSX.Ele
         <Metric label="下跌" value={breadth.down_count} color="#26a69a" />
         <Metric label="跌停" value={breadth.limit_down_count} color="#26a69a" />
       </Stack>
-      <Box sx={{ flex: 1, minHeight: 0 }}>
+      <Box sx={{ flex: 1, minHeight: 120 }}>
         <BreadthHistogram labels={breadth.labels} values={breadth.histogram} />
+      </Box>
+      <Box sx={{ flex: 1, minHeight: 160, mt: 1 }}>
+        <BreadthHistoryChart series={breadth.series ?? []} />
       </Box>
     </Box>
   )

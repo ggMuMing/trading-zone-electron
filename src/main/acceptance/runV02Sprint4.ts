@@ -25,7 +25,7 @@ export async function runV02Sprint4Acceptance(): Promise<void> {
 
     results.push({
       name: 'seed dashboard fixture',
-      ok: seeded.index_count > 0 && seeded.margin_count === 6 && seeded.limit_count === 10,
+      ok: seeded.index_count > 0 && seeded.margin_count === 6 && seeded.limit_count === 14,
       detail: `index=${seeded.index_count}; margin=${seeded.margin_count}; limit=${seeded.limit_count}`
     })
 
@@ -84,6 +84,19 @@ export async function runV02Sprint4Acceptance(): Promise<void> {
       name: 'breadth counts and 9-bin histogram',
       ok: histOk,
       detail: `up=${snapshot.breadth.up_count} lu=${snapshot.breadth.limit_up_count} down=${snapshot.breadth.down_count} ld=${snapshot.breadth.limit_down_count} flat=${snapshot.breadth.flat_count} hist=${JSON.stringify(hist)}`
+    })
+
+    const series = snapshot.breadth.series ?? []
+    const lastPoint = series[series.length - 1]
+    const seriesOk =
+      series.length >= 2 &&
+      lastPoint?.trade_date === snapshot.breadth.trade_date &&
+      lastPoint?.limit_up_count === snapshot.breadth.limit_up_count &&
+      lastPoint?.limit_down_count === snapshot.breadth.limit_down_count
+    results.push({
+      name: 'breadth limit-up/down history series',
+      ok: seriesOk,
+      detail: `n=${series.length}; last=${lastPoint ? JSON.stringify(lastPoint) : 'null'}; day=${snapshot.breadth.trade_date}`
     })
 
     const chuangye = await applicationService.queryDashboard({

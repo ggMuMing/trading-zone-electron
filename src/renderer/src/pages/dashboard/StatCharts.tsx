@@ -141,7 +141,7 @@ export function AlignedStatChart({
   )
 }
 
-function StatLegend({ legends }: { legends: StatLegendItem[] }): React.JSX.Element {
+export function StatLegend({ legends }: { legends: StatLegendItem[] }): React.JSX.Element {
   return (
     <div
       style={{
