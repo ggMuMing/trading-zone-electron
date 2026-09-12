@@ -180,6 +180,7 @@ class DashboardQueryParams(BaseModel):
     ts_code: str | None = None
     start_date: str = Field(min_length=8, max_length=8)
     end_date: str = Field(min_length=8, max_length=8)
+    breadth_universe: str | None = None
 
 
 class DashboardIndexQuote(BaseModel):
@@ -235,6 +236,8 @@ class DashboardBreadth(BaseModel):
     histogram: list[int] = Field(default_factory=lambda: [0] * 9)
     labels: list[str] = Field(default_factory=list)
     series: list[DashboardBreadthPoint] = Field(default_factory=list)
+    universe: str = "all"
+    constituent_as_of: str | None = None
 
 
 class DashboardQueryResult(BaseModel):
@@ -245,3 +248,25 @@ class DashboardQueryResult(BaseModel):
     margin: DashboardStatBlock = Field(default_factory=DashboardStatBlock)
     turnover: DashboardStatBlock = Field(default_factory=DashboardStatBlock)
     breadth: DashboardBreadth = Field(default_factory=DashboardBreadth)
+
+
+class IndexWeightSyncParams(BaseModel):
+    token: str = Field(min_length=1)
+
+
+class IndexWeightSyncResult(BaseModel):
+    updated_count: int = 0
+    skipped_count: int = 0
+    empty_count: int = 0
+    as_of_dates: dict[str, str] = Field(default_factory=dict)
+    errors: list[str] = Field(default_factory=list)
+
+
+class IndexConstituentsParams(BaseModel):
+    index_code: str = Field(min_length=1)
+
+
+class IndexConstituentsResult(BaseModel):
+    index_code: str
+    as_of: str | None = None
+    con_codes: list[str] = Field(default_factory=list)

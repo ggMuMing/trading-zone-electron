@@ -11,6 +11,9 @@ from worker.dashboard_codes import (
     DASHBOARD_VOLUME_OVERRIDE,
     YUAN_TO_YI,
 )
+
+_BREADTH_UNIVERSE_ALL = "all"
+_BREADTH_INDEX_UNIVERSES = frozenset({"000300.SH", "932000.CSI"})
 from worker.db import market_db
 from worker.models import (
     DashboardBar,
@@ -97,17 +100,30 @@ def query_dashboard(params: dict) -> DashboardQueryResult:
 
     as_of = market_db.latest_index_trade_date(DASHBOARD_DEFAULT_TS_CODE)
     breadth_date = market_db.latest_limit_trade_date() or as_of
-    breadth = _compute_breadth(breadth_date)
-    breadth.series = [
-        DashboardBreadthPoint(
-            trade_date=trade_date,
-            limit_up_count=limit_up_count,
-            limit_down_count=limit_down_count,
-        )
-        for trade_date, limit_up_count, limit_down_count in market_db.fetch_breadth_limit_series(
-            parsed.start_date, parsed.end_date
-        )
-    ]
+    universe, filter_index_code, constituent_as_of = _resolve_breadth_universe(
+        parsed.breadth_universe
+    )
+    force_empty = universe != _BREADTH_UNIVERSE_ALL and constituent_as_of is None
+    if force_empty:
+        breadth = _empty_breadth(breadth_date)
+    else:
+        breadth = _compute_breadth(breadth_date, filter_index_code)
+    breadth.universe = universe
+    breadth.constituent_as_of = constituent_as_of
+    breadth.series = (
+        []
+        if force_empty
+        else [
+            DashboardBreadthPoint(
+                trade_date=trade_date,
+                limit_up_count=limit_up_count,
+                limit_down_count=limit_down_count,
+            )
+            for trade_date, limit_up_count, limit_down_count in market_db.fetch_breadth_limit_series(
+                parsed.start_date, parsed.end_date, filter_index_code
+            )
+        ]
+    )
 
     return DashboardQueryResult(
         as_of=as_of,
@@ -177,11 +193,31 @@ def _block_from_series(series: list[DashboardSeriesPoint]) -> DashboardStatBlock
     )
 
 
-def _compute_breadth(trade_date: str | None) -> DashboardBreadth:
+def _resolve_breadth_universe(
+    raw: str | None,
+) -> tuple[str, str | None, str | None]:
+    universe = (raw or _BREADTH_UNIVERSE_ALL).strip() or _BREADTH_UNIVERSE_ALL
+    if universe == _BREADTH_UNIVERSE_ALL:
+        return _BREADTH_UNIVERSE_ALL, None, None
+    if universe not in _BREADTH_INDEX_UNIVERSES:
+        return _BREADTH_UNIVERSE_ALL, None, None
+    constituents = market_db.fetch_latest_constituents(universe)
+    as_of = constituents.get("as_of")
+    con_codes = constituents.get("con_codes") or []
+    if not as_of or not con_codes:
+        return universe, None, None
+    return universe, universe, str(as_of)
+
+
+def _empty_breadth(trade_date: str | None) -> DashboardBreadth:
+    return DashboardBreadth(trade_date=trade_date, labels=list(BREADTH_BIN_LABELS))
+
+
+def _compute_breadth(trade_date: str | None, index_code: str | None = None) -> DashboardBreadth:
     empty = DashboardBreadth(labels=list(BREADTH_BIN_LABELS))
     if not trade_date:
         return empty
-    rows = market_db.fetch_breadth_rows(trade_date)
+    rows = market_db.fetch_breadth_rows(trade_date, index_code)
     if not rows:
         return DashboardBreadth(trade_date=trade_date, labels=list(BREADTH_BIN_LABELS))
 

@@ -39,6 +39,7 @@ export function AppShell({
       <Stack
         sx={{
           width: 56,
+          height: '100%',
           flexShrink: 0,
           borderRight: 1,
           borderColor: 'divider',
@@ -59,15 +60,15 @@ export function AppShell({
             </IconButton>
           </span>
         </Tooltip>
-        <Tooltip title={navigationLocked ? lockedTitle : '配置'} placement="right">
+        <Tooltip title={navigationLocked ? lockedTitle : '图表'} placement="right">
           <span>
             <IconButton
-              color={page === 'settings' ? 'primary' : 'default'}
-              onClick={() => onPageChange('settings')}
+              color={page === 'chart' ? 'primary' : 'default'}
+              onClick={() => onPageChange('chart')}
               disabled={navigationLocked}
-              aria-label="配置"
+              aria-label="图表"
             >
-              <SettingsIcon />
+              <CandlestickChartIcon />
             </IconButton>
           </span>
         </Tooltip>
@@ -83,15 +84,16 @@ export function AppShell({
             </IconButton>
           </span>
         </Tooltip>
-        <Tooltip title={navigationLocked ? lockedTitle : '图表'} placement="right">
+        <Box sx={{ flex: 1, minHeight: 0 }} />
+        <Tooltip title={navigationLocked ? lockedTitle : '配置'} placement="right">
           <span>
             <IconButton
-              color={page === 'chart' ? 'primary' : 'default'}
-              onClick={() => onPageChange('chart')}
+              color={page === 'settings' ? 'primary' : 'default'}
+              onClick={() => onPageChange('settings')}
               disabled={navigationLocked}
-              aria-label="图表"
+              aria-label="配置"
             >
-              <CandlestickChartIcon />
+              <SettingsIcon />
             </IconButton>
           </span>
         </Tooltip>

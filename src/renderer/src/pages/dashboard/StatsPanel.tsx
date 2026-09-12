@@ -1,6 +1,15 @@
+import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
+import FormControl from '@mui/material/FormControl'
+import MenuItem from '@mui/material/MenuItem'
+import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
+import {
+  DASHBOARD_BREADTH_UNIVERSE_ALL,
+  DASHBOARD_BREADTH_UNIVERSE_OPTIONS,
+  type DashboardBreadthUniverseId
+} from '../../../../shared/constants/dashboard'
 import type { DashboardBreadth, DashboardStatBlock } from '../../../../shared/types/dashboard'
 import { BreadthHistogram } from './BreadthHistogram'
 import { BreadthHistoryChart } from './BreadthHistoryChart'
@@ -11,9 +20,19 @@ interface StatsPanelProps {
   margin: DashboardStatBlock
   turnover: DashboardStatBlock
   breadth: DashboardBreadth
+  breadthUniverse: DashboardBreadthUniverseId
+  onBreadthUniverseChange: (universe: DashboardBreadthUniverseId) => void
+  breadthRefreshing?: boolean
 }
 
-export function StatsPanel({ margin, turnover, breadth }: StatsPanelProps): React.JSX.Element {
+export function StatsPanel({
+  margin,
+  turnover,
+  breadth,
+  breadthUniverse,
+  onBreadthUniverseChange,
+  breadthRefreshing = false
+}: StatsPanelProps): React.JSX.Element {
   return (
     <Box
       sx={{
@@ -47,7 +66,12 @@ export function StatsPanel({ margin, turnover, breadth }: StatsPanelProps): Reac
         />
       </Box>
       <Box sx={{ flex: 2, minHeight: 280, display: 'flex', flexDirection: 'column' }}>
-        <BreadthBlock breadth={breadth} />
+        <BreadthBlock
+          breadth={breadth}
+          breadthUniverse={breadthUniverse}
+          onBreadthUniverseChange={onBreadthUniverseChange}
+          refreshing={breadthRefreshing}
+        />
       </Box>
     </Box>
   )
@@ -96,12 +120,71 @@ function StatBlock({
   )
 }
 
-function BreadthBlock({ breadth }: { breadth: DashboardBreadth }): React.JSX.Element {
+function BreadthBlock({
+  breadth,
+  breadthUniverse,
+  onBreadthUniverseChange,
+  refreshing
+}: {
+  breadth: DashboardBreadth
+  breadthUniverse: DashboardBreadthUniverseId
+  onBreadthUniverseChange: (universe: DashboardBreadthUniverseId) => void
+  refreshing: boolean
+}): React.JSX.Element {
+  const constituentsEmpty =
+    !refreshing &&
+    breadthUniverse !== DASHBOARD_BREADTH_UNIVERSE_ALL &&
+    breadth.universe === breadthUniverse &&
+    breadth.constituent_as_of == null
+
   return (
-    <Box sx={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <Typography variant="subtitle2" sx={{ fontWeight: 700, px: 0.5, mb: 0.5, flexShrink: 0 }}>
-        涨跌家数
-      </Typography>
+    <Box
+      sx={{
+        height: '100%',
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        opacity: refreshing ? 0.6 : 1,
+        transition: 'opacity 0.15s ease'
+      }}
+    >
+      <Stack
+        direction="row"
+        alignItems="center"
+        justifyContent="space-between"
+        spacing={1}
+        sx={{ px: 0.5, mb: 0.5, flexShrink: 0 }}
+      >
+        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+          涨跌家数
+        </Typography>
+        <FormControl size="small" sx={{ width: 88 }}>
+          <Select
+            value={breadthUniverse}
+            onChange={(event) =>
+              onBreadthUniverseChange(event.target.value as DashboardBreadthUniverseId)
+            }
+            variant="outlined"
+            sx={{
+              fontSize: '0.75rem',
+              '& .MuiSelect-select': { py: 0.25, px: 0.75, pr: '22px !important' },
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' },
+              '& .MuiSvgIcon-root': { right: 2, fontSize: 16 }
+            }}
+          >
+            {DASHBOARD_BREADTH_UNIVERSE_OPTIONS.map((option) => (
+              <MenuItem key={option.id} value={option.id} dense>
+                {option.label}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Stack>
+      {constituentsEmpty ? (
+        <Alert severity="info" sx={{ mx: 0.5, mb: 1, py: 0, flexShrink: 0 }}>
+          尚无成分股数据，请到配置页更新成分股
+        </Alert>
+      ) : null}
       <Stack direction="row" spacing={2} sx={{ px: 0.5, mb: 1, flexWrap: 'wrap', flexShrink: 0 }}>
         <Metric label="上涨" value={breadth.up_count} color="#ef5350" />
         <Metric label="涨停" value={breadth.limit_up_count} color="#ef5350" />

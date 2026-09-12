@@ -60,6 +60,7 @@ export function SettingsPage({
   const [coverage, setCoverage] = useState<MarketCoverageResult | null>(null)
   const [boardStats, setBoardStats] = useState<BoardStats | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
+  const [syncingIndexWeights, setSyncingIndexWeights] = useState(false)
 
   const loadAll = async (): Promise<void> => {
     setLoading(true)
@@ -102,7 +103,7 @@ export function SettingsPage({
   const minEndIso = startIso
   const maxEndIso = yyyymmddToIso(today)
   const isEmpty = (coverage?.total_bars ?? 0) === 0
-  const busy = loading || syncing || clearing
+  const busy = loading || syncing || clearing || syncingIndexWeights
 
   const handleSaveToken = async (): Promise<void> => {
     setError(null)
@@ -114,6 +115,27 @@ export function SettingsPage({
       await loadAll()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleSyncIndexWeights = async (): Promise<void> => {
+    setSyncingIndexWeights(true)
+    setError(null)
+    setMessage(null)
+    setConfirmClear(false)
+    try {
+      const result = await window.api.market.syncIndexWeights()
+      const errHint = result.errors.length > 0 ? `；失败 ${result.errors.length} 只` : ''
+      const snapshotDates = Object.values(result.as_of_dates)
+      const latestSnapshot =
+        snapshotDates.length > 0 ? snapshotDates.sort().at(-1) ?? '—' : '—'
+      setMessage(
+        `成分股已更新：新增/刷新 ${result.updated_count} 只，跳过 ${result.skipped_count} 只，空窗 ${result.empty_count} 只；快照 ${latestSnapshot}${errHint}`
+      )
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSyncingIndexWeights(false)
     }
   }
 
@@ -276,6 +298,16 @@ export function SettingsPage({
               disabled={busy}
             >
               {syncing ? '更新中…' : '更新数据'}
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={
+                syncingIndexWeights ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />
+              }
+              onClick={() => void handleSyncIndexWeights()}
+              disabled={busy || !hasToken}
+            >
+              {syncingIndexWeights ? '更新中…' : '更新成分股'}
             </Button>
             <Button
               color="warning"

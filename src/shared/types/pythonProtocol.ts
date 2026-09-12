@@ -141,6 +141,20 @@ export interface MarketClearResult {
   db_path: string
 }
 
+export interface IndexWeightSyncResult {
+  updated_count: number
+  skipped_count: number
+  empty_count: number
+  as_of_dates: Record<string, string>
+  errors: string[]
+}
+
+export interface IndexConstituentsResult {
+  index_code: string
+  as_of: string | null
+  con_codes: string[]
+}
+
 export interface ComputeIndicatorInstance {
   id: string
   kind: 'script'
@@ -162,9 +176,11 @@ export const PYTHON_METHODS = {
   syncMarketPlan: 'data.sync.market_plan',
   syncMarketDay: 'data.sync.market_day',
   syncDashboardBackfill: 'data.sync.dashboard_backfill',
+  syncIndexWeight: 'data.sync.index_weight',
   clearMarket: 'data.admin.clear_market',
   queryOhlcv: 'data.query.ohlcv',
   queryDashboard: 'data.query.dashboard',
+  queryIndexConstituents: 'data.query.index_constituents',
   metaMarketCoverage: 'data.meta.market_coverage',
   computeIndicator: 'compute.indicator',
   computeScriptTry: 'compute.script_try'

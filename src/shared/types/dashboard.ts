@@ -1,9 +1,12 @@
+import type { DashboardBreadthUniverseId } from '../constants/dashboard'
+
 export type DashboardIndexGroup = 'market' | 'broad'
 
 export interface DashboardQueryParams {
   ts_code?: string
   start_date?: string
   end_date?: string
+  breadth_universe?: DashboardBreadthUniverseId
 }
 
 export interface DashboardIndexQuote {
@@ -63,6 +66,10 @@ export interface DashboardBreadth {
   histogram: number[]
   labels: string[]
   series: DashboardBreadthPoint[]
+  /** Echo of request breadth_universe (default all). */
+  universe?: DashboardBreadthUniverseId
+  /** Latest index_weight snapshot date when universe is an index; null for all or missing data. */
+  constituent_as_of?: string | null
 }
 
 export interface DashboardQueryResult {

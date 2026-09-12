@@ -3,7 +3,11 @@ import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
 import { useCallback, useEffect, useState } from 'react'
-import { DASHBOARD_DEFAULT_TS_CODE } from '../../../../shared/constants/dashboard'
+import {
+  DASHBOARD_BREADTH_UNIVERSE_ALL,
+  DASHBOARD_DEFAULT_TS_CODE,
+  type DashboardBreadthUniverseId
+} from '../../../../shared/constants/dashboard'
 import type { DashboardBar, DashboardQueryResult } from '../../../../shared/types/dashboard'
 import { DashboardSplit } from './DashboardSplit'
 import { yyyymmddToChartTime } from './format'
@@ -16,28 +20,58 @@ const DEFAULT_TOP_RATIO = 0.5
 
 export function DashboardPage(): React.JSX.Element {
   const [selected, setSelected] = useState(DASHBOARD_DEFAULT_TS_CODE)
+  const [breadthUniverse, setBreadthUniverse] = useState<DashboardBreadthUniverseId>(
+    DASHBOARD_BREADTH_UNIVERSE_ALL
+  )
   const [data, setData] = useState<DashboardQueryResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [breadthRefreshing, setBreadthRefreshing] = useState(false)
   const [leftRatio, setLeftRatio] = useState(DEFAULT_LEFT_RATIO)
   const [topRatio, setTopRatio] = useState(DEFAULT_TOP_RATIO)
 
-  const load = useCallback(async (tsCode: string) => {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await window.api.dashboard.query({ ts_code: tsCode })
-      setData(result)
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const load = useCallback(
+    async (
+      tsCode: string,
+      universe: DashboardBreadthUniverseId,
+      options?: { breadthOnly?: boolean }
+    ) => {
+      if (options?.breadthOnly) {
+        setBreadthRefreshing(true)
+      } else {
+        setLoading(true)
+      }
+      setError(null)
+      try {
+        const result = await window.api.dashboard.query({
+          ts_code: tsCode,
+          breadth_universe: universe
+        })
+        setData(result)
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : String(err))
+      } finally {
+        if (options?.breadthOnly) {
+          setBreadthRefreshing(false)
+        } else {
+          setLoading(false)
+        }
+      }
+    },
+    []
+  )
 
   useEffect(() => {
-    void load(selected)
+    void load(selected, breadthUniverse)
   }, [load, selected])
+
+  const handleBreadthUniverseChange = useCallback(
+    (universe: DashboardBreadthUniverseId) => {
+      setBreadthUniverse(universe)
+      void load(selected, universe, { breadthOnly: true })
+    },
+    [load, selected]
+  )
 
   const selectedName =
     data?.indices.find((item) => item.ts_code === selected)?.name ?? selected
@@ -92,9 +126,14 @@ export function DashboardPage(): React.JSX.Element {
                   flat_count: 0,
                   histogram: [0, 0, 0, 0, 0, 0, 0, 0, 0],
                   labels: [],
-                  series: []
+                  series: [],
+                  universe: breadthUniverse,
+                  constituent_as_of: null
                 }
               }
+              breadthUniverse={breadthUniverse}
+              onBreadthUniverseChange={handleBreadthUniverseChange}
+              breadthRefreshing={breadthRefreshing}
             />
           </Pane>
         }

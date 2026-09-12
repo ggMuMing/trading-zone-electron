@@ -41,7 +41,9 @@ import {
   type MarketQueryResult as PyQueryResult,
   type MarketSyncDayResult,
   type MarketSyncPlanResult,
-  type StockListResult
+  type StockListResult,
+  type IndexConstituentsResult as PyIndexConstituentsResult,
+  type IndexWeightSyncResult as PyIndexWeightSyncResult
 } from '../../shared/types/pythonProtocol'
 import { pythonBridge, readExampleMaSource } from '../bridge/pythonBridge'
 import { getTushareToken } from '../config/appConfig'
@@ -51,6 +53,7 @@ import { marketPoolRepository } from '../db/marketPoolRepository'
 import { stocksRepository } from '../db/stocksRepository'
 import { decodeOhlcvArrow } from '../market/arrowOhlcv'
 import type { DashboardQueryParams, DashboardQueryResult } from '../../shared/types/dashboard'
+import type { IndexConstituentsResult, IndexWeightSyncResult } from '../../shared/types/indexConstituents'
 
 const MARKET_CALL_TIMEOUT_MS = 180_000
 const MARKET_DAY_TIMEOUT_MS = 120_000
@@ -352,6 +355,9 @@ export const applicationService = {
     if (tsCode) {
       payload.ts_code = tsCode
     }
+    if (params.breadth_universe) {
+      payload.breadth_universe = params.breadth_universe
+    }
     return pythonBridge.call<DashboardQueryResult>(PYTHON_METHODS.queryDashboard, payload)
   },
 
@@ -551,6 +557,29 @@ export const applicationService = {
       ts_codes: tsCodes && tsCodes.length > 0 ? tsCodes : null
     })
     return result
+  },
+
+  async syncIndexWeights(): Promise<IndexWeightSyncResult> {
+    const token = requireToken()
+    return pythonBridge.call<PyIndexWeightSyncResult>(PYTHON_METHODS.syncIndexWeight, { token })
+  },
+
+  async listIndexConstituents(indexCode: string): Promise<IndexConstituentsResult> {
+    const code = indexCode.trim()
+    if (!code) {
+      throw new Error('index_code is required')
+    }
+    const result = await pythonBridge.call<PyIndexConstituentsResult>(
+      PYTHON_METHODS.queryIndexConstituents,
+      { index_code: code }
+    )
+    const codeSet = new Set(result.con_codes)
+    const stocks = stocksRepository.listAll().filter((stock) => codeSet.has(stock.ts_code))
+    return {
+      index_code: result.index_code,
+      as_of: result.as_of,
+      con_codes: stocks.map((stock) => stock.ts_code)
+    }
   }
 }
 

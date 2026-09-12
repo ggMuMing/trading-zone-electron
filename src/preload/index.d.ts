@@ -16,6 +16,7 @@ import type {
   SyncMarketWindowResult
 } from '../shared/types/market'
 import type { DashboardQueryParams, DashboardQueryResult } from '../shared/types/dashboard'
+import type { IndexConstituentsResult, IndexWeightSyncResult } from '../shared/types/indexConstituents'
 
 export interface SyncStockListResult {
   count: number
@@ -34,6 +35,8 @@ export interface AppApi {
     syncPool: () => Promise<SyncMarketPoolResult>
     sync: (params: { start_date: string; end_date: string }) => Promise<SyncMarketWindowResult>
     clear: () => Promise<MarketClearResult>
+    syncIndexWeights: () => Promise<IndexWeightSyncResult>
+    indexConstituents: (params: { index_code: string }) => Promise<IndexConstituentsResult>
     pool: () => Promise<MarketPoolItem[]>
     query: (params: MarketQueryParams) => Promise<MarketQueryResult>
     coverage: () => Promise<MarketCoverageResult>

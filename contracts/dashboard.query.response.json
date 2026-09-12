@@ -14,7 +14,7 @@
     "turnover": { "type": "object" },
     "breadth": {
       "type": "object",
-      "description": "Latest-day counts plus limit-up/limit-down history. series items are { trade_date, limit_up_count, limit_down_count }."
+      "description": "Latest-day counts plus limit-up/limit-down history. series items are { trade_date, limit_up_count, limit_down_count }. universe echoes breadth_universe (default all). constituent_as_of is latest index_weight snapshot when filtered by index."
     }
   },
   "additionalProperties": false

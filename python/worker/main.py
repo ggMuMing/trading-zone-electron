@@ -16,12 +16,20 @@ from worker.codec import emit, read_message  # noqa: E402
 from worker.handlers.compute_indicator import compute_indicator  # noqa: E402
 from worker.handlers.dashboard_query import query_dashboard  # noqa: E402
 from worker.handlers.dashboard_sync import dashboard_backfill  # noqa: E402
+from worker.handlers.index_constituents import query_index_constituents  # noqa: E402
+from worker.handlers.index_weight_sync import sync_index_weight  # noqa: E402
 from worker.handlers.market_clear import clear_market  # noqa: E402
 from worker.handlers.market_day import market_day  # noqa: E402
 from worker.handlers.market_meta import market_coverage  # noqa: E402
 from worker.handlers.market_plan import market_plan  # noqa: E402
 from worker.handlers.market_query import query_ohlcv  # noqa: E402
-from worker.handlers.market_seed import seed_dashboard_fixture, seed_market_fixture, seed_sync_fixture  # noqa: E402
+from worker.handlers.market_seed import (  # noqa: E402
+    clear_index_weight_fixture,
+    seed_dashboard_fixture,
+    seed_index_weight_fixture,
+    seed_market_fixture,
+    seed_sync_fixture,
+)
 from worker.handlers.market_sync import sync_market_pool  # noqa: E402
 from worker.handlers.stock_list import sync_stock_list  # noqa: E402
 from worker.handlers.try_script import try_script  # noqa: E402
@@ -35,13 +43,17 @@ HANDLERS: dict[str, Handler] = {
     "data.sync.market_plan": market_plan,
     "data.sync.market_day": market_day,
     "data.sync.dashboard_backfill": dashboard_backfill,
+    "data.sync.index_weight": sync_index_weight,
     "data.admin.clear_market": clear_market,
     "data.query.ohlcv": query_ohlcv,
     "data.query.dashboard": query_dashboard,
+    "data.query.index_constituents": query_index_constituents,
     "data.meta.market_coverage": market_coverage,
     "data.test.seed_market_fixture": seed_market_fixture,
     "data.test.seed_sync_fixture": seed_sync_fixture,
     "data.test.seed_dashboard_fixture": seed_dashboard_fixture,
+    "data.test.seed_index_weight_fixture": seed_index_weight_fixture,
+    "data.test.clear_index_weight_fixture": clear_index_weight_fixture,
     "compute.indicator": compute_indicator,
     "compute.script_try": try_script,
 }

@@ -5,7 +5,19 @@ import Typography from '@mui/material/Typography'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DEFAULT_SCRIPT_TITLE } from '../../../shared/chart/indicatorScript'
 import { validateChartInput } from '../../../shared/chart/validateChartInput'
-import { MARKET_SYNC_START, todayYyyymmdd } from '../../../shared/constants/market'
+import {
+  CHART_UNIVERSE_ALL,
+  CHART_UNIVERSE_INDEX_BROAD,
+  CHART_UNIVERSE_INDEX_MARKET,
+  isChartUniverseIndexCode,
+  parseConstituentsIndexCode
+} from '../../../shared/constants/chartUniverse'
+import {
+  DASHBOARD_BROAD_INDICES,
+  DASHBOARD_MARKET_INDICES,
+  type DashboardIndexMeta
+} from '../../../shared/constants/dashboard'
+import { MARKET_SYNC_START, todayYyyymmdd, yyyymmddToIso } from '../../../shared/constants/market'
 import type { ChartInput, ChartPeriod } from '../../../shared/types/chart'
 import type {
   ChartLayout,
@@ -24,6 +36,7 @@ import { ScriptEditorPanel, type ScriptDraft } from './chart/scriptEditor/Script
 import { StockPicker } from './StockPicker'
 
 const PICKER_WIDTH_STORAGE_KEY = 'trading-zone.chart.stockPickerWidth'
+const UNIVERSE_STORAGE_KEY = 'trading-zone.chart.universeId'
 const PICKER_WIDTH_MIN = 180
 const PICKER_WIDTH_MAX = 320
 const PICKER_WIDTH_DEFAULT = 220
@@ -34,6 +47,28 @@ function clampPickerWidth(value: number): number {
 
 function paramsEqual(left: LayoutItemParams, right: LayoutItemParams): boolean {
   return JSON.stringify(left) === JSON.stringify(right)
+}
+
+function loadUniverseId(): string {
+  try {
+    const raw = localStorage.getItem(UNIVERSE_STORAGE_KEY)
+    return raw?.trim() || CHART_UNIVERSE_ALL
+  } catch {
+    return CHART_UNIVERSE_ALL
+  }
+}
+
+function indexMetaToStock(meta: DashboardIndexMeta): Stock {
+  return {
+    ts_code: meta.ts_code,
+    symbol: meta.ts_code.split('.')[0] ?? meta.ts_code,
+    name: meta.name,
+    area: null,
+    industry: null,
+    market: null,
+    list_date: null,
+    synced_at: ''
+  }
 }
 
 function loadPickerWidth(): number {
@@ -56,7 +91,11 @@ export function ChartPage(): React.JSX.Element {
   const [loading, setLoading] = useState(true)
   const [querying, setQuerying] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [stocks, setStocks] = useState<Stock[]>([])
+  const [allStocks, setAllStocks] = useState<Stock[]>([])
+  const [pickerStocks, setPickerStocks] = useState<Stock[]>([])
+  const [universeId, setUniverseId] = useState(loadUniverseId)
+  const [universeCaption, setUniverseCaption] = useState<string | null>(null)
+  const [universeLoading, setUniverseLoading] = useState(false)
   const [coverage, setCoverage] = useState<MarketCoverageResult | null>(null)
   const [selectedCode, setSelectedCode] = useState<string | null>(null)
   const [adjust, setAdjust] = useState<AdjustType>('qfq')
@@ -74,6 +113,56 @@ export function ChartPage(): React.JSX.Element {
   const pickerWidthRef = useRef(pickerWidth)
   pickerWidthRef.current = pickerWidth
 
+  const resolvePickerStocks = useCallback(
+    async (nextUniverseId: string, listed: Stock[]): Promise<Stock[]> => {
+      if (nextUniverseId === CHART_UNIVERSE_ALL) {
+        setUniverseCaption(null)
+        return listed
+      }
+      if (nextUniverseId === CHART_UNIVERSE_INDEX_MARKET) {
+        setUniverseCaption(null)
+        return DASHBOARD_MARKET_INDICES.map(indexMetaToStock)
+      }
+      if (nextUniverseId === CHART_UNIVERSE_INDEX_BROAD) {
+        setUniverseCaption(null)
+        return DASHBOARD_BROAD_INDICES.map(indexMetaToStock)
+      }
+      const indexCode = parseConstituentsIndexCode(nextUniverseId)
+      if (!indexCode) {
+        setUniverseCaption(null)
+        return listed
+      }
+      const result = await window.api.market.indexConstituents({ index_code: indexCode })
+      setUniverseCaption(result.as_of ? yyyymmddToIso(result.as_of) : null)
+      const codeSet = new Set(result.con_codes)
+      return listed.filter((stock) => codeSet.has(stock.ts_code))
+    },
+    []
+  )
+
+  const applyUniverse = useCallback(
+    async (nextUniverseId: string, listed: Stock[], selectFirst: boolean): Promise<void> => {
+      setUniverseLoading(true)
+      try {
+        const nextPickerStocks = await resolvePickerStocks(nextUniverseId, listed)
+        setPickerStocks(nextPickerStocks)
+        if (selectFirst) {
+          setSelectedCode(nextPickerStocks[0]?.ts_code ?? null)
+        } else {
+          setSelectedCode((prev) => {
+            if (prev && nextPickerStocks.some((stock) => stock.ts_code === prev)) {
+              return prev
+            }
+            return nextPickerStocks[0]?.ts_code ?? null
+          })
+        }
+      } finally {
+        setUniverseLoading(false)
+      }
+    },
+    [resolvePickerStocks]
+  )
+
   const loadStocksAndCoverage = async (): Promise<void> => {
     const [listed, cov, currentLayout, example, listedScripts] = await Promise.all([
       window.api.stocks.list(),
@@ -82,17 +171,22 @@ export function ChartPage(): React.JSX.Element {
       window.api.indicatorScript.exampleSource(),
       window.api.indicatorScript.list()
     ])
-    setStocks(listed)
+    setAllStocks(listed)
     setCoverage(cov)
     setLayout(currentLayout)
     setExampleSource(example)
     setScripts(listedScripts)
-    setSelectedCode((prev) => {
-      if (prev && listed.some((stock) => stock.ts_code === prev)) {
-        return prev
-      }
-      return listed[0]?.ts_code ?? null
-    })
+    await applyUniverse(universeId, listed, false)
+  }
+
+  const handleUniverseChange = (nextUniverseId: string): void => {
+    setUniverseId(nextUniverseId)
+    try {
+      localStorage.setItem(UNIVERSE_STORAGE_KEY, nextUniverseId)
+    } catch {
+      // ignore storage failures
+    }
+    void applyUniverse(nextUniverseId, allStocks, true)
   }
 
   const refreshAll = async (): Promise<void> => {
@@ -111,13 +205,17 @@ export function ChartPage(): React.JSX.Element {
   const queryEndRef = useRef(queryEnd)
   queryEndRef.current = queryEnd
 
+  const selectedIsIndex = selectedCode ? isChartUniverseIndexCode(selectedCode) : false
+  const effectiveAdjust: AdjustType = selectedIsIndex ? 'none' : adjust
+
   const executeScripts = useCallback(async (tsCode: string, adj: AdjustType): Promise<void> => {
     setQuerying(true)
     setError(null)
     try {
+      const queryAdjust = isChartUniverseIndexCode(tsCode) ? 'none' : adj
       const result = await window.api.chart.build({
         ts_code: tsCode,
-        adjust: adj,
+        adjust: queryAdjust,
         start_date: MARKET_SYNC_START,
         end_date: queryEndRef.current
       })
@@ -140,8 +238,8 @@ export function ChartPage(): React.JSX.Element {
       return
     }
     void period
-    void executeScripts(selectedCode, adjust)
-  }, [selectedCode, adjust, period, executeScripts])
+    void executeScripts(selectedCode, effectiveAdjust)
+  }, [selectedCode, effectiveAdjust, period, executeScripts])
 
   useEffect(() => {
     if (!resizing) {
@@ -191,7 +289,7 @@ export function ChartPage(): React.JSX.Element {
   const applyLayoutAndExecute = (next: ChartLayout): void => {
     setLayout(next)
     if (selectedCode) {
-      void executeScripts(selectedCode, adjust)
+      void executeScripts(selectedCode, effectiveAdjust)
     }
   }
 
@@ -310,7 +408,7 @@ export function ChartPage(): React.JSX.Element {
   const tryQuery: MarketQueryParams | null = selectedCode
     ? {
       ts_code: selectedCode,
-      adjust,
+      adjust: effectiveAdjust,
       start_date: MARKET_SYNC_START,
       end_date: queryEnd
     }
@@ -328,8 +426,13 @@ export function ChartPage(): React.JSX.Element {
       })
   }, [indicatorOpen])
 
-  const isEmpty = stocks.length === 0
-  const selected = stocks.find((stock) => stock.ts_code === selectedCode)
+  const isAllEmpty = allStocks.length === 0
+  const constituentsEmpty =
+    parseConstituentsIndexCode(universeId) !== null && pickerStocks.length === 0 && !universeLoading
+  const selected = pickerStocks.find((stock) => stock.ts_code === selectedCode)
+  const constituentsEmptyHint = constituentsEmpty
+    ? '尚无成分股数据，请到配置页更新成分股'
+    : null
   const chartInput = useMemo(() => {
     if (!chartRaw) {
       return null
@@ -351,7 +454,7 @@ export function ChartPage(): React.JSX.Element {
         </Box>
       ) : null}
 
-      {isEmpty && !loading ? (
+      {isAllEmpty && universeId === CHART_UNIVERSE_ALL && !loading ? (
         <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', px: 3 }}>
           <Paper elevation={0} sx={{ p: 4, maxWidth: 480, border: 1, borderColor: 'divider', textAlign: 'center' }}>
             <Typography variant="h6" gutterBottom>
@@ -365,10 +468,14 @@ export function ChartPage(): React.JSX.Element {
       ) : (
         <Box sx={{ flex: 1, display: 'flex', minHeight: 0, px: 2, py: 2, gap: 0.5, position: 'relative', padding: 0 }}>
           <StockPicker
-            stocks={stocks}
+            stocks={pickerStocks}
             selectedCode={selectedCode}
             width={pickerWidth}
+            universeId={universeId}
+            universeCaption={universeCaption}
+            emptyHint={constituentsEmptyHint}
             onSelect={setSelectedCode}
+            onUniverseChange={handleUniverseChange}
           />
           <Box
             role="separator"
@@ -423,9 +530,9 @@ export function ChartPage(): React.JSX.Element {
               }
               period={period}
               onPeriodChange={setPeriod}
-              adjust={adjust}
+              adjust={effectiveAdjust}
               onAdjustChange={setAdjust}
-              adjustDisabled={!selectedCode || querying}
+              adjustDisabled={!selectedCode || querying || selectedIsIndex}
               onOpenIndicators={() => setIndicatorOpen(true)}
               indicatorsDisabled={loading}
             />

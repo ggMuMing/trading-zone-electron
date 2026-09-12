@@ -76,6 +76,21 @@ export function registerHandlers(): void {
     return applicationService.clearMarket()
   })
 
+  ipcMain.handle('market:syncIndexWeights', async () => {
+    return applicationService.syncIndexWeights()
+  })
+
+  ipcMain.handle('market:indexConstituents', async (_event, params: unknown) => {
+    if (!params || typeof params !== 'object') {
+      throw new Error('market:indexConstituents requires params object')
+    }
+    const indexCode = (params as Record<string, unknown>).index_code
+    if (typeof indexCode !== 'string' || !indexCode.trim()) {
+      throw new Error('index_code must be a non-empty string')
+    }
+    return applicationService.listIndexConstituents(indexCode.trim())
+  })
+
   ipcMain.handle('market:pool', () => {
     return applicationService.getMarketPool()
   })
@@ -92,7 +107,13 @@ export function registerHandlers(): void {
     return applicationService.queryDashboard({
       ts_code: typeof p.ts_code === 'string' ? p.ts_code : undefined,
       start_date: typeof p.start_date === 'string' ? p.start_date : undefined,
-      end_date: typeof p.end_date === 'string' ? p.end_date : undefined
+      end_date: typeof p.end_date === 'string' ? p.end_date : undefined,
+      breadth_universe:
+        p.breadth_universe === 'all' ||
+        p.breadth_universe === '000300.SH' ||
+        p.breadth_universe === '932000.CSI'
+          ? p.breadth_universe
+          : undefined
     })
   })
 

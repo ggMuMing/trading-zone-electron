@@ -17,6 +17,7 @@ import type {
   SyncMarketWindowResult
 } from '../shared/types/market'
 import type { DashboardQueryParams, DashboardQueryResult } from '../shared/types/dashboard'
+import type { IndexConstituentsResult, IndexWeightSyncResult } from '../shared/types/indexConstituents'
 
 export interface SyncStockListResult {
   count: number
@@ -38,6 +39,10 @@ const api = {
     sync: (params: { start_date: string; end_date: string }): Promise<SyncMarketWindowResult> =>
       ipcRenderer.invoke('market:sync', params),
     clear: (): Promise<MarketClearResult> => ipcRenderer.invoke('market:clear'),
+    syncIndexWeights: (): Promise<IndexWeightSyncResult> =>
+      ipcRenderer.invoke('market:syncIndexWeights'),
+    indexConstituents: (params: { index_code: string }): Promise<IndexConstituentsResult> =>
+      ipcRenderer.invoke('market:indexConstituents', params),
     pool: (): Promise<MarketPoolItem[]> => ipcRenderer.invoke('market:pool'),
     query: (params: MarketQueryParams): Promise<MarketQueryResult> =>
       ipcRenderer.invoke('market:query', params),

@@ -84,6 +84,15 @@ CREATE TABLE IF NOT EXISTS stock_limit_status (
   synced_at TIMESTAMP NOT NULL,
   PRIMARY KEY (ts_code, trade_date)
 );
+
+CREATE TABLE IF NOT EXISTS index_weight (
+  index_code VARCHAR NOT NULL,
+  trade_date VARCHAR NOT NULL,
+  con_code VARCHAR NOT NULL,
+  weight DOUBLE,
+  synced_at TIMESTAMP NOT NULL,
+  PRIMARY KEY (index_code, trade_date, con_code)
+);
 """
 
 _conn: duckdb.DuckDBPyConnection | None = None
@@ -387,10 +396,27 @@ def fetch_turnover_totals(
     return [(str(r[0]), _as_float(r[1])) for r in rows]
 
 
-def fetch_breadth_rows(trade_date: str) -> list[tuple[str, float | None, float | None, int | None]]:
+_BREADTH_CONSTITUENT_FILTER = """
+          AND d.ts_code IN (
+            SELECT con_code FROM index_weight
+            WHERE index_code = ?
+              AND trade_date = (
+                SELECT MAX(trade_date) FROM index_weight WHERE index_code = ?
+              )
+          )
+"""
+
+
+def fetch_breadth_rows(
+    trade_date: str, index_code: str | None = None
+) -> list[tuple[str, float | None, float | None, int | None]]:
     conn = get_conn()
+    constituent_filter = _BREADTH_CONSTITUENT_FILTER if index_code else ""
+    params: list[str] = [trade_date]
+    if index_code:
+        params.extend([index_code, index_code])
     rows = conn.execute(
-        """
+        f"""
         SELECT d.ts_code, d.pct_chg, d.vol, s.limit_status
         FROM daily_bar d
         INNER JOIN stock_limit_status s
@@ -398,8 +424,9 @@ def fetch_breadth_rows(trade_date: str) -> list[tuple[str, float | None, float |
         WHERE d.trade_date = ?
           AND d.vol IS NOT NULL
           AND d.vol > 0
+        {constituent_filter}
         """,
-        [trade_date],
+        params,
     ).fetchall()
     result: list[tuple[str, float | None, float | None, int | None]] = []
     for ts_code, pct_chg, vol, limit_status in rows:
@@ -415,11 +442,15 @@ def fetch_breadth_rows(trade_date: str) -> list[tuple[str, float | None, float |
 
 
 def fetch_breadth_limit_series(
-    start_date: str, end_date: str
+    start_date: str, end_date: str, index_code: str | None = None
 ) -> list[tuple[str, int, int]]:
     conn = get_conn()
+    constituent_filter = _BREADTH_CONSTITUENT_FILTER if index_code else ""
+    params: list[str] = [start_date, end_date]
+    if index_code:
+        params.extend([index_code, index_code])
     rows = conn.execute(
-        """
+        f"""
         SELECT d.trade_date,
                SUM(CASE WHEN s.limit_status IN (2, 3) THEN 1 ELSE 0 END) AS limit_up_count,
                SUM(CASE WHEN s.limit_status IN (5, 6) THEN 1 ELSE 0 END) AS limit_down_count
@@ -430,10 +461,11 @@ def fetch_breadth_limit_series(
           AND d.trade_date <= ?
           AND d.vol IS NOT NULL
           AND d.vol > 0
+        {constituent_filter}
         GROUP BY d.trade_date
         ORDER BY d.trade_date
         """,
-        [start_date, end_date],
+        params,
     ).fetchall()
     result: list[tuple[str, int, int]] = []
     for trade_date, limit_up_count, limit_down_count in rows:
@@ -514,6 +546,141 @@ def upsert_adj_factors(rows: list[dict[str, Any]]) -> int:
     return len(rows)
 
 
+def latest_index_weight_trade_date(index_code: str) -> str | None:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT MAX(trade_date) FROM index_weight WHERE index_code = ?",
+        [index_code],
+    ).fetchone()
+    if not row or row[0] is None:
+        return None
+    return str(row[0])
+
+
+def upsert_index_weight(rows: list[dict[str, Any]]) -> int:
+    if not rows:
+        return 0
+    conn = get_conn()
+    synced_at = _now_iso()
+    table = pa.table(
+        {
+            "index_code": [str(r["index_code"]) for r in rows],
+            "trade_date": [str(r["trade_date"]) for r in rows],
+            "con_code": [str(r["con_code"]) for r in rows],
+            "weight": pa.array([r.get("weight") for r in rows], type=pa.float64()),
+            "synced_at": [synced_at] * len(rows),
+        }
+    )
+    view = "_tmp_index_weight"
+    conn.register(view, table)
+    try:
+        conn.execute(
+            f"""
+            INSERT OR REPLACE INTO index_weight
+              (index_code, trade_date, con_code, weight, synced_at)
+            SELECT index_code, trade_date, con_code, weight, synced_at
+            FROM {view}
+            """
+        )
+    finally:
+        conn.unregister(view)
+    return len(rows)
+
+
+def fetch_latest_constituents(index_code: str) -> dict[str, Any]:
+    as_of = latest_index_weight_trade_date(index_code)
+    if not as_of:
+        return {"index_code": index_code, "as_of": None, "con_codes": []}
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT con_code FROM index_weight
+        WHERE index_code = ? AND trade_date = ?
+        ORDER BY con_code
+        """,
+        [index_code, as_of],
+    ).fetchall()
+    return {
+        "index_code": index_code,
+        "as_of": as_of,
+        "con_codes": [str(r[0]) for r in rows],
+    }
+
+
+def _is_dashboard_index_code(ts_code: str) -> bool:
+    from worker.dashboard_codes import DASHBOARD_ALL_INDEX_CODES
+
+    return ts_code in DASHBOARD_ALL_INDEX_CODES
+
+
+def _query_index_ohlcv_arrow(
+    ts_code: str,
+    start_date: str,
+    end_date: str,
+    limit: int | None = None,
+) -> pa.Table:
+    from worker.dashboard_codes import DASHBOARD_VOLUME_OVERRIDE
+
+    conn = get_conn()
+    override_code = DASHBOARD_VOLUME_OVERRIDE.get(ts_code)
+    limit_sql = "LIMIT ?" if limit is not None else ""
+    if override_code:
+        sql = f"""
+            SELECT
+              i.ts_code,
+              i.trade_date,
+              i.open,
+              i.high,
+              i.low,
+              i.close,
+              i.pre_close,
+              i.change,
+              i.pct_chg,
+              COALESCE(o.vol, i.vol) AS vol,
+              COALESCE(o.amount, i.amount) AS amount,
+              CAST(NULL AS DOUBLE) AS ah_vol,
+              CAST(NULL AS DOUBLE) AS ah_amount,
+              CAST(NULL AS DOUBLE) AS adj_factor
+            FROM index_daily i
+            LEFT JOIN index_daily o
+              ON o.ts_code = ? AND o.trade_date = i.trade_date
+            WHERE i.ts_code = ?
+              AND i.trade_date >= ?
+              AND i.trade_date <= ?
+            ORDER BY i.trade_date
+            {limit_sql}
+            """
+        params: list[Any] = [override_code, ts_code, start_date, end_date]
+    else:
+        sql = f"""
+            SELECT
+              ts_code,
+              trade_date,
+              open,
+              high,
+              low,
+              close,
+              pre_close,
+              change,
+              pct_chg,
+              vol,
+              amount,
+              CAST(NULL AS DOUBLE) AS ah_vol,
+              CAST(NULL AS DOUBLE) AS ah_amount,
+              CAST(NULL AS DOUBLE) AS adj_factor
+            FROM index_daily
+            WHERE ts_code = ?
+              AND trade_date >= ?
+              AND trade_date <= ?
+            ORDER BY trade_date
+            {limit_sql}
+            """
+        params = [ts_code, start_date, end_date]
+    if limit is not None:
+        params.append(limit)
+    return conn.execute(sql, params).fetch_arrow_table()
+
+
 def query_ohlcv_arrow(
     ts_code: str,
     start_date: str,
@@ -521,6 +688,9 @@ def query_ohlcv_arrow(
     adjust: str,
     limit: int | None = None,
 ) -> pa.Table:
+    if _is_dashboard_index_code(ts_code):
+        return _query_index_ohlcv_arrow(ts_code, start_date, end_date, limit)
+
     conn = get_conn()
     limit_sql = "LIMIT ?" if limit is not None else ""
     sql = f"""
@@ -721,6 +891,7 @@ def clear_market() -> str:
     conn.execute("DELETE FROM index_daily")
     conn.execute("DELETE FROM margin")
     conn.execute("DELETE FROM stock_limit_status")
+    conn.execute("DELETE FROM index_weight")
     return str(resolve_db_path())
 
 

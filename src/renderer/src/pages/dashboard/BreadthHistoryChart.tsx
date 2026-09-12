@@ -1,9 +1,32 @@
 import { useEffect, useRef } from 'react'
-import { LineSeries, createChart, type Time } from 'lightweight-charts'
+import { LineSeries, LineStyle, createChart, type Time } from 'lightweight-charts'
 import type { DashboardBreadthPoint } from '../../../../shared/types/dashboard'
 import { LWC_FONT_STACK } from '../../theme/lwcFont'
 import { DOWN_COLOR, UP_COLOR, yyyymmddToChartTime } from './format'
-import { StatLegend } from './StatCharts'
+import { STAT_CLOSE_COLOR, StatLegend } from './StatCharts'
+
+const LIMIT_UP_MA_PERIOD = 20
+const LIMIT_UP_MA_COLOR = STAT_CLOSE_COLOR
+
+function limitUpMa20(
+  series: DashboardBreadthPoint[]
+): Array<{ time: Time; value: number }> {
+  const points: Array<{ time: Time; value: number }> = []
+  let sum = 0
+  for (let i = 0; i < series.length; i += 1) {
+    sum += series[i].limit_up_count
+    if (i >= LIMIT_UP_MA_PERIOD) {
+      sum -= series[i - LIMIT_UP_MA_PERIOD].limit_up_count
+    }
+    if (i >= LIMIT_UP_MA_PERIOD - 1) {
+      points.push({
+        time: yyyymmddToChartTime(series[i].trade_date) as Time,
+        value: sum / LIMIT_UP_MA_PERIOD
+      })
+    }
+  }
+  return points
+}
 
 interface BreadthHistoryChartProps {
   series: DashboardBreadthPoint[]
@@ -48,6 +71,14 @@ export function BreadthHistoryChart({ series }: BreadthHistoryChartProps): React
       lastValueVisible: false,
       priceLineVisible: false
     })
+    const limitUpMa = chart.addSeries(LineSeries, {
+      color: LIMIT_UP_MA_COLOR,
+      lineWidth: 1,
+      lineStyle: LineStyle.Dashed,
+      priceScaleId: 'left',
+      lastValueVisible: false,
+      priceLineVisible: false
+    })
 
     limitUp.setData(
       series.map((point) => ({
@@ -61,6 +92,7 @@ export function BreadthHistoryChart({ series }: BreadthHistoryChartProps): React
         value: point.limit_down_count
       }))
     )
+    limitUpMa.setData(limitUpMa20(series))
     chart.timeScale().fitContent()
 
     const observer = new ResizeObserver(() => {
@@ -96,7 +128,8 @@ export function BreadthHistoryChart({ series }: BreadthHistoryChartProps): React
       <StatLegend
         legends={[
           { color: UP_COLOR, label: '涨停家数' },
-          { color: DOWN_COLOR, label: '跌停家数' }
+          { color: DOWN_COLOR, label: '跌停家数' },
+          { color: LIMIT_UP_MA_COLOR, label: '涨停MA20' }
         ]}
       />
     </div>

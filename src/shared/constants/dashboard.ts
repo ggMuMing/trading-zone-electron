@@ -48,6 +48,17 @@ export const DASHBOARD_ALL_INDEX_CODES: string[] = [
   ...DASHBOARD_VOLUME_SOURCE_CODES
 ]
 
+export const DASHBOARD_BREADTH_UNIVERSE_ALL = 'all' as const
+
+export const DASHBOARD_BREADTH_UNIVERSE_OPTIONS = [
+  { id: DASHBOARD_BREADTH_UNIVERSE_ALL, label: '全市场' },
+  { id: '000300.SH', label: '沪深300' },
+  { id: '932000.CSI', label: '中证2000' }
+] as const
+
+export type DashboardBreadthUniverseId =
+  (typeof DASHBOARD_BREADTH_UNIVERSE_OPTIONS)[number]['id']
+
 export const BREADTH_BIN_LABELS = [
   '涨停',
   '涨停~5%',

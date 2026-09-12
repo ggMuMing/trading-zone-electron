@@ -183,15 +183,75 @@ def seed_dashboard_fixture(params: dict) -> dict:
     for trade_date in days:
         market_db.upsert_sync_trade_date(trade_date, bar_count=5, adj_count=0, status="complete")
 
+    weight_count = _seed_index_weight_sample()
+
     return {
         "index_count": index_count,
         "margin_count": margin_count,
         "limit_count": limit_count,
         "bar_count": bar_count,
+        "weight_count": weight_count,
         "display_count": len(DASHBOARD_DISPLAY_INDICES),
         "trade_dates": days,
         "db_path": str(market_db.resolve_db_path()),
     }
+
+
+def clear_index_weight_fixture(params: dict) -> dict:
+    """Acceptance helper: remove all index_weight rows for one index."""
+    index_code = str(params.get("index_code") or "")
+    market_db.init_schema()
+    conn = market_db.get_conn()
+    if index_code:
+        conn.execute("DELETE FROM index_weight WHERE index_code = ?", [index_code])
+    return {"index_code": index_code}
+
+
+def seed_index_weight_fixture(params: dict) -> dict:
+    """Acceptance helper: write deterministic index constituents."""
+    index_code = str(params.get("index_code") or "000300.SH")
+    trade_date = str(params.get("trade_date") or "20240131")
+    con_codes = [str(code) for code in (params.get("con_codes") or ["000001.SZ", "000002.SZ", "000003.SZ"])]
+    market_db.init_schema()
+    rows = [
+        {
+            "index_code": index_code,
+            "trade_date": trade_date,
+            "con_code": code,
+            "weight": float(index + 1),
+        }
+        for index, code in enumerate(con_codes)
+    ]
+    count = market_db.upsert_index_weight(rows)
+    return {
+        "index_code": index_code,
+        "trade_date": trade_date,
+        "con_codes": con_codes,
+        "count": count,
+        "db_path": str(market_db.resolve_db_path()),
+    }
+
+
+def _seed_index_weight_sample() -> int:
+    rows = [
+        {
+            "index_code": "000300.SH",
+            "trade_date": "20240131",
+            "con_code": code,
+            "weight": float(index + 1),
+        }
+        for index, code in enumerate(["000001.SZ", "000002.SZ", "000003.SZ"])
+    ]
+    rows.extend(
+        {
+            "index_code": "932000.CSI",
+            "trade_date": "20240131",
+            "con_code": code,
+            "weight": float(index + 1),
+        }
+        for index, code in enumerate(["000008.SZ", "000009.SZ", "000010.SZ"])
+    )
+    return market_db.upsert_index_weight(rows)
 
 
 def _bar(ts_code: str, trade_date: str, pct_chg: float, _limit: int) -> dict:

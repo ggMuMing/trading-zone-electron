@@ -110,6 +110,28 @@ app.whenReady().then(async () => {
     return
   }
 
+  if (process.env.V02_SPRINT5_ACCEPTANCE === '1') {
+    try {
+      const { runV02Sprint5Acceptance } = await import('./acceptance/runV02Sprint5')
+      await runV02Sprint5Acceptance()
+    } catch (err) {
+      console.error('[acceptance] failed:', err)
+      app.exit(1)
+    }
+    return
+  }
+
+  if (process.env.V02_SPRINT51_ACCEPTANCE === '1') {
+    try {
+      const { runV02Sprint51Acceptance } = await import('./acceptance/runV02Sprint51')
+      await runV02Sprint51Acceptance()
+    } catch (err) {
+      console.error('[acceptance] failed:', err)
+      app.exit(1)
+    }
+    return
+  }
+
   createWindow()
 
   app.on('activate', function () {
