@@ -4,7 +4,7 @@
   "title": "DashboardQueryResponse",
   "description": "Result for method data.query.dashboard. amount / margin / turnover values are in 亿元.",
   "type": "object",
-  "required": ["selected_ts_code", "indices", "bars", "margin", "turnover", "breadth"],
+  "required": ["selected_ts_code", "indices", "bars", "margin", "turnover", "breadth", "basis"],
   "properties": {
     "as_of": { "type": ["string", "null"] },
     "selected_ts_code": { "type": "string" },
@@ -15,6 +15,10 @@
     "breadth": {
       "type": "object",
       "description": "Latest-day counts plus limit-up/limit-down history. series items are { trade_date, limit_up_count, limit_down_count }. universe echoes breadth_universe (default all). constituent_as_of is latest index_weight snapshot when filtered by index."
+    },
+    "basis": {
+      "type": "array",
+      "description": "Four index-futures products in IH/IF/IC/IM order. Each item is { product, fut_code, spot_code, name, series[{ trade_date, fut_close, spot_close, basis }] }. basis = spot_close - fut_close. Empty series when futures are missing."
     }
   },
   "additionalProperties": false

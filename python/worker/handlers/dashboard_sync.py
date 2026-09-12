@@ -5,7 +5,11 @@ from typing import Any
 
 import tushare as ts
 
-from worker.dashboard_codes import DASHBOARD_ALL_INDEX_CODES, DASHBOARD_DEFAULT_TS_CODE
+from worker.dashboard_codes import (
+    DASHBOARD_ALL_INDEX_CODES,
+    DASHBOARD_DEFAULT_TS_CODE,
+    DASHBOARD_FUT_CODES,
+)
 from worker.db import market_db
 from worker.models import DashboardBackfillParams, DashboardBackfillResult
 from worker.rate_limit import wait_for_tushare_slot
@@ -15,6 +19,8 @@ INDEX_DAILY_FIELDS = (
 )
 MARGIN_FIELDS = "trade_date,exchange_id,rzye,rqye,rzrqye"
 LIMIT_FIELDS = "ts_code,trade_date,limit_status"
+FUT_DAILY_FIELDS = "ts_code,trade_date,close"
+FUT_EXCHANGE = "CFFEX"
 
 
 def sync_dashboard_for_date(pro: Any, trade_date: str) -> dict[str, int]:
@@ -31,10 +37,14 @@ def sync_dashboard_for_date(pro: Any, trade_date: str) -> dict[str, int]:
     wait_for_tushare_slot()
     limit_count = market_db.upsert_limit_status(fetch_limit_status(pro, trade_date))
 
+    wait_for_tushare_slot()
+    fut_count = market_db.upsert_fut_daily(fetch_fut_daily(pro, exchange=FUT_EXCHANGE, trade_date=trade_date))
+
     return {
         "index_count": index_count,
         "margin_count": margin_count,
         "limit_count": limit_count,
+        "fut_count": fut_count,
     }
 
 
@@ -47,8 +57,10 @@ def dashboard_backfill(params: dict) -> DashboardBackfillResult:
     index_count = 0
     margin_count = 0
     limit_count = 0
+    fut_count = 0
     index_fetched = False
     margin_fetched = False
+    fut_fetched = False
     limit_days = 0
 
     complete_dates = market_db.list_complete_dates(parsed.start_date, parsed.end_date)
@@ -86,6 +98,26 @@ def dashboard_backfill(params: dict) -> DashboardBackfillResult:
         except Exception as exc:  # noqa: BLE001
             errors.append(f"margin: {exc}" if str(exc) else "margin failed")
 
+    missing_fut_codes: list[str] = []
+    for ts_code in DASHBOARD_FUT_CODES:
+        have = set(market_db.list_fut_dates(ts_code, parsed.start_date, parsed.end_date))
+        if any(day not in have for day in target_dates):
+            missing_fut_codes.append(ts_code)
+    if missing_fut_codes:
+        fut_fetched = True
+        for ts_code in missing_fut_codes:
+            try:
+                wait_for_tushare_slot()
+                rows = fetch_fut_daily(
+                    pro,
+                    ts_code=ts_code,
+                    start_date=parsed.start_date,
+                    end_date=parsed.end_date,
+                )
+                fut_count += market_db.upsert_fut_daily(rows)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"fut_daily {ts_code}: {exc}" if str(exc) else f"fut_daily {ts_code} failed")
+
     limit_dates = set(market_db.list_limit_status_dates(parsed.start_date, parsed.end_date))
     missing_limit = [d for d in target_dates if d not in limit_dates]
     for trade_date in missing_limit:
@@ -106,6 +138,8 @@ def dashboard_backfill(params: dict) -> DashboardBackfillResult:
         index_fetched=index_fetched,
         margin_fetched=margin_fetched,
         limit_days=limit_days,
+        fut_count=fut_count,
+        fut_fetched=fut_fetched,
         error="; ".join(errors) if errors else None,
     )
 
@@ -178,6 +212,42 @@ def fetch_margin(
                 "rzrqye": _nullable_float(getattr(row, "rzrqye", None)),
             }
         )
+    return rows
+
+
+def fetch_fut_daily(
+    pro: Any,
+    *,
+    ts_code: str | None = None,
+    exchange: str | None = None,
+    trade_date: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> list[dict[str, Any]]:
+    kwargs: dict[str, Any] = {"fields": FUT_DAILY_FIELDS}
+    if ts_code:
+        kwargs["ts_code"] = ts_code
+    if exchange:
+        kwargs["exchange"] = exchange
+    if trade_date:
+        kwargs["trade_date"] = trade_date
+    else:
+        kwargs["start_date"] = start_date
+        kwargs["end_date"] = end_date
+    df = pro.fut_daily(**kwargs)
+    if df is None or df.empty:
+        return []
+    allowed = set(DASHBOARD_FUT_CODES)
+    rows: list[dict[str, Any]] = []
+    for row in df.itertuples(index=False):
+        code = str(getattr(row, "ts_code", "") or "").strip()
+        day = str(getattr(row, "trade_date", "") or "").strip()
+        if not code or not day or code not in allowed:
+            continue
+        close = _nullable_float(getattr(row, "close", None))
+        if close is None:
+            continue
+        rows.append({"ts_code": code, "trade_date": day, "close": close})
     return rows
 
 

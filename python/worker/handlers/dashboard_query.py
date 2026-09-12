@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, cast
 
 from worker.dashboard_codes import (
     AMOUNT_QIANYUAN_TO_YI,
     BREADTH_BIN_LABELS,
+    DASHBOARD_BASIS_PRODUCTS,
     DASHBOARD_DEFAULT_TS_CODE,
     DASHBOARD_DISPLAY_INDICES,
     DASHBOARD_TURNOVER_CODES,
@@ -17,6 +18,8 @@ _BREADTH_INDEX_UNIVERSES = frozenset({"000300.SH", "932000.CSI"})
 from worker.db import market_db
 from worker.models import (
     DashboardBar,
+    DashboardBasisPoint,
+    DashboardBasisProduct,
     DashboardBreadth,
     DashboardBreadthPoint,
     DashboardIndexQuote,
@@ -133,7 +136,46 @@ def query_dashboard(params: dict) -> DashboardQueryResult:
         margin=_block_from_series(margin_series),
         turnover=_block_from_series(turnover_series),
         breadth=breadth,
+        basis=_query_basis(parsed.start_date, parsed.end_date),
     )
+
+
+def _query_basis(start_date: str, end_date: str) -> list[DashboardBasisProduct]:
+    products: list[DashboardBasisProduct] = []
+    for meta in DASHBOARD_BASIS_PRODUCTS:
+        product_id = cast(Literal["IH", "IF", "IC", "IM"], meta["product"])
+        fut_by_date = {
+            str(row["trade_date"]): row.get("close")
+            for row in market_db.fetch_fut_closes(meta["fut_code"], start_date, end_date)
+        }
+        spot_by_date = {
+            str(row["trade_date"]): row.get("close")
+            for row in market_db.fetch_index_bars(meta["spot_code"], start_date, end_date)
+        }
+        series: list[DashboardBasisPoint] = []
+        for trade_date in sorted(set(fut_by_date) & set(spot_by_date)):
+            fut_close = fut_by_date[trade_date]
+            spot_close = spot_by_date[trade_date]
+            if fut_close is None or spot_close is None:
+                continue
+            series.append(
+                DashboardBasisPoint(
+                    trade_date=trade_date,
+                    fut_close=float(fut_close),
+                    spot_close=float(spot_close),
+                    basis=float(spot_close) - float(fut_close),
+                )
+            )
+        products.append(
+            DashboardBasisProduct(
+                product=product_id,
+                fut_code=meta["fut_code"],
+                spot_code=meta["spot_code"],
+                name=meta["name"],
+                series=series,
+            )
+        )
+    return products
 
 
 def _synthesized_volume(

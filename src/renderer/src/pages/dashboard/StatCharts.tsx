@@ -8,6 +8,11 @@ import {
 } from 'lightweight-charts'
 import type { DashboardSeriesPoint } from '../../../../shared/types/dashboard'
 import { LWC_FONT_STACK } from '../../theme/lwcFont'
+import {
+  DASHBOARD_PANE_BOTTOM_STRETCH,
+  DASHBOARD_PANE_TOP_STRETCH,
+  applyLastYearVisibleRange
+} from './chartView'
 import { DOWN_COLOR, UP_COLOR, yyyymmddToChartTime } from './format'
 
 export const STAT_VALUE_COLOR = '#1976d2'
@@ -54,8 +59,8 @@ export function AlignedStatChart({
     })
     chart.addPane(false)
     const panes = chart.panes()
-    panes[0]?.setStretchFactor(1.4)
-    panes[1]?.setStretchFactor(1)
+    panes[0]?.setStretchFactor(DASHBOARD_PANE_TOP_STRETCH)
+    panes[1]?.setStretchFactor(DASHBOARD_PANE_BOTTOM_STRETCH)
 
     const valueSeries = chart.addSeries(
       LineSeries,
@@ -118,7 +123,10 @@ export function AlignedStatChart({
           color: (point.change as number) >= 0 ? UP_COLOR : DOWN_COLOR
         }))
     )
-    chart.timeScale().fitContent()
+    applyLastYearVisibleRange(
+      chart,
+      series.map((point) => point.trade_date)
+    )
     const observer = new ResizeObserver(() => {
       chart.applyOptions({ width: el.clientWidth, height: el.clientHeight })
     })
@@ -176,7 +184,7 @@ export function StatLegend({ legends }: { legends: StatLegendItem[] }): React.JS
   )
 }
 
-function ChartPlaceholder({ text }: { text: string }): React.JSX.Element {
+export function ChartPlaceholder({ text }: { text: string }): React.JSX.Element {
   return (
     <div
       style={{

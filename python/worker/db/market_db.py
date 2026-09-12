@@ -93,6 +93,14 @@ CREATE TABLE IF NOT EXISTS index_weight (
   synced_at TIMESTAMP NOT NULL,
   PRIMARY KEY (index_code, trade_date, con_code)
 );
+
+CREATE TABLE IF NOT EXISTS fut_daily (
+  ts_code VARCHAR NOT NULL,
+  trade_date VARCHAR NOT NULL,
+  close DOUBLE,
+  synced_at TIMESTAMP NOT NULL,
+  PRIMARY KEY (ts_code, trade_date)
+);
 """
 
 _conn: duckdb.DuckDBPyConnection | None = None
@@ -245,6 +253,87 @@ def upsert_margin(rows: list[dict[str, Any]]) -> int:
     finally:
         conn.unregister(view)
     return len(rows)
+
+
+def upsert_fut_daily(rows: list[dict[str, Any]]) -> int:
+    if not rows:
+        return 0
+    conn = get_conn()
+    synced_at = _now_iso()
+    table = pa.table(
+        {
+            "ts_code": [str(r["ts_code"]) for r in rows],
+            "trade_date": [str(r["trade_date"]) for r in rows],
+            "close": pa.array([r.get("close") for r in rows], type=pa.float64()),
+            "synced_at": [synced_at] * len(rows),
+        }
+    )
+    view = "_tmp_fut_daily"
+    conn.register(view, table)
+    try:
+        conn.execute(
+            f"""
+            INSERT OR REPLACE INTO fut_daily
+              (ts_code, trade_date, close, synced_at)
+            SELECT ts_code, trade_date, close, synced_at
+            FROM {view}
+            """
+        )
+    finally:
+        conn.unregister(view)
+    return len(rows)
+
+
+def list_fut_dates(ts_code: str, start_date: str, end_date: str) -> list[str]:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT trade_date FROM fut_daily
+        WHERE ts_code = ?
+          AND trade_date >= ?
+          AND trade_date <= ?
+        ORDER BY trade_date
+        """,
+        [ts_code, start_date, end_date],
+    ).fetchall()
+    return [str(r[0]) for r in rows]
+
+
+def latest_fut_trade_date(ts_code: str | None = None) -> str | None:
+    conn = get_conn()
+    if ts_code:
+        row = conn.execute(
+            "SELECT MAX(trade_date) FROM fut_daily WHERE ts_code = ?",
+            [ts_code],
+        ).fetchone()
+    else:
+        row = conn.execute("SELECT MAX(trade_date) FROM fut_daily").fetchone()
+    if not row or row[0] is None:
+        return None
+    return str(row[0])
+
+
+def fetch_fut_closes(ts_code: str, start_date: str, end_date: str) -> list[dict[str, Any]]:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT ts_code, trade_date, close
+        FROM fut_daily
+        WHERE ts_code = ?
+          AND trade_date >= ?
+          AND trade_date <= ?
+        ORDER BY trade_date
+        """,
+        [ts_code, start_date, end_date],
+    ).fetchall()
+    return [
+        {
+            "ts_code": str(r[0]),
+            "trade_date": str(r[1]),
+            "close": _as_float(r[2]),
+        }
+        for r in rows
+    ]
 
 
 def upsert_limit_status(rows: list[dict[str, Any]]) -> int:
@@ -892,6 +981,7 @@ def clear_market() -> str:
     conn.execute("DELETE FROM margin")
     conn.execute("DELETE FROM stock_limit_status")
     conn.execute("DELETE FROM index_weight")
+    conn.execute("DELETE FROM fut_daily")
     return str(resolve_db_path())
 
 

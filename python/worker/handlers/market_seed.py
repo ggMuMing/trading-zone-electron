@@ -71,9 +71,16 @@ def seed_sync_fixture(params: dict) -> dict:
     }
 
 
+_FUT_BASIS_OFFSETS: dict[str, float] = {"IH": -10.0, "IF": -20.0, "IC": 5.0, "IM": -30.0}
+
+
 def seed_dashboard_fixture(params: dict) -> dict:
     """Acceptance helper: write index / margin / limit_status plus a tiny breadth sample."""
-    from worker.dashboard_codes import DASHBOARD_ALL_INDEX_CODES, DASHBOARD_DISPLAY_INDICES
+    from worker.dashboard_codes import (
+        DASHBOARD_ALL_INDEX_CODES,
+        DASHBOARD_BASIS_PRODUCTS,
+        DASHBOARD_DISPLAY_INDICES,
+    )
 
     market_db.init_schema()
     days = [str(d) for d in (params.get("trade_dates") or ["20240102", "20240103"])]
@@ -185,16 +192,48 @@ def seed_dashboard_fixture(params: dict) -> dict:
 
     weight_count = _seed_index_weight_sample()
 
+    spot_close: dict[tuple[str, str], float] = {}
+    for row in index_rows:
+        close = row.get("close")
+        if close is None:
+            continue
+        spot_close[(str(row["ts_code"]), str(row["trade_date"]))] = float(close)
+
+    fut_rows: list[dict] = []
+    for meta in DASHBOARD_BASIS_PRODUCTS:
+        offset = _FUT_BASIS_OFFSETS[meta["product"]]
+        for trade_date in days:
+            spot = spot_close.get((meta["spot_code"], trade_date))
+            if spot is None:
+                continue
+            fut_rows.append(
+                {
+                    "ts_code": meta["fut_code"],
+                    "trade_date": trade_date,
+                    "close": spot + offset,
+                }
+            )
+    fut_count = market_db.upsert_fut_daily(fut_rows)
+
     return {
         "index_count": index_count,
         "margin_count": margin_count,
         "limit_count": limit_count,
         "bar_count": bar_count,
         "weight_count": weight_count,
+        "fut_count": fut_count,
         "display_count": len(DASHBOARD_DISPLAY_INDICES),
         "trade_dates": days,
         "db_path": str(market_db.resolve_db_path()),
     }
+
+
+def clear_fut_daily_fixture(params: dict) -> dict:
+    """Acceptance helper: remove all fut_daily rows so basis series stay empty."""
+    market_db.init_schema()
+    conn = market_db.get_conn()
+    conn.execute("DELETE FROM fut_daily")
+    return {"ok": True}
 
 
 def clear_index_weight_fixture(params: dict) -> dict:

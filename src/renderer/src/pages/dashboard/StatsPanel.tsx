@@ -10,7 +10,12 @@ import {
   DASHBOARD_BREADTH_UNIVERSE_OPTIONS,
   type DashboardBreadthUniverseId
 } from '../../../../shared/constants/dashboard'
-import type { DashboardBreadth, DashboardStatBlock } from '../../../../shared/types/dashboard'
+import type {
+  DashboardBasisProduct,
+  DashboardBreadth,
+  DashboardStatBlock
+} from '../../../../shared/types/dashboard'
+import { BasisGrid } from './BasisGrid'
 import { BreadthHistogram } from './BreadthHistogram'
 import { BreadthHistoryChart } from './BreadthHistoryChart'
 import { formatSignedYi, formatYi, signedColor } from './format'
@@ -20,6 +25,7 @@ interface StatsPanelProps {
   margin: DashboardStatBlock
   turnover: DashboardStatBlock
   breadth: DashboardBreadth
+  basis: DashboardBasisProduct[]
   breadthUniverse: DashboardBreadthUniverseId
   onBreadthUniverseChange: (universe: DashboardBreadthUniverseId) => void
   breadthRefreshing?: boolean
@@ -29,6 +35,7 @@ export function StatsPanel({
   margin,
   turnover,
   breadth,
+  basis,
   breadthUniverse,
   onBreadthUniverseChange,
   breadthRefreshing = false
@@ -45,7 +52,7 @@ export function StatsPanel({
         gap: 4
       }}
     >
-      <Box sx={{ flex: 2, minHeight: 180, display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ flex: 2, minHeight: 360, display: 'flex', flexDirection: 'column' }}>
         <StatBlock
           title="两融余额"
           unit="亿元"
@@ -57,7 +64,7 @@ export function StatsPanel({
           showClose
         />
       </Box>
-      <Box sx={{ flex: 2, minHeight: 180, display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ flex: 2, minHeight: 360, display: 'flex', flexDirection: 'column' }}>
         <StatBlock
           title="沪深京成交额"
           unit="亿元"
@@ -65,13 +72,16 @@ export function StatsPanel({
           legends={[{ color: STAT_VALUE_COLOR, label: '成交额' }]}
         />
       </Box>
-      <Box sx={{ flex: 2, minHeight: 280, display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ flex: 2, minHeight: 480, display: 'flex', flexDirection: 'column' }}>
         <BreadthBlock
           breadth={breadth}
           breadthUniverse={breadthUniverse}
           onBreadthUniverseChange={onBreadthUniverseChange}
           refreshing={breadthRefreshing}
         />
+      </Box>
+      <Box sx={{ flexShrink: 0, minHeight: 1480, display: 'flex', flexDirection: 'column', marginTop: 5 }}>
+        <BasisGrid products={basis} />
       </Box>
     </Box>
   )
@@ -191,10 +201,10 @@ function BreadthBlock({
         <Metric label="下跌" value={breadth.down_count} color="#26a69a" />
         <Metric label="跌停" value={breadth.limit_down_count} color="#26a69a" />
       </Stack>
-      <Box sx={{ flex: 1, minHeight: 120 }}>
+      <Box sx={{ flex: 1, minHeight: 160 }}>
         <BreadthHistogram labels={breadth.labels} values={breadth.histogram} />
       </Box>
-      <Box sx={{ flex: 1, minHeight: 160, mt: 1 }}>
+      <Box sx={{ flex: 1.4, minHeight: 260, mt: 1 }}>
         <BreadthHistoryChart series={breadth.series ?? []} />
       </Box>
     </Box>

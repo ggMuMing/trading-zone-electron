@@ -48,6 +48,25 @@ export const DASHBOARD_ALL_INDEX_CODES: string[] = [
   ...DASHBOARD_VOLUME_SOURCE_CODES
 ]
 
+export type DashboardBasisProductId = 'IH' | 'IF' | 'IC' | 'IM'
+
+export interface DashboardBasisProductMeta {
+  product: DashboardBasisProductId
+  fut_code: string
+  spot_code: string
+  name: string
+}
+
+/** Keep in sync with python/worker/dashboard_codes.py */
+export const DASHBOARD_BASIS_PRODUCTS: DashboardBasisProductMeta[] = [
+  { product: 'IH', fut_code: 'IH.CFX', spot_code: '000016.SH', name: '上证50' },
+  { product: 'IF', fut_code: 'IF.CFX', spot_code: '000300.SH', name: '沪深300' },
+  { product: 'IC', fut_code: 'IC.CFX', spot_code: '000905.SH', name: '中证500' },
+  { product: 'IM', fut_code: 'IM.CFX', spot_code: '000852.SH', name: '中证1000' }
+]
+
+export const DASHBOARD_FUT_CODES = DASHBOARD_BASIS_PRODUCTS.map((item) => item.fut_code)
+
 export const DASHBOARD_BREADTH_UNIVERSE_ALL = 'all' as const
 
 export const DASHBOARD_BREADTH_UNIVERSE_OPTIONS = [

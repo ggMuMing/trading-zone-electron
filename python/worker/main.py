@@ -24,6 +24,7 @@ from worker.handlers.market_meta import market_coverage  # noqa: E402
 from worker.handlers.market_plan import market_plan  # noqa: E402
 from worker.handlers.market_query import query_ohlcv  # noqa: E402
 from worker.handlers.market_seed import (  # noqa: E402
+    clear_fut_daily_fixture,
     clear_index_weight_fixture,
     seed_dashboard_fixture,
     seed_index_weight_fixture,
@@ -54,6 +55,7 @@ HANDLERS: dict[str, Handler] = {
     "data.test.seed_dashboard_fixture": seed_dashboard_fixture,
     "data.test.seed_index_weight_fixture": seed_index_weight_fixture,
     "data.test.clear_index_weight_fixture": clear_index_weight_fixture,
+    "data.test.clear_fut_daily_fixture": clear_fut_daily_fixture,
     "compute.indicator": compute_indicator,
     "compute.script_try": try_script,
 }

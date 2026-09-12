@@ -1,4 +1,4 @@
-import type { DashboardBreadthUniverseId } from '../constants/dashboard'
+import type { DashboardBasisProductId, DashboardBreadthUniverseId } from '../constants/dashboard'
 
 export type DashboardIndexGroup = 'market' | 'broad'
 
@@ -72,6 +72,21 @@ export interface DashboardBreadth {
   constituent_as_of?: string | null
 }
 
+export interface DashboardBasisPoint {
+  trade_date: string
+  fut_close: number
+  spot_close: number
+  basis: number
+}
+
+export interface DashboardBasisProduct {
+  product: DashboardBasisProductId
+  fut_code: string
+  spot_code: string
+  name: string
+  series: DashboardBasisPoint[]
+}
+
 export interface DashboardQueryResult {
   as_of: string | null
   selected_ts_code: string
@@ -80,6 +95,7 @@ export interface DashboardQueryResult {
   margin: DashboardStatBlock
   turnover: DashboardStatBlock
   breadth: DashboardBreadth
+  basis: DashboardBasisProduct[]
 }
 
 export interface DashboardBackfillResult {
@@ -91,5 +107,7 @@ export interface DashboardBackfillResult {
   index_fetched: boolean
   margin_fetched: boolean
   limit_days: number
+  fut_count?: number
+  fut_fetched?: boolean
   error?: string | null
 }

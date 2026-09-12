@@ -9,6 +9,7 @@ import {
 } from 'lightweight-charts'
 import type { DashboardBar } from '../../../../shared/types/dashboard'
 import { LWC_FONT_STACK } from '../../theme/lwcFont'
+import { applyLastYearVisibleRange } from './chartView'
 import { DOWN_COLOR, UP_COLOR, yyyymmddToChartTime } from './format'
 
 interface MiniKlineProps {
@@ -94,7 +95,10 @@ export function MiniKline({ bars }: MiniKlineProps): React.JSX.Element {
     }))
     candleRef.current.setData(candleData)
     volumeRef.current.setData(volumeData)
-    chartRef.current.timeScale().fitContent()
+    applyLastYearVisibleRange(
+      chartRef.current,
+      bars.map((bar) => bar.trade_date)
+    )
   }, [bars])
 
   return (

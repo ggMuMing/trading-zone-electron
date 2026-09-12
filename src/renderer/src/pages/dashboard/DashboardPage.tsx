@@ -131,6 +131,7 @@ export function DashboardPage(): React.JSX.Element {
                   constituent_as_of: null
                 }
               }
+              basis={data?.basis ?? []}
               breadthUniverse={breadthUniverse}
               onBreadthUniverseChange={handleBreadthUniverseChange}
               breadthRefreshing={breadthRefreshing}

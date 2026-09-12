@@ -46,6 +46,15 @@ INDEX_NAME_BY_CODE: dict[str, str] = {
     code: name for code, name, _group in DASHBOARD_DISPLAY_INDICES
 }
 
+DASHBOARD_BASIS_PRODUCTS: tuple[dict[str, str], ...] = (
+    {"product": "IH", "fut_code": "IH.CFX", "spot_code": "000016.SH", "name": "上证50"},
+    {"product": "IF", "fut_code": "IF.CFX", "spot_code": "000300.SH", "name": "沪深300"},
+    {"product": "IC", "fut_code": "IC.CFX", "spot_code": "000905.SH", "name": "中证500"},
+    {"product": "IM", "fut_code": "IM.CFX", "spot_code": "000852.SH", "name": "中证1000"},
+)
+
+DASHBOARD_FUT_CODES: tuple[str, ...] = tuple(item["fut_code"] for item in DASHBOARD_BASIS_PRODUCTS)
+
 AMOUNT_QIANYUAN_TO_YI = 1e5
 YUAN_TO_YI = 1e8
 

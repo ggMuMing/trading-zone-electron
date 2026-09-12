@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { LineSeries, LineStyle, createChart, type Time } from 'lightweight-charts'
 import type { DashboardBreadthPoint } from '../../../../shared/types/dashboard'
 import { LWC_FONT_STACK } from '../../theme/lwcFont'
+import { applyLastYearVisibleRange } from './chartView'
 import { DOWN_COLOR, UP_COLOR, yyyymmddToChartTime } from './format'
 import { STAT_CLOSE_COLOR, StatLegend } from './StatCharts'
 
@@ -93,7 +94,10 @@ export function BreadthHistoryChart({ series }: BreadthHistoryChartProps): React
       }))
     )
     limitUpMa.setData(limitUpMa20(series))
-    chart.timeScale().fitContent()
+    applyLastYearVisibleRange(
+      chart,
+      series.map((point) => point.trade_date)
+    )
 
     const observer = new ResizeObserver(() => {
       chart.applyOptions({ width: el.clientWidth, height: el.clientHeight })

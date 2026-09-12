@@ -173,6 +173,8 @@ class DashboardBackfillResult(BaseModel):
     index_fetched: bool = False
     margin_fetched: bool = False
     limit_days: int = 0
+    fut_count: int = 0
+    fut_fetched: bool = False
     error: str | None = None
 
 
@@ -240,6 +242,21 @@ class DashboardBreadth(BaseModel):
     constituent_as_of: str | None = None
 
 
+class DashboardBasisPoint(BaseModel):
+    trade_date: str
+    fut_close: float
+    spot_close: float
+    basis: float
+
+
+class DashboardBasisProduct(BaseModel):
+    product: Literal["IH", "IF", "IC", "IM"]
+    fut_code: str
+    spot_code: str
+    name: str
+    series: list[DashboardBasisPoint] = Field(default_factory=list)
+
+
 class DashboardQueryResult(BaseModel):
     as_of: str | None = None
     selected_ts_code: str
@@ -248,6 +265,7 @@ class DashboardQueryResult(BaseModel):
     margin: DashboardStatBlock = Field(default_factory=DashboardStatBlock)
     turnover: DashboardStatBlock = Field(default_factory=DashboardStatBlock)
     breadth: DashboardBreadth = Field(default_factory=DashboardBreadth)
+    basis: list[DashboardBasisProduct] = Field(default_factory=list)
 
 
 class IndexWeightSyncParams(BaseModel):
