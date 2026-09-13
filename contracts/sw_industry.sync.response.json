@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SwIndustrySyncWorkerResult",
+  "description": "Result for method data.sync.sw_industry (Main writes SQLite)",
+  "type": "object",
+  "required": ["classify", "members", "errors"],
+  "additionalProperties": false,
+  "properties": {
+    "classify": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["index_code", "industry_code", "parent_code", "level", "name"],
+        "additionalProperties": false,
+        "properties": {
+          "index_code": { "type": "string" },
+          "industry_code": { "type": "string" },
+          "parent_code": { "type": "string" },
+          "level": { "type": "string", "enum": ["L1", "L2", "L3"] },
+          "name": { "type": "string" },
+          "is_pub": { "type": ["string", "null"] },
+          "src": { "type": "string" }
+        }
+      }
+    },
+    "members": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ts_code", "l1_code", "l2_code", "l3_code"],
+        "additionalProperties": false,
+        "properties": {
+          "ts_code": { "type": "string" },
+          "l1_code": { "type": "string" },
+          "l2_code": { "type": "string" },
+          "l3_code": { "type": "string" },
+          "in_date": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

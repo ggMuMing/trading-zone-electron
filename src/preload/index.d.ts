@@ -17,6 +17,12 @@ import type {
 } from '../shared/types/market'
 import type { DashboardQueryParams, DashboardQueryResult } from '../shared/types/dashboard'
 import type { IndexConstituentsResult, IndexWeightSyncResult } from '../shared/types/indexConstituents'
+import type {
+  SwIndustryBreadcrumb,
+  SwIndustryMembersResult,
+  SwIndustryNode,
+  SwIndustrySyncResult
+} from '../shared/types/swIndustry'
 
 export interface SyncStockListResult {
   count: number
@@ -42,6 +48,12 @@ export interface AppApi {
     coverage: () => Promise<MarketCoverageResult>
     syncStatus: () => Promise<MarketSyncStatus>
     onSyncProgress: (callback: (progress: MarketSyncProgress) => void) => () => void
+  }
+  industry: {
+    sync: () => Promise<SwIndustrySyncResult>
+    tree: () => Promise<SwIndustryNode[]>
+    members: (params: { index_code: string }) => Promise<SwIndustryMembersResult>
+    breadcrumb: (params: { ts_code: string }) => Promise<SwIndustryBreadcrumb | null>
   }
   dashboard: {
     query: (params?: DashboardQueryParams) => Promise<DashboardQueryResult>

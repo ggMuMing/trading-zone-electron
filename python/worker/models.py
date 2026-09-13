@@ -288,3 +288,31 @@ class IndexConstituentsResult(BaseModel):
     index_code: str
     as_of: str | None = None
     con_codes: list[str] = Field(default_factory=list)
+
+
+class SwIndustryNode(BaseModel):
+    index_code: str
+    industry_code: str
+    parent_code: str
+    level: Literal["L1", "L2", "L3"]
+    name: str
+    is_pub: str | None = None
+    src: str = "SW2021"
+
+
+class SwIndustryMemberRow(BaseModel):
+    ts_code: str
+    l1_code: str
+    l2_code: str
+    l3_code: str
+    in_date: str | None = None
+
+
+class SwIndustrySyncParams(BaseModel):
+    token: str = Field(min_length=1)
+
+
+class SwIndustrySyncResult(BaseModel):
+    classify: list[SwIndustryNode] = Field(default_factory=list)
+    members: list[SwIndustryMemberRow] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)

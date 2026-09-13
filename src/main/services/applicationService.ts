@@ -43,7 +43,8 @@ import {
   type MarketSyncPlanResult,
   type StockListResult,
   type IndexConstituentsResult as PyIndexConstituentsResult,
-  type IndexWeightSyncResult as PyIndexWeightSyncResult
+  type IndexWeightSyncResult as PyIndexWeightSyncResult,
+  type SwIndustryWorkerResult
 } from '../../shared/types/pythonProtocol'
 import { pythonBridge, readExampleMaSource } from '../bridge/pythonBridge'
 import { getTushareToken } from '../config/appConfig'
@@ -51,13 +52,21 @@ import { chartLayoutRepository } from '../db/chartLayoutRepository'
 import { indicatorScriptRepository } from '../db/indicatorScriptRepository'
 import { marketPoolRepository } from '../db/marketPoolRepository'
 import { stocksRepository } from '../db/stocksRepository'
+import { swIndustryRepository } from '../db/swIndustryRepository'
 import { decodeOhlcvArrow } from '../market/arrowOhlcv'
 import type { DashboardQueryParams, DashboardQueryResult } from '../../shared/types/dashboard'
 import type { IndexConstituentsResult, IndexWeightSyncResult } from '../../shared/types/indexConstituents'
+import type {
+  SwIndustryBreadcrumb,
+  SwIndustryMembersResult,
+  SwIndustryNode,
+  SwIndustrySyncResult
+} from '../../shared/types/swIndustry'
 
 const MARKET_CALL_TIMEOUT_MS = 180_000
 const MARKET_DAY_TIMEOUT_MS = 120_000
 const DASHBOARD_BACKFILL_TIMEOUT_MS = 1_800_000
+const SW_INDUSTRY_SYNC_TIMEOUT_MS = 180_000
 const DATE_RE = /^[0-9]{8}$/
 
 export type SyncProgressHandler = (progress: MarketSyncProgress) => void
@@ -562,6 +571,47 @@ export const applicationService = {
   async syncIndexWeights(): Promise<IndexWeightSyncResult> {
     const token = requireToken()
     return pythonBridge.call<PyIndexWeightSyncResult>(PYTHON_METHODS.syncIndexWeight, { token })
+  },
+
+  async syncSwIndustry(): Promise<SwIndustrySyncResult> {
+    const token = requireToken()
+    const result = await pythonBridge.call<SwIndustryWorkerResult>(
+      PYTHON_METHODS.syncSwIndustry,
+      { token },
+      SW_INDUSTRY_SYNC_TIMEOUT_MS
+    )
+    swIndustryRepository.replaceTree(result.classify ?? [])
+    const written = swIndustryRepository.replaceMembers(result.members ?? [])
+    return {
+      classify_count: result.classify?.length ?? 0,
+      member_fetched: result.members?.length ?? 0,
+      member_count: written.member_count,
+      skipped_not_in_stocks: written.skipped_not_in_stocks,
+      errors: result.errors ?? []
+    }
+  },
+
+  listSwIndustryTree(): SwIndustryNode[] {
+    return swIndustryRepository.listTree()
+  },
+
+  listSwIndustryMembers(indexCode: string): SwIndustryMembersResult {
+    const code = indexCode.trim()
+    if (!code) {
+      throw new Error('index_code is required')
+    }
+    return {
+      index_code: code,
+      con_codes: swIndustryRepository.listMemberCodes(code)
+    }
+  },
+
+  getSwIndustryBreadcrumb(tsCode: string): SwIndustryBreadcrumb | null {
+    const code = tsCode.trim()
+    if (!code) {
+      throw new Error('ts_code is required')
+    }
+    return swIndustryRepository.getBreadcrumb(code)
   },
 
   async listIndexConstituents(indexCode: string): Promise<IndexConstituentsResult> {

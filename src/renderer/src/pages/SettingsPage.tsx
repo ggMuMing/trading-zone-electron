@@ -61,6 +61,7 @@ export function SettingsPage({
   const [boardStats, setBoardStats] = useState<BoardStats | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
   const [syncingIndexWeights, setSyncingIndexWeights] = useState(false)
+  const [syncingIndustry, setSyncingIndustry] = useState(false)
 
   const loadAll = async (): Promise<void> => {
     setLoading(true)
@@ -103,7 +104,7 @@ export function SettingsPage({
   const minEndIso = startIso
   const maxEndIso = yyyymmddToIso(today)
   const isEmpty = (coverage?.total_bars ?? 0) === 0
-  const busy = loading || syncing || clearing || syncingIndexWeights
+  const busy = loading || syncing || clearing || syncingIndexWeights || syncingIndustry
 
   const handleSaveToken = async (): Promise<void> => {
     setError(null)
@@ -136,6 +137,24 @@ export function SettingsPage({
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setSyncingIndexWeights(false)
+    }
+  }
+
+  const handleSyncIndustry = async (): Promise<void> => {
+    setSyncingIndustry(true)
+    setError(null)
+    setMessage(null)
+    setConfirmClear(false)
+    try {
+      const result = await window.api.industry.sync()
+      const errHint = result.errors.length > 0 ? `；失败 ${result.errors.length} 个一级` : ''
+      setMessage(
+        `行业分类已更新：分类 ${result.classify_count} 个，成分入库 ${result.member_count} 只（拉取 ${result.member_fetched}，跳过非在市 ${result.skipped_not_in_stocks}）${errHint}`
+      )
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSyncingIndustry(false)
     }
   }
 
@@ -308,6 +327,16 @@ export function SettingsPage({
               disabled={busy || !hasToken}
             >
               {syncingIndexWeights ? '更新中…' : '更新成分股'}
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={
+                syncingIndustry ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />
+              }
+              onClick={() => void handleSyncIndustry()}
+              disabled={busy || !hasToken}
+            >
+              {syncingIndustry ? '更新中…' : '更新行业分类'}
             </Button>
             <Button
               color="warning"

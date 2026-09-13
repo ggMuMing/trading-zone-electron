@@ -51,6 +51,33 @@ CREATE TABLE IF NOT EXISTS indicator_script (
   manifest   TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS sw_industry (
+  index_code    TEXT PRIMARY KEY NOT NULL,
+  industry_code TEXT NOT NULL UNIQUE,
+  parent_code   TEXT NOT NULL,
+  level         TEXT NOT NULL,
+  name          TEXT NOT NULL,
+  is_pub        TEXT,
+  src           TEXT NOT NULL DEFAULT 'SW2021',
+  synced_at     TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sw_industry_parent ON sw_industry(parent_code);
+CREATE INDEX IF NOT EXISTS idx_sw_industry_level ON sw_industry(level);
+
+CREATE TABLE IF NOT EXISTS sw_industry_member (
+  ts_code   TEXT PRIMARY KEY NOT NULL,
+  l1_code   TEXT NOT NULL,
+  l2_code   TEXT NOT NULL,
+  l3_code   TEXT NOT NULL,
+  in_date   TEXT,
+  synced_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sw_member_l1 ON sw_industry_member(l1_code);
+CREATE INDEX IF NOT EXISTS idx_sw_member_l2 ON sw_industry_member(l2_code);
+CREATE INDEX IF NOT EXISTS idx_sw_member_l3 ON sw_industry_member(l3_code);
 `
 
 function dropLayoutItemBuiltinUnique(database: Database.Database): void {

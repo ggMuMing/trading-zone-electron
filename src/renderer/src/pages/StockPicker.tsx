@@ -1,21 +1,20 @@
 import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
 import ListItemButton from '@mui/material/ListItemButton'
 import ListItemText from '@mui/material/ListItemText'
-import ListSubheader from '@mui/material/ListSubheader'
-import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
-import Select from '@mui/material/Select'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   CHART_UNIVERSE_ALL,
-  CHART_UNIVERSE_INDEX_BROAD,
-  CHART_UNIVERSE_INDEX_MARKET,
-  CHART_UNIVERSE_OPTIONS
+  parseIndustryIndexCode,
+  resolveUniverseLabel
 } from '../../../shared/constants/chartUniverse'
 import type { Stock } from '../../../shared/types/stock'
+import { UniversePickerDialog } from './chart/UniversePickerDialog'
 
 const ROW_HEIGHT = 60
 
@@ -50,8 +49,33 @@ export function StockPicker({
 }: StockPickerProps): React.JSX.Element {
   const universeEnabled = Boolean(onUniverseChange)
   const [keyword, setKeyword] = useState('')
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [industryNames, setIndustryNames] = useState<Map<string, string>>(new Map())
   const parentRef = useRef<HTMLDivElement>(null)
   const query = keyword.trim().toLowerCase()
+
+  useEffect(() => {
+    if (!universeEnabled || !parseIndustryIndexCode(universeId)) {
+      return
+    }
+    let cancelled = false
+    void window.api.industry
+      .tree()
+      .then((rows) => {
+        if (cancelled) {
+          return
+        }
+        setIndustryNames(new Map(rows.map((row) => [row.index_code, row.name])))
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setIndustryNames(new Map())
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [universeEnabled, universeId])
 
   const filtered = useMemo(
     () => (query ? stocks.filter((stock) => matchesStock(stock, query)) : stocks),
@@ -80,27 +104,26 @@ export function StockPicker({
     >
       <Box sx={{ px: universeEnabled ? 1.5 : 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
         {universeEnabled ? (
-          <Select
-            size="small"
-            fullWidth
-            value={universeId}
-            onChange={(event) => onUniverseChange?.(String(event.target.value))}
-            renderValue={(value) => {
-              const option = CHART_UNIVERSE_OPTIONS.find((item) => item.id === value)
-              return option?.label ?? value
-            }}
-          >
-            <MenuItem value={CHART_UNIVERSE_ALL}>全市场</MenuItem>
-            <ListSubheader disableSticky>指数行情</ListSubheader>
-            <MenuItem value={CHART_UNIVERSE_INDEX_MARKET}>大盘指数</MenuItem>
-            <MenuItem value={CHART_UNIVERSE_INDEX_BROAD}>宽基指数</MenuItem>
-            <ListSubheader disableSticky>成分股</ListSubheader>
-            {CHART_UNIVERSE_OPTIONS.filter((item) => item.kind === 'constituents').map((item) => (
-              <MenuItem key={item.id} value={item.id}>
-                {item.label}
-              </MenuItem>
-            ))}
-          </Select>
+          <>
+            <Button
+              size="small"
+              fullWidth
+              variant="outlined"
+              endIcon={<ArrowDropDownIcon />}
+              onClick={() => setPickerOpen(true)}
+              sx={{ justifyContent: 'space-between', textTransform: 'none' }}
+            >
+              <Typography variant="body2" noWrap>
+                {resolveUniverseLabel(universeId, industryNames)}
+              </Typography>
+            </Button>
+            <UniversePickerDialog
+              open={pickerOpen}
+              universeId={universeId}
+              onClose={() => setPickerOpen(false)}
+              onSelect={(nextId) => onUniverseChange?.(nextId)}
+            />
+          </>
         ) : (
           <Typography variant="subtitle2">
             股票（{filtered.length} / {stocks.length}）

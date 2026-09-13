@@ -9,8 +9,10 @@ import {
   CHART_UNIVERSE_ALL,
   CHART_UNIVERSE_INDEX_BROAD,
   CHART_UNIVERSE_INDEX_MARKET,
+  industryUniverseId,
   isChartUniverseIndexCode,
-  parseConstituentsIndexCode
+  parseConstituentsIndexCode,
+  parseIndustryIndexCode
 } from '../../../shared/constants/chartUniverse'
 import {
   DASHBOARD_BROAD_INDICES,
@@ -29,6 +31,7 @@ import type { IndicatorScript, ScriptTryParams, ScriptTryResult } from '../../..
 import type { AdjustType, MarketCoverageResult, MarketQueryParams } from '../../../shared/types/market'
 import type { Stock } from '../../../shared/types/stock'
 import { ChartToolbar } from './chart/ChartToolbar'
+import { IndustryBreadcrumb } from './chart/IndustryBreadcrumb'
 import { IndicatorDialog } from './chart/IndicatorDialog'
 import { IndicatorSettingsDialog } from './chart/IndicatorSettingsDialog'
 import { KlineChart } from './chart/KlineChart'
@@ -126,6 +129,13 @@ export function ChartPage(): React.JSX.Element {
       if (nextUniverseId === CHART_UNIVERSE_INDEX_BROAD) {
         setUniverseCaption(null)
         return DASHBOARD_BROAD_INDICES.map(indexMetaToStock)
+      }
+      const industryCode = parseIndustryIndexCode(nextUniverseId)
+      if (industryCode) {
+        const result = await window.api.industry.members({ index_code: industryCode })
+        setUniverseCaption(null)
+        const codeSet = new Set(result.con_codes)
+        return listed.filter((stock) => codeSet.has(stock.ts_code))
       }
       const indexCode = parseConstituentsIndexCode(nextUniverseId)
       if (!indexCode) {
@@ -429,10 +439,14 @@ export function ChartPage(): React.JSX.Element {
   const isAllEmpty = allStocks.length === 0
   const constituentsEmpty =
     parseConstituentsIndexCode(universeId) !== null && pickerStocks.length === 0 && !universeLoading
+  const industryEmpty =
+    parseIndustryIndexCode(universeId) !== null && pickerStocks.length === 0 && !universeLoading
   const selected = pickerStocks.find((stock) => stock.ts_code === selectedCode)
   const constituentsEmptyHint = constituentsEmpty
     ? '尚无成分股数据，请到配置页更新成分股'
-    : null
+    : industryEmpty
+      ? '尚无行业数据，请到配置页更新行业分类'
+      : null
   const chartInput = useMemo(() => {
     if (!chartRaw) {
       return null
@@ -535,6 +549,12 @@ export function ChartPage(): React.JSX.Element {
               adjustDisabled={!selectedCode || querying || selectedIsIndex}
               onOpenIndicators={() => setIndicatorOpen(true)}
               indicatorsDisabled={loading}
+              trailing={
+                <IndustryBreadcrumb
+                  tsCode={selectedIsIndex ? null : selectedCode}
+                  onNavigate={(indexCode) => handleUniverseChange(industryUniverseId(indexCode))}
+                />
+              }
             />
 
             <Box sx={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>

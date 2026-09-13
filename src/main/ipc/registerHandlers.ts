@@ -80,6 +80,36 @@ export function registerHandlers(): void {
     return applicationService.syncIndexWeights()
   })
 
+  ipcMain.handle('industry:sync', async () => {
+    return applicationService.syncSwIndustry()
+  })
+
+  ipcMain.handle('industry:tree', () => {
+    return applicationService.listSwIndustryTree()
+  })
+
+  ipcMain.handle('industry:members', (_event, params: unknown) => {
+    if (!params || typeof params !== 'object') {
+      throw new Error('industry:members requires params object')
+    }
+    const indexCode = (params as Record<string, unknown>).index_code
+    if (typeof indexCode !== 'string' || !indexCode.trim()) {
+      throw new Error('index_code must be a non-empty string')
+    }
+    return applicationService.listSwIndustryMembers(indexCode.trim())
+  })
+
+  ipcMain.handle('industry:breadcrumb', (_event, params: unknown) => {
+    if (!params || typeof params !== 'object') {
+      throw new Error('industry:breadcrumb requires params object')
+    }
+    const tsCode = (params as Record<string, unknown>).ts_code
+    if (typeof tsCode !== 'string' || !tsCode.trim()) {
+      throw new Error('ts_code must be a non-empty string')
+    }
+    return applicationService.getSwIndustryBreadcrumb(tsCode.trim())
+  })
+
   ipcMain.handle('market:indexConstituents', async (_event, params: unknown) => {
     if (!params || typeof params !== 'object') {
       throw new Error('market:indexConstituents requires params object')

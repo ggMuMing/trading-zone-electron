@@ -4,7 +4,7 @@ import {
   DASHBOARD_MARKET_INDICES
 } from './dashboard'
 
-export type ChartUniverseKind = 'all' | 'index' | 'constituents'
+export type ChartUniverseKind = 'all' | 'index' | 'constituents' | 'industry'
 
 export interface ChartUniverseOption {
   id: string
@@ -20,6 +20,18 @@ export const CHART_UNIVERSE_INDEX_BROAD = 'index:broad'
 
 export function constituentsUniverseId(indexCode: string): string {
   return `constituents:${indexCode}`
+}
+
+export function industryUniverseId(indexCode: string): string {
+  return `industry:${indexCode}`
+}
+
+export function parseIndustryIndexCode(universeId: string): string | null {
+  if (!universeId.startsWith('industry:')) {
+    return null
+  }
+  const code = universeId.slice('industry:'.length).trim()
+  return code || null
 }
 
 export function parseConstituentsIndexCode(universeId: string): string | null {
@@ -60,4 +72,19 @@ export const CHART_UNIVERSE_INDEX_CODES = new Set(
 
 export function isChartUniverseIndexCode(tsCode: string): boolean {
   return CHART_UNIVERSE_INDEX_CODES.has(tsCode)
+}
+
+export function resolveUniverseLabel(
+  universeId: string,
+  industryNames?: ReadonlyMap<string, string>
+): string {
+  const option = CHART_UNIVERSE_OPTIONS.find((item) => item.id === universeId)
+  if (option) {
+    return option.label
+  }
+  const industryCode = parseIndustryIndexCode(universeId)
+  if (industryCode) {
+    return industryNames?.get(industryCode) ?? industryCode
+  }
+  return universeId
 }

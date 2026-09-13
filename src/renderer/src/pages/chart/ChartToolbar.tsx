@@ -1,9 +1,11 @@
+import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Divider from '@mui/material/Divider'
 import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
+import type { ReactNode } from 'react'
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown'
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
 import GroupAddIcon from '@mui/icons-material/GroupAdd'
@@ -43,6 +45,7 @@ export interface ChartToolbarProps {
   adjustDisabled?: boolean
   onOpenIndicators: () => void
   indicatorsDisabled?: boolean
+  trailing?: ReactNode
 }
 
 export function ChartToolbar({
@@ -53,7 +56,8 @@ export function ChartToolbar({
   onAdjustChange,
   adjustDisabled = false,
   onOpenIndicators,
-  indicatorsDisabled = false
+  indicatorsDisabled = false,
+  trailing
 }: ChartToolbarProps): React.JSX.Element {
   const [periodAnchor, setPeriodAnchor] = useState<HTMLElement | null>(null)
   const [adjustAnchor, setAdjustAnchor] = useState<HTMLElement | null>(null)
@@ -139,6 +143,8 @@ export function ChartToolbar({
       >
         指标
       </Button>
+      <Box sx={{ flex: 1, minWidth: 8 }} />
+      {trailing}
     </Stack>
   )
 }

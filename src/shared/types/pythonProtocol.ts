@@ -155,6 +155,8 @@ export interface IndexConstituentsResult {
   con_codes: string[]
 }
 
+export type { SwIndustryWorkerResult } from './swIndustry'
+
 export interface ComputeIndicatorInstance {
   id: string
   kind: 'script'
@@ -177,6 +179,7 @@ export const PYTHON_METHODS = {
   syncMarketDay: 'data.sync.market_day',
   syncDashboardBackfill: 'data.sync.dashboard_backfill',
   syncIndexWeight: 'data.sync.index_weight',
+  syncSwIndustry: 'data.sync.sw_industry',
   clearMarket: 'data.admin.clear_market',
   queryOhlcv: 'data.query.ohlcv',
   queryDashboard: 'data.query.dashboard',

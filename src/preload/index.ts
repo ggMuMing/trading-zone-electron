@@ -18,6 +18,12 @@ import type {
 } from '../shared/types/market'
 import type { DashboardQueryParams, DashboardQueryResult } from '../shared/types/dashboard'
 import type { IndexConstituentsResult, IndexWeightSyncResult } from '../shared/types/indexConstituents'
+import type {
+  SwIndustryBreadcrumb,
+  SwIndustryMembersResult,
+  SwIndustryNode,
+  SwIndustrySyncResult
+} from '../shared/types/swIndustry'
 
 export interface SyncStockListResult {
   count: number
@@ -57,6 +63,14 @@ const api = {
         ipcRenderer.removeListener('market:syncProgress', listener)
       }
     }
+  },
+  industry: {
+    sync: (): Promise<SwIndustrySyncResult> => ipcRenderer.invoke('industry:sync'),
+    tree: (): Promise<SwIndustryNode[]> => ipcRenderer.invoke('industry:tree'),
+    members: (params: { index_code: string }): Promise<SwIndustryMembersResult> =>
+      ipcRenderer.invoke('industry:members', params),
+    breadcrumb: (params: { ts_code: string }): Promise<SwIndustryBreadcrumb | null> =>
+      ipcRenderer.invoke('industry:breadcrumb', params)
   },
   dashboard: {
     query: (params?: DashboardQueryParams): Promise<DashboardQueryResult> =>

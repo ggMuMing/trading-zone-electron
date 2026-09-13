@@ -18,6 +18,7 @@ from worker.handlers.dashboard_query import query_dashboard  # noqa: E402
 from worker.handlers.dashboard_sync import dashboard_backfill  # noqa: E402
 from worker.handlers.index_constituents import query_index_constituents  # noqa: E402
 from worker.handlers.index_weight_sync import sync_index_weight  # noqa: E402
+from worker.handlers.sw_industry_sync import sync_sw_industry  # noqa: E402
 from worker.handlers.market_clear import clear_market  # noqa: E402
 from worker.handlers.market_day import market_day  # noqa: E402
 from worker.handlers.market_meta import market_coverage  # noqa: E402
@@ -45,6 +46,7 @@ HANDLERS: dict[str, Handler] = {
     "data.sync.market_day": market_day,
     "data.sync.dashboard_backfill": dashboard_backfill,
     "data.sync.index_weight": sync_index_weight,
+    "data.sync.sw_industry": sync_sw_industry,
     "data.admin.clear_market": clear_market,
     "data.query.ohlcv": query_ohlcv,
     "data.query.dashboard": query_dashboard,
