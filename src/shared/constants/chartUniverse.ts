@@ -46,6 +46,18 @@ export function isIndexUniverse(universeId: string): boolean {
   return universeId === CHART_UNIVERSE_INDEX_MARKET || universeId === CHART_UNIVERSE_INDEX_BROAD
 }
 
+export type UniverseNavTab = 'index' | 'constituents' | 'industry'
+
+export function resolveUniverseNavTab(universeId: string): UniverseNavTab {
+  if (parseIndustryIndexCode(universeId)) {
+    return 'industry'
+  }
+  if (parseConstituentsIndexCode(universeId)) {
+    return 'constituents'
+  }
+  return 'index'
+}
+
 export const CHART_UNIVERSE_OPTIONS: ChartUniverseOption[] = [
   { id: CHART_UNIVERSE_ALL, label: '全市场', kind: 'all' },
   { id: CHART_UNIVERSE_INDEX_MARKET, label: '大盘指数', kind: 'index', group: 'market' },

@@ -7,8 +7,8 @@ import IconButton from '@mui/material/IconButton'
 import List from '@mui/material/List'
 import ListItemButton from '@mui/material/ListItemButton'
 import ListItemText from '@mui/material/ListItemText'
-import ListSubheader from '@mui/material/ListSubheader'
 import Typography from '@mui/material/Typography'
+import Close from '@mui/icons-material/Close'
 import ExpandLess from '@mui/icons-material/ExpandLess'
 import ExpandMore from '@mui/icons-material/ExpandMore'
 import { useEffect, useMemo, useState } from 'react'
@@ -17,9 +17,12 @@ import {
   CHART_UNIVERSE_INDEX_BROAD,
   CHART_UNIVERSE_INDEX_MARKET,
   CHART_UNIVERSE_OPTIONS,
-  industryUniverseId
+  industryUniverseId,
+  resolveUniverseNavTab,
+  type UniverseNavTab
 } from '../../../../shared/constants/chartUniverse'
 import type { SwIndustryNode } from '../../../../shared/types/swIndustry'
+import { CHART_ICON_SX, ChartIconButton } from './ChartIconButton'
 
 interface UniversePickerDialogProps {
   open: boolean
@@ -27,6 +30,16 @@ interface UniversePickerDialogProps {
   onClose: () => void
   onSelect: (universeId: string) => void
 }
+
+const DIALOG_WIDTH = 600
+const DIALOG_HEIGHT = 480
+const NAV_WIDTH = 120
+
+const NAV_TABS: Array<{ id: UniverseNavTab; label: string }> = [
+  { id: 'index', label: '指数行情' },
+  { id: 'constituents', label: '成分股' },
+  { id: 'industry', label: '行业' }
+]
 
 function childrenOf(
   byParent: Map<string, SwIndustryNode[]>,
@@ -103,9 +116,17 @@ export function UniversePickerDialog({
   onClose,
   onSelect
 }: UniversePickerDialogProps): React.JSX.Element {
+  const [tab, setTab] = useState<UniverseNavTab>(() => resolveUniverseNavTab(universeId))
   const [tree, setTree] = useState<SwIndustryNode[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    setTab(resolveUniverseNavTab(universeId))
+  }, [open, universeId])
 
   useEffect(() => {
     if (!open) {
@@ -156,71 +177,127 @@ export function UniversePickerDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>选择标的范围</DialogTitle>
-      <DialogContent dividers sx={{ p: 0, maxHeight: 480 }}>
-        <List dense disablePadding>
-          <ListItemButton
-            selected={universeId === CHART_UNIVERSE_ALL}
-            onClick={() => handleSelect(CHART_UNIVERSE_ALL)}
-          >
-            <ListItemText primary="全市场" />
-          </ListItemButton>
-          <ListSubheader disableSticky>指数行情</ListSubheader>
-          <ListItemButton
-            selected={universeId === CHART_UNIVERSE_INDEX_MARKET}
-            onClick={() => handleSelect(CHART_UNIVERSE_INDEX_MARKET)}
-          >
-            <ListItemText primary="大盘指数" />
-          </ListItemButton>
-          <ListItemButton
-            selected={universeId === CHART_UNIVERSE_INDEX_BROAD}
-            onClick={() => handleSelect(CHART_UNIVERSE_INDEX_BROAD)}
-          >
-            <ListItemText primary="宽基指数" />
-          </ListItemButton>
-          <ListSubheader disableSticky>成分股</ListSubheader>
-          {constituents.map((item) => (
-            <ListItemButton
-              key={item.id}
-              selected={universeId === item.id}
-              onClick={() => handleSelect(item.id)}
-            >
-              <ListItemText primary={item.label} />
-            </ListItemButton>
-          ))}
-          <ListSubheader disableSticky>行业</ListSubheader>
-          {loading ? (
-            <Box sx={{ px: 2, py: 1.5 }}>
-              <Typography variant="body2" color="text.secondary">
-                加载行业分类…
-              </Typography>
-            </Box>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth={false}
+      slotProps={{
+        paper: {
+          sx: {
+            width: DIALOG_WIDTH,
+            height: DIALOG_HEIGHT,
+            maxWidth: DIALOG_WIDTH,
+            display: 'flex',
+            flexDirection: 'column'
+          }
+        }
+      }}
+    >
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 0.5, py: 1.25, pr: 1 }}>
+        <Typography component="span" sx={{ fontWeight: 700 }}>
+          选择标的范围
+        </Typography>
+        <Box sx={{ flex: 1 }} />
+        <ChartIconButton ariaLabel="关闭" title="关闭" roomy onClick={onClose}>
+          <Close sx={CHART_ICON_SX} />
+        </ChartIconButton>
+      </DialogTitle>
+      <DialogContent
+        dividers
+        sx={{ p: 0, display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}
+      >
+        <Box
+          sx={{
+            width: NAV_WIDTH,
+            flexShrink: 0,
+            borderRight: 1,
+            borderColor: 'divider',
+            py: 0.5
+          }}
+        >
+          <List dense disablePadding>
+            {NAV_TABS.map((item) => (
+              <ListItemButton
+                key={item.id}
+                selected={tab === item.id}
+                onClick={() => setTab(item.id)}
+              >
+                <ListItemText primary={item.label} />
+              </ListItemButton>
+            ))}
+          </List>
+        </Box>
+        <Box sx={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
+          {tab === 'index' ? (
+            <List dense disablePadding>
+              <ListItemButton
+                selected={universeId === CHART_UNIVERSE_ALL}
+                onClick={() => handleSelect(CHART_UNIVERSE_ALL)}
+              >
+                <ListItemText primary="全市场" />
+              </ListItemButton>
+              <ListItemButton
+                selected={universeId === CHART_UNIVERSE_INDEX_MARKET}
+                onClick={() => handleSelect(CHART_UNIVERSE_INDEX_MARKET)}
+              >
+                <ListItemText primary="大盘指数" />
+              </ListItemButton>
+              <ListItemButton
+                selected={universeId === CHART_UNIVERSE_INDEX_BROAD}
+                onClick={() => handleSelect(CHART_UNIVERSE_INDEX_BROAD)}
+              >
+                <ListItemText primary="宽基指数" />
+              </ListItemButton>
+            </List>
           ) : null}
-          {error ? (
-            <Box sx={{ px: 2, py: 1.5 }}>
-              <Typography variant="body2" color="error">
-                {error}
-              </Typography>
-            </Box>
+          {tab === 'constituents' ? (
+            <List dense disablePadding>
+              {constituents.map((item) => (
+                <ListItemButton
+                  key={item.id}
+                  selected={universeId === item.id}
+                  onClick={() => handleSelect(item.id)}
+                >
+                  <ListItemText primary={item.label} />
+                </ListItemButton>
+              ))}
+            </List>
           ) : null}
-          {!loading && !error && roots.length === 0 ? (
-            <Box sx={{ px: 2, py: 1.5 }}>
-              <Typography variant="body2" color="text.secondary">
-                尚无行业数据，请到配置页更新行业分类
-              </Typography>
-            </Box>
+          {tab === 'industry' ? (
+            <List dense disablePadding>
+              {loading ? (
+                <Box sx={{ px: 2, py: 1.5 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    加载行业分类…
+                  </Typography>
+                </Box>
+              ) : null}
+              {error ? (
+                <Box sx={{ px: 2, py: 1.5 }}>
+                  <Typography variant="body2" color="error">
+                    {error}
+                  </Typography>
+                </Box>
+              ) : null}
+              {!loading && !error && roots.length === 0 ? (
+                <Box sx={{ px: 2, py: 1.5 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    尚无行业数据，请到配置页更新行业分类
+                  </Typography>
+                </Box>
+              ) : null}
+              {roots.map((node) => (
+                <IndustryNodeRow
+                  key={node.index_code}
+                  node={node}
+                  byParent={byParent}
+                  selectedId={universeId}
+                  onSelect={handleSelect}
+                />
+              ))}
+            </List>
           ) : null}
-          {roots.map((node) => (
-            <IndustryNodeRow
-              key={node.index_code}
-              node={node}
-              byParent={byParent}
-              selectedId={universeId}
-              onSelect={handleSelect}
-            />
-          ))}
-        </List>
+        </Box>
       </DialogContent>
     </Dialog>
   )

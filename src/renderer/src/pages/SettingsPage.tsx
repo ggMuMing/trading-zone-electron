@@ -289,64 +289,70 @@ export function SettingsPage({
           <Typography variant="subtitle2" gutterBottom>
             更新窗口
           </Typography>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
-            <TextField
-              size="small"
-              type="date"
-              label="起始日"
-              value={startIso}
-              disabled
-              slotProps={{ inputLabel: { shrink: true } }}
-            />
-            <TextField
-              size="small"
-              type="date"
-              label="截止日"
-              value={endIso}
-              onChange={(e) => setEndDate(isoToYyyymmdd(e.target.value))}
-              disabled={busy}
-              slotProps={{
-                inputLabel: { shrink: true },
-                htmlInput: { min: minEndIso, max: maxEndIso }
-              }}
-            />
-            <Button
-              variant="contained"
-              startIcon={syncing ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />}
-              onClick={() => void handleSync()}
-              disabled={busy}
-            >
-              {syncing ? '更新中…' : '更新数据'}
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={
-                syncingIndexWeights ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />
-              }
-              onClick={() => void handleSyncIndexWeights()}
-              disabled={busy || !hasToken}
-            >
-              {syncingIndexWeights ? '更新中…' : '更新成分股'}
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={
-                syncingIndustry ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />
-              }
-              onClick={() => void handleSyncIndustry()}
-              disabled={busy || !hasToken}
-            >
-              {syncingIndustry ? '更新中…' : '更新行业分类'}
-            </Button>
-            <Button
-              color="warning"
-              variant="outlined"
-              onClick={() => void handleClear()}
-              disabled={busy}
-              startIcon={clearing ? <CircularProgress size={16} color="inherit" /> : undefined}
-            >
-              {clearing ? '清除中…' : confirmClear ? '确认清除行情？' : '清除所有股票数据'}
-            </Button>
+          <Stack spacing={1.5}>
+            <Stack direction="row" spacing={1} sx={{ width: '100%' }}>
+              <TextField
+                size="small"
+                type="date"
+                label="起始日"
+                value={startIso}
+                disabled
+                sx={{ width: '25%' }}
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+              <TextField
+                size="small"
+                type="date"
+                label="截止日"
+                value={endIso}
+                onChange={(e) => setEndDate(isoToYyyymmdd(e.target.value))}
+                disabled={busy}
+                sx={{ width: '25%' }}
+                slotProps={{
+                  inputLabel: { shrink: true },
+                  htmlInput: { min: minEndIso, max: maxEndIso }
+                }}
+              />
+            </Stack>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <Button
+                variant="contained"
+                startIcon={syncing ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />}
+                onClick={() => void handleSync()}
+                disabled={busy}
+              >
+                {syncing ? '更新中…' : '更新数据'}
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={
+                  syncingIndexWeights ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />
+                }
+                onClick={() => void handleSyncIndexWeights()}
+                disabled={busy || !hasToken}
+              >
+                {syncingIndexWeights ? '更新中…' : '更新成分股'}
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={
+                  syncingIndustry ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />
+                }
+                onClick={() => void handleSyncIndustry()}
+                disabled={busy || !hasToken}
+              >
+                {syncingIndustry ? '更新中…' : '更新行业分类'}
+              </Button>
+              <Button
+                color="warning"
+                variant="outlined"
+                onClick={() => void handleClear()}
+                disabled={busy}
+                startIcon={clearing ? <CircularProgress size={16} color="inherit" /> : undefined}
+              >
+                {clearing ? '清除中…' : confirmClear ? '确认清除行情？' : '清除所有股票数据'}
+              </Button>
+            </Stack>
           </Stack>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
             起始日锁定为 {MARKET_SYNC_START}。缩小截止日不会删除已下载数据；已完整的交易日会被跳过。
