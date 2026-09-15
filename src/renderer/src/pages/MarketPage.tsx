@@ -20,7 +20,7 @@ import Typography from '@mui/material/Typography'
 import ViewColumnIcon from '@mui/icons-material/ViewColumn'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  MARKET_SYNC_START,
+  MARKET_SYNC_EARLIEST,
   todayYyyymmdd
 } from '../../../shared/constants/market'
 import type { AdjustType, MarketCoverageResult, OhlcvBar } from '../../../shared/types/market'
@@ -223,7 +223,7 @@ export function MarketPage(): React.JSX.Element {
       const result = await window.api.market.query({
         ts_code: tsCode,
         adjust: adj,
-        start_date: MARKET_SYNC_START,
+        start_date: MARKET_SYNC_EARLIEST,
         end_date: endDate
       })
       setBars(result.bars)

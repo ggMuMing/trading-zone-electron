@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal, cast
 
 from worker.dashboard_codes import (
@@ -28,6 +29,15 @@ from worker.models import (
     DashboardSeriesPoint,
     DashboardStatBlock,
 )
+
+
+def _one_year_before(yyyymmdd: str) -> str:
+    dt = datetime.strptime(yyyymmdd, "%Y%m%d")
+    try:
+        prev = dt.replace(year=dt.year - 1)
+    except ValueError:
+        prev = dt.replace(year=dt.year - 1, day=28)
+    return prev.strftime("%Y%m%d")
 
 
 def query_dashboard(params: dict) -> DashboardQueryResult:
@@ -123,7 +133,9 @@ def query_dashboard(params: dict) -> DashboardQueryResult:
                 limit_down_count=limit_down_count,
             )
             for trade_date, limit_up_count, limit_down_count in market_db.fetch_breadth_limit_series(
-                parsed.start_date, parsed.end_date, filter_index_code
+                max(parsed.start_date, _one_year_before(parsed.end_date)),
+                parsed.end_date,
+                filter_index_code,
             )
         ]
     )

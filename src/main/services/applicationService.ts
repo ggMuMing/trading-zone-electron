@@ -1,8 +1,7 @@
 import {
   MARKET_POOL_SIZE,
-  MARKET_SYNC_END,
-  MARKET_SYNC_START,
-  oneYearAgoYyyymmdd,
+  MARKET_SYNC_DEFAULT_START,
+  MARKET_SYNC_EARLIEST,
   todayYyyymmdd
 } from '../../shared/constants/market'
 import type {
@@ -134,8 +133,8 @@ export const applicationService = {
       {
         token,
         ts_codes: tsCodes,
-        start_date: MARKET_SYNC_START,
-        end_date: MARKET_SYNC_END
+        start_date: MARKET_SYNC_DEFAULT_START,
+        end_date: todayYyyymmdd()
       },
       MARKET_CALL_TIMEOUT_MS
     )
@@ -164,6 +163,9 @@ export const applicationService = {
     const endDate = assertYyyymmdd(params.end_date, 'end_date')
     if (startDate > endDate) {
       throw new Error('start_date must be <= end_date')
+    }
+    if (startDate < MARKET_SYNC_EARLIEST) {
+      throw new Error(`start_date must be >= ${MARKET_SYNC_EARLIEST}`)
     }
 
     const token = requireToken()
@@ -335,8 +337,8 @@ export const applicationService = {
 
     const payload: Record<string, unknown> = {
       ts_code: params.ts_code.trim(),
-      start_date: params.start_date ?? MARKET_SYNC_START,
-      end_date: params.end_date ?? MARKET_SYNC_END,
+      start_date: params.start_date ?? MARKET_SYNC_EARLIEST,
+      end_date: params.end_date ?? todayYyyymmdd(),
       adjust: params.adjust ?? 'none'
     }
     if (params.limit !== undefined) {
@@ -358,7 +360,7 @@ export const applicationService = {
   async queryDashboard(params: DashboardQueryParams = {}): Promise<DashboardQueryResult> {
     const tsCode = params.ts_code?.trim()
     const payload: Record<string, unknown> = {
-      start_date: params.start_date ?? oneYearAgoYyyymmdd(),
+      start_date: params.start_date ?? MARKET_SYNC_EARLIEST,
       end_date: params.end_date ?? todayYyyymmdd()
     }
     if (tsCode) {
@@ -468,8 +470,8 @@ export const applicationService = {
     if (params.query !== undefined) {
       const query: Record<string, unknown> = {
         ts_code: params.query.ts_code.trim(),
-        start_date: params.query.start_date ?? MARKET_SYNC_START,
-        end_date: params.query.end_date ?? MARKET_SYNC_END,
+        start_date: params.query.start_date ?? MARKET_SYNC_EARLIEST,
+        end_date: params.query.end_date ?? todayYyyymmdd(),
         adjust: params.query.adjust ?? 'none'
       }
       if (params.query.limit !== undefined) {
@@ -525,8 +527,8 @@ export const applicationService = {
 
     const query: Record<string, unknown> = {
       ts_code: params.ts_code.trim(),
-      start_date: params.start_date ?? MARKET_SYNC_START,
-      end_date: params.end_date ?? MARKET_SYNC_END,
+      start_date: params.start_date ?? MARKET_SYNC_EARLIEST,
+      end_date: params.end_date ?? todayYyyymmdd(),
       adjust: params.adjust ?? 'none'
     }
     if (params.limit !== undefined) {

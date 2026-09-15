@@ -154,6 +154,17 @@ app.whenReady().then(async () => {
     return
   }
 
+  if (process.env.V02_SPRINT7_ACCEPTANCE === '1') {
+    try {
+      const { runV02Sprint7Acceptance } = await import('./acceptance/runV02Sprint7')
+      await runV02Sprint7Acceptance()
+    } catch (err) {
+      console.error('[acceptance] failed:', err)
+      app.exit(1)
+    }
+    return
+  }
+
   createWindow()
 
   app.on('activate', function () {

@@ -1,4 +1,10 @@
-export const MARKET_SYNC_START = '20240101'
+/** Earliest allowed sync / query start. Instruments without data that far begin at first bar. */
+export const MARKET_SYNC_EARLIEST = '20060101'
+/** Settings picker default — avoids aiming an 18-year window on first click. */
+export const MARKET_SYNC_DEFAULT_START = '20240101'
+/** Query-floor alias; prefer MARKET_SYNC_EARLIEST at new call sites. */
+export const MARKET_SYNC_START = MARKET_SYNC_EARLIEST
+/** Legacy pool/query cap; new call sites should use todayYyyymmdd(). */
 export const MARKET_SYNC_END = '20251231'
 export const MARKET_POOL_SIZE = 10
 

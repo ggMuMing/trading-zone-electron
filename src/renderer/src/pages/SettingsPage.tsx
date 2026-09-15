@@ -11,7 +11,8 @@ import Typography from '@mui/material/Typography'
 import SyncIcon from '@mui/icons-material/Sync'
 import { useEffect, useState } from 'react'
 import {
-  MARKET_SYNC_START,
+  MARKET_SYNC_DEFAULT_START,
+  MARKET_SYNC_EARLIEST,
   isoToYyyymmdd,
   todayYyyymmdd,
   yyyymmddToIso
@@ -56,6 +57,7 @@ export function SettingsPage({
   const [hasToken, setHasToken] = useState(false)
   const [tokenMasked, setTokenMasked] = useState<string | null>(null)
   const [tokenInput, setTokenInput] = useState('')
+  const [startDate, setStartDate] = useState(MARKET_SYNC_DEFAULT_START)
   const [endDate, setEndDate] = useState(todayYyyymmdd())
   const [coverage, setCoverage] = useState<MarketCoverageResult | null>(null)
   const [boardStats, setBoardStats] = useState<BoardStats | null>(null)
@@ -99,8 +101,10 @@ export function SettingsPage({
   }, [])
 
   const today = todayYyyymmdd()
-  const startIso = yyyymmddToIso(MARKET_SYNC_START)
+  const startIso = yyyymmddToIso(startDate)
   const endIso = yyyymmddToIso(endDate)
+  const minStartIso = yyyymmddToIso(MARKET_SYNC_EARLIEST)
+  const maxStartIso = endIso
   const minEndIso = startIso
   const maxEndIso = yyyymmddToIso(today)
   const isEmpty = (coverage?.total_bars ?? 0) === 0
@@ -165,7 +169,7 @@ export function SettingsPage({
     setConfirmClear(false)
     try {
       const result = await window.api.market.sync({
-        start_date: MARKET_SYNC_START,
+        start_date: startDate,
         end_date: endDate
       })
       const errHint =
@@ -296,9 +300,19 @@ export function SettingsPage({
                 type="date"
                 label="起始日"
                 value={startIso}
-                disabled
+                onChange={(e) => {
+                  const next = isoToYyyymmdd(e.target.value)
+                  setStartDate(next)
+                  if (next > endDate) {
+                    setEndDate(next > today ? today : next)
+                  }
+                }}
+                disabled={busy}
                 sx={{ width: '25%' }}
-                slotProps={{ inputLabel: { shrink: true } }}
+                slotProps={{
+                  inputLabel: { shrink: true },
+                  htmlInput: { min: minStartIso, max: maxStartIso }
+                }}
               />
               <TextField
                 size="small"
@@ -355,7 +369,7 @@ export function SettingsPage({
             </Stack>
           </Stack>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            起始日锁定为 {MARKET_SYNC_START}。缩小截止日不会删除已下载数据；已完整的交易日会被跳过。
+            最早 {MARKET_SYNC_EARLIEST}。可按 2～3 年分段向前补；缩小窗口不会删除已下载数据；已完整的交易日会被跳过。一次拉满十余年会很慢。
           </Typography>
         </Paper>
 
@@ -365,7 +379,7 @@ export function SettingsPage({
               尚未拉取行情数据
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              将同步 A 股列表，并按交易日补齐 {MARKET_SYNC_START} 至 {endDate} 的全市场日线与复权因子。
+              将同步 A 股列表，并按交易日补齐 {startDate} 至 {endDate} 的全市场日线、复权因子、指数、两融、涨跌状态与期指。
             </Typography>
           </Paper>
         ) : (

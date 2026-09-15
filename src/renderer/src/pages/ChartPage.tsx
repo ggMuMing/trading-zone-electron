@@ -19,7 +19,7 @@ import {
   DASHBOARD_MARKET_INDICES,
   type DashboardIndexMeta
 } from '../../../shared/constants/dashboard'
-import { MARKET_SYNC_START, todayYyyymmdd, yyyymmddToIso } from '../../../shared/constants/market'
+import { MARKET_SYNC_EARLIEST, todayYyyymmdd, yyyymmddToIso } from '../../../shared/constants/market'
 import type { ChartInput, ChartPeriod } from '../../../shared/types/chart'
 import type {
   ChartLayout,
@@ -226,7 +226,7 @@ export function ChartPage(): React.JSX.Element {
       const result = await window.api.chart.build({
         ts_code: tsCode,
         adjust: queryAdjust,
-        start_date: MARKET_SYNC_START,
+        start_date: MARKET_SYNC_EARLIEST,
         end_date: queryEndRef.current
       })
       setChartRaw(result)
@@ -419,7 +419,7 @@ export function ChartPage(): React.JSX.Element {
     ? {
       ts_code: selectedCode,
       adjust: effectiveAdjust,
-      start_date: MARKET_SYNC_START,
+      start_date: MARKET_SYNC_EARLIEST,
       end_date: queryEnd
     }
     : null

@@ -8,42 +8,74 @@ def seed_market_fixture(params: dict) -> dict:
     ts_code = str(params.get("ts_code") or "__ACCEPTANCE__.SZ")
     market_db.init_schema()
 
-    bars = [
-        {
-            "ts_code": ts_code,
-            "trade_date": "20240102",
-            "open": 10.0,
-            "high": 11.0,
-            "low": 9.5,
-            "close": 10.5,
-            "pre_close": 10.0,
-            "change": 0.5,
-            "pct_chg": 5.0,
-            "vol": 1000.0,
-            "amount": 10500.0,
-            "ah_vol": None,
-            "ah_amount": None,
-        },
-        {
-            "ts_code": ts_code,
-            "trade_date": "20240103",
-            "open": 10.5,
-            "high": 12.0,
-            "low": 10.0,
-            "close": 11.5,
-            "pre_close": 10.5,
-            "change": 1.0,
-            "pct_chg": 100.0 / 10.5,
-            "vol": 1200.0,
-            "amount": 13800.0,
-            "ah_vol": None,
-            "ah_amount": None,
-        },
-    ]
-    factors = [
-        {"ts_code": ts_code, "trade_date": "20240102", "adj_factor": 1.0},
-        {"ts_code": ts_code, "trade_date": "20240103", "adj_factor": 1.1},
-    ]
+    custom_days = params.get("trade_dates")
+    if custom_days:
+        days = [str(d) for d in custom_days]
+        bars: list[dict] = []
+        factors: list[dict] = []
+        for index, trade_date in enumerate(days):
+            close = 10.0 + index * 0.5
+            bars.append(
+                {
+                    "ts_code": ts_code,
+                    "trade_date": str(trade_date),
+                    "open": close - 0.5,
+                    "high": close + 0.5,
+                    "low": close - 1.0,
+                    "close": close,
+                    "pre_close": close - 0.5,
+                    "change": 0.5,
+                    "pct_chg": 5.0,
+                    "vol": 1000.0 + index * 200.0,
+                    "amount": 10500.0 + index * 3300.0,
+                    "ah_vol": None,
+                    "ah_amount": None,
+                }
+            )
+            factors.append(
+                {
+                    "ts_code": ts_code,
+                    "trade_date": str(trade_date),
+                    "adj_factor": 1.0 + index * 0.1,
+                }
+            )
+    else:
+        bars = [
+            {
+                "ts_code": ts_code,
+                "trade_date": "20240102",
+                "open": 10.0,
+                "high": 11.0,
+                "low": 9.5,
+                "close": 10.5,
+                "pre_close": 10.0,
+                "change": 0.5,
+                "pct_chg": 5.0,
+                "vol": 1000.0,
+                "amount": 10500.0,
+                "ah_vol": None,
+                "ah_amount": None,
+            },
+            {
+                "ts_code": ts_code,
+                "trade_date": "20240103",
+                "open": 10.5,
+                "high": 12.0,
+                "low": 10.0,
+                "close": 11.5,
+                "pre_close": 10.5,
+                "change": 1.0,
+                "pct_chg": 100.0 / 10.5,
+                "vol": 1200.0,
+                "amount": 13800.0,
+                "ah_vol": None,
+                "ah_amount": None,
+            },
+        ]
+        factors = [
+            {"ts_code": ts_code, "trade_date": "20240102", "adj_factor": 1.0},
+            {"ts_code": ts_code, "trade_date": "20240103", "adj_factor": 1.1},
+        ]
 
     bar_count = market_db.upsert_daily_bars(bars)
     adj_count = market_db.upsert_adj_factors(factors)
