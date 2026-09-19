@@ -10,6 +10,8 @@ _PYTHON_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(_PYTHON_ROOT))
 
+import numpy as np
+
 from worker.db import market_db
 from worker.strategies.Strategy import StrategyClass
 
@@ -97,6 +99,9 @@ class MingSystemVer1(StrategyClass):
         daily = market_db.query_ohlcv_arrow(
             self.ts_code, self.start_date, self.end_date, "none"
         ).to_pandas()
+        if daily.empty or "trade_date" not in daily.columns:
+            self.daily = pd.DataFrame(columns=["open", "high", "low", "close", "vol"])
+            return self.daily
         earliest, latest = market_db.get_anchor_adj_factors(self.ts_code)
         daily = _apply_adj_factor(daily, self.adjust, earliest, latest)
         daily = daily.set_index("trade_date")[["open", "high", "low", "close", "vol"]]
@@ -104,6 +109,8 @@ class MingSystemVer1(StrategyClass):
         return daily
 
     def compute_algorithm(self):
+        if self.daily.empty:
+            return
         daily = self.daily.copy()
         open_ = daily["open"]
         high = daily["high"]
@@ -152,28 +159,68 @@ class MingSystemVer1(StrategyClass):
         self.daily = daily
 
     def analyze_result(self):
-        self.signals = self.daily.loc[self.daily["buy_signal"]].copy()
-
-    def output_result(self):
-        mode = "C-O" if self.range_mode == "co" else "C-L"
-        print(
-            f"{self.ts_code} {self.start_date}-{self.end_date} {self.adjust} "
-            f"bars={len(self.daily)} buys={len(self.signals)} "
-            f"mode={mode} n={self.wr_n} k={self.k} vol={self.vol_x}x{self.vol_y}"
-        )
-        if self.signals.empty:
-            print("no buy signals")
+        daily = getattr(self, "daily", None)
+        if daily is None or daily.empty or "buy_signal" not in daily.columns:
+            self.signals = pd.DataFrame()
+            self.buy_count = 0
+            self.bar_count = 0 if daily is None else int(len(daily))
             return
-        cols = [
-            "open",
-            "high",
-            "low",
-            "close",
-            "vol",
-            "wr",
-            "impulse",
-            "n_range",
-            "std",
-            "atr",
-        ]
-        print(self.signals[cols].to_string(float_format=lambda x: f"{x:.4f}"))
+        self.signals = daily.loc[daily["buy_signal"]].copy()
+        self.buy_count = int(len(self.signals))
+        self.bar_count = int(len(daily))
+
+    def output_result(self) -> dict:
+        daily = getattr(self, "daily", None)
+        if daily is None or daily.empty:
+            return {
+                "stats": {"buy_count": 0, "bar_count": int(getattr(self, "bar_count", 0) or 0)},
+                "series": [],
+            }
+        frame = daily.reset_index()
+        if "trade_date" in frame.columns:
+            frame = frame.rename(columns={"trade_date": "time"})
+        if "buy_signal" not in frame.columns:
+            frame["buy_signal"] = False
+        frame["sell_signal"] = False
+        series = [_row_to_record(row) for row in frame.to_dict(orient="records")]
+        return {
+            "stats": {
+                "buy_count": int(getattr(self, "buy_count", 0) or 0),
+                "bar_count": int(getattr(self, "bar_count", len(series))),
+            },
+            "series": series,
+        }
+
+
+def _row_to_record(row: dict) -> dict:
+    out: dict = {}
+    for key, value in row.items():
+        out[str(key)] = _to_json_value(value)
+    out["buy_signal"] = bool(out.get("buy_signal"))
+    out["sell_signal"] = bool(out.get("sell_signal"))
+    time_value = out.get("time")
+    if time_value is not None:
+        out["time"] = str(time_value).replace("-", "")[:8]
+    return out
+
+
+def _to_json_value(value: object) -> object:
+    if value is None:
+        return None
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    if isinstance(value, (int, np.integer)):
+        return int(value)
+    if isinstance(value, (float, np.floating)):
+        number = float(value)
+        if not np.isfinite(number):
+            return None
+        return number
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, pd.Timestamp):
+        return value.strftime("%Y%m%d")
+    return value

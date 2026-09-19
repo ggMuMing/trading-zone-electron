@@ -23,4 +23,10 @@ from MingSystemVer1 import MingSystemVer1
 
 if __name__ == "__main__":
     ming_system_ver1 = MingSystemVer1()
-    ming_system_ver1.run()
+    result = ming_system_ver1.run()
+    stats = result.get("stats", {}) if isinstance(result, dict) else {}
+    print(
+        f"{ming_system_ver1.ts_code} {ming_system_ver1.start_date}-{ming_system_ver1.end_date} "
+        f"{ming_system_ver1.adjust} bars={stats.get('bar_count', 0)} "
+        f"buys={stats.get('buy_count', 0)}"
+    )

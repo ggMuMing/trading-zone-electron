@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trading-zone.local/contracts/strategy.run.response.json",
+  "title": "StrategyRunResponse",
+  "description": "Result for method strategy.run. series rows always include time/ohlcv/buy_signal/sell_signal; extra computed columns are optional.",
+  "type": "object",
+  "required": [
+    "strategy_id",
+    "ts_code",
+    "start_date",
+    "end_date",
+    "adjust",
+    "stats",
+    "series"
+  ],
+  "properties": {
+    "strategy_id": { "type": "string", "minLength": 1 },
+    "ts_code": { "type": "string", "minLength": 1 },
+    "start_date": { "type": "string", "pattern": "^[0-9]{8}$" },
+    "end_date": { "type": "string", "pattern": "^[0-9]{8}$" },
+    "adjust": { "type": "string", "enum": ["none", "qfq", "hfq"] },
+    "stats": {
+      "type": "object",
+      "required": ["buy_count", "bar_count"],
+      "properties": {
+        "buy_count": { "type": "integer", "minimum": 0 },
+        "bar_count": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": {
+        "type": ["number", "integer", "string", "boolean", "null"]
+      }
+    },
+    "series": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "time",
+          "open",
+          "high",
+          "low",
+          "close",
+          "vol",
+          "buy_signal",
+          "sell_signal"
+        ],
+        "properties": {
+          "time": { "type": "string" },
+          "open": { "type": ["number", "null"] },
+          "high": { "type": ["number", "null"] },
+          "low": { "type": ["number", "null"] },
+          "close": { "type": ["number", "null"] },
+          "vol": { "type": ["number", "null"] },
+          "buy_signal": { "type": "boolean" },
+          "sell_signal": { "type": "boolean" }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": false
+}

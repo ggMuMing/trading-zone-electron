@@ -172,6 +172,39 @@ export interface ComputeIndicatorParams {
   bars?: Record<string, unknown>[]
 }
 
+export interface StrategyInfo {
+  id: string
+  name: string
+}
+
+export interface StrategyListResult {
+  strategies: StrategyInfo[]
+}
+
+export interface StrategyRunParams {
+  strategy_id: string
+  ts_code: string
+  start_date: string
+  end_date: string
+  adjust?: 'none' | 'qfq' | 'hfq'
+}
+
+export interface StrategyStats {
+  buy_count: number
+  bar_count: number
+  [key: string]: number | string | boolean | null
+}
+
+export interface StrategyRunResult {
+  strategy_id: string
+  ts_code: string
+  start_date: string
+  end_date: string
+  adjust: 'none' | 'qfq' | 'hfq'
+  stats: StrategyStats
+  series: Record<string, unknown>[]
+}
+
 export const PYTHON_METHODS = {
   syncStockList: 'data.sync.stock_list',
   syncMarketPool: 'data.sync.market_pool',
@@ -186,5 +219,7 @@ export const PYTHON_METHODS = {
   queryIndexConstituents: 'data.query.index_constituents',
   metaMarketCoverage: 'data.meta.market_coverage',
   computeIndicator: 'compute.indicator',
-  computeScriptTry: 'compute.script_try'
+  computeScriptTry: 'compute.script_try',
+  strategyList: 'strategy.list',
+  strategyRun: 'strategy.run'
 } as const

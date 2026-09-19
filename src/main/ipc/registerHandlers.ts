@@ -6,6 +6,7 @@ import { pythonBridge } from '../bridge/pythonBridge'
 import type { AdjustType, MarketQueryParams } from '../../shared/types/market'
 import type { LayoutItemParams, ScriptParams } from '../../shared/types/chartLayout'
 import type { ScriptTryParams } from '../../shared/types/indicatorScript'
+import type { StrategyRunParams } from '../../shared/types/pythonProtocol'
 
 function parseMarketQueryParams(params: unknown, channel: string): MarketQueryParams {
   if (!params || typeof params !== 'object') {
@@ -26,6 +27,36 @@ function parseMarketQueryParams(params: unknown, channel: string): MarketQueryPa
     end_date: typeof p.end_date === 'string' ? p.end_date : undefined,
     limit:
       typeof p.limit === 'number' && Number.isInteger(p.limit) && p.limit >= 1 ? p.limit : undefined
+  }
+}
+
+function parseStrategyRunParams(params: unknown): StrategyRunParams {
+  if (!params || typeof params !== 'object') {
+    throw new Error('strategy:run requires params object')
+  }
+  const p = params as Record<string, unknown>
+  if (typeof p.strategy_id !== 'string' || !p.strategy_id.trim()) {
+    throw new Error('strategy_id must be a non-empty string')
+  }
+  if (typeof p.ts_code !== 'string' || !p.ts_code.trim()) {
+    throw new Error('ts_code must be a non-empty string')
+  }
+  if (typeof p.start_date !== 'string' || !p.start_date.trim()) {
+    throw new Error('start_date must be a non-empty string')
+  }
+  if (typeof p.end_date !== 'string' || !p.end_date.trim()) {
+    throw new Error('end_date must be a non-empty string')
+  }
+  const adjust = p.adjust
+  if (adjust !== undefined && adjust !== 'none' && adjust !== 'qfq' && adjust !== 'hfq') {
+    throw new Error('adjust must be none | qfq | hfq')
+  }
+  return {
+    strategy_id: p.strategy_id.trim(),
+    ts_code: p.ts_code.trim(),
+    start_date: p.start_date.trim(),
+    end_date: p.end_date.trim(),
+    adjust: adjust as AdjustType | undefined
   }
 }
 
@@ -320,5 +351,13 @@ export function registerHandlers(): void {
 
   ipcMain.handle('python:ready', () => {
     return pythonBridge.getReadyInfo()
+  })
+
+  ipcMain.handle('strategy:list', () => {
+    return applicationService.listStrategies()
+  })
+
+  ipcMain.handle('strategy:run', (_event, params: unknown) => {
+    return applicationService.runStrategy(parseStrategyRunParams(params))
   })
 }

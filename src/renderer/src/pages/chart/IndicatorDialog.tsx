@@ -9,16 +9,19 @@ import ListItemText from '@mui/material/ListItemText'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import Add from '@mui/icons-material/Add'
+import Check from '@mui/icons-material/Check'
 import Close from '@mui/icons-material/Close'
 import DeleteOutline from '@mui/icons-material/DeleteOutline'
 import EditOutlined from '@mui/icons-material/EditOutlined'
 import PlaylistAdd from '@mui/icons-material/PlaylistAdd'
 import ShowChart from '@mui/icons-material/ShowChart'
+import SwapHoriz from '@mui/icons-material/SwapHoriz'
 import Timeline from '@mui/icons-material/Timeline'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { scriptDisplayKey } from '../../../../shared/chart/indicatorScript'
 import type { ChartLayout } from '../../../../shared/types/chartLayout'
 import type { IndicatorScript } from '../../../../shared/types/indicatorScript'
+import type { StrategyInfo } from '../../../../shared/types/pythonProtocol'
 import { CHART_ICON_SX, ChartIconButton } from './ChartIconButton'
 
 export interface IndicatorDialogProps {
@@ -26,12 +29,14 @@ export interface IndicatorDialogProps {
   exampleSource: string
   layout: ChartLayout | null
   scripts: IndicatorScript[]
+  selectedStrategyId?: string | null
   disabled?: boolean
   onClose: () => void
   onAdd: (ref: string) => void
   onCreateEditor: () => void
   onEditEditor: (script: IndicatorScript) => void
   onRemoveScript: (id: string) => void
+  onSelectStrategy: (strategy: StrategyInfo) => void
 }
 
 type CatalogTab = 'indicator' | 'strategy'
@@ -71,15 +76,50 @@ export function IndicatorDialog({
   exampleSource,
   layout,
   scripts,
+  selectedStrategyId = null,
   disabled = false,
   onClose,
   onAdd,
   onCreateEditor,
   onEditEditor,
-  onRemoveScript
+  onRemoveScript,
+  onSelectStrategy
 }: IndicatorDialogProps): React.JSX.Element {
   const [tab, setTab] = useState<CatalogTab>('indicator')
+  const [strategies, setStrategies] = useState<StrategyInfo[]>([])
+  const [strategyError, setStrategyError] = useState<string | null>(null)
+  const [strategyLoading, setStrategyLoading] = useState(false)
   const referencedScripts = new Set((layout?.items ?? []).map((item) => item.ref))
+
+  useEffect(() => {
+    if (!open || tab !== 'strategy') {
+      return
+    }
+    let cancelled = false
+    setStrategyLoading(true)
+    setStrategyError(null)
+    void window.api.strategy
+      .list()
+      .then((result) => {
+        if (!cancelled) {
+          setStrategies(result.strategies)
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setStrategyError(err instanceof Error ? err.message : String(err))
+          setStrategies([])
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setStrategyLoading(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, tab])
 
   return (
     <Dialog
@@ -140,10 +180,61 @@ export function IndicatorDialog({
         </Box>
         <Box sx={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
           {tab === 'strategy' ? (
-            <EmptyCatalog
-              icon={<Timeline sx={{ fontSize: 48, color: 'text.disabled' }} />}
-              message="策略功能尚未开放"
-            />
+            strategyLoading ? (
+              <EmptyCatalog
+                icon={<Timeline sx={{ fontSize: 48, color: 'text.disabled' }} />}
+                message="策略列表加载中..."
+              />
+            ) : strategyError ? (
+              <EmptyCatalog
+                icon={<Timeline sx={{ fontSize: 48, color: 'text.disabled' }} />}
+                message={strategyError}
+              />
+            ) : strategies.length === 0 ? (
+              <EmptyCatalog
+                icon={<Timeline sx={{ fontSize: 48, color: 'text.disabled' }} />}
+                message="还没有内置策略"
+              />
+            ) : (
+              <List dense disablePadding>
+                {strategies.map((strategy) => {
+                  const selected = strategy.id === selectedStrategyId
+                  return (
+                    <ListItem
+                      key={strategy.id}
+                      disablePadding
+                      secondaryAction={
+                        <ChartIconButton
+                          ariaLabel={selected ? '已选中策略' : selectedStrategyId ? '切换策略' : '添加策略'}
+                          title={selected ? '已选中' : selectedStrategyId ? '切换' : '添加'}
+                          roomy
+                          disabled={disabled || selected}
+                          onClick={() => {
+                            onSelectStrategy(strategy)
+                            onClose()
+                          }}
+                        >
+                          {selected ? (
+                            <Check sx={CHART_ICON_SX} />
+                          ) : selectedStrategyId ? (
+                            <SwapHoriz sx={CHART_ICON_SX} />
+                          ) : (
+                            <Add sx={CHART_ICON_SX} />
+                          )}
+                        </ChartIconButton>
+                      }
+                      sx={{
+                        pr: 6,
+                        bgcolor: selected ? 'rgba(0, 0, 0, 0.08)' : undefined,
+                        '&:hover': { bgcolor: selected ? 'rgba(0, 0, 0, 0.10)' : 'rgba(0, 0, 0, 0.04)' }
+                      }}
+                    >
+                      <ListItemText primary={strategy.name} secondary={strategy.id} sx={{ px: 1.5, py: 0.5 }} />
+                    </ListItem>
+                  )
+                })}
+              </List>
+            )
           ) : scripts.length === 0 ? (
             <EmptyCatalog
               icon={<ShowChart sx={{ fontSize: 48, color: 'text.disabled' }} />}

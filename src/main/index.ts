@@ -165,6 +165,17 @@ app.whenReady().then(async () => {
     return
   }
 
+  if (process.env.V02_SPRINT8_ACCEPTANCE === '1') {
+    try {
+      const { runV02Sprint8Acceptance } = await import('./acceptance/runV02Sprint8')
+      await runV02Sprint8Acceptance()
+    } catch (err) {
+      console.error('[acceptance] failed:', err)
+      app.exit(1)
+    }
+    return
+  }
+
   createWindow()
 
   app.on('activate', function () {

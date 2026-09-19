@@ -4,9 +4,12 @@ import {
   CandlestickSeries,
   HistogramSeries,
   createChart,
+  createSeriesMarkers,
   type IChartApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
   type MouseEventParams,
+  type SeriesMarker,
   type Time
 } from 'lightweight-charts'
 import type { CandlePoint, ChartInput, ValuePoint, VolumePoint } from '../../../../shared/types/chart'
@@ -17,6 +20,8 @@ import { LWC_FONT_STACK } from '../../theme/lwcFont'
 import { PaneCornerActions } from './PaneCornerActions'
 import { PriceLegend, type PriceLegendBar, type PriceLegendOverlayGroup } from './PriceLegend'
 import { SubpaneLegend, type SubpaneLegendPane } from './SubpaneLegend'
+import { ReplayHighlightPrimitive } from './ReplayHighlightPrimitive'
+import type { StrategyChartOverlay } from './strategyOverlay'
 import {
   DEFAULT_HISTOGRAM_COLOR,
   DEFAULT_LINE_COLOR,
@@ -34,6 +39,45 @@ import {
 
 const UP_COLOR = '#ef5350'
 const DOWN_COLOR = '#26a69a'
+
+function overlayMarkers(
+  overlay: StrategyChartOverlay | null | undefined,
+  candleTimes: Map<string, CandlePoint>
+): SeriesMarker<Time>[] {
+  if (!overlay) {
+    return []
+  }
+  return overlay.markers
+    .filter((marker) => candleTimes.has(marker.timeIso))
+    .map((marker) => ({
+      time: marker.timeIso as Time,
+      position: 'belowBar',
+      shape: marker.side === 'buy' ? 'arrowUp' : 'arrowDown',
+      color: marker.side === 'buy' ? UP_COLOR : DOWN_COLOR
+    }))
+}
+
+function ensureTimeVisible(chart: IChartApi, timeIso: string): void {
+  const timeScale = chart.timeScale()
+  const index = timeScale.timeToIndex(timeIso as Time, true)
+  if (index === null) {
+    return
+  }
+  const visible = timeScale.getVisibleLogicalRange()
+  if (!visible) {
+    return
+  }
+  const idx = Number(index)
+  if (idx >= visible.from && idx <= visible.to) {
+    return
+  }
+  const span = visible.to - visible.from
+  if (span <= 0) {
+    return
+  }
+  const half = span / 2
+  timeScale.setVisibleLogicalRange({ from: idx - half, to: idx + half })
+}
 
 function plotCellOf(row: HTMLElement): HTMLElement {
   const cells = Array.from(row.querySelectorAll(':scope > td')).filter(
@@ -197,6 +241,8 @@ interface KlineChartProps {
   input: ChartInput
   layout: ChartLayout | null
   scripts?: IndicatorScript[]
+  overlay?: StrategyChartOverlay | null
+  focusTimeIso?: string | null
   onOpenSettings?: (instanceId: string) => void
   onOpenEditor?: (instanceId: string) => void
   onRemove?: (instanceId: string) => void
@@ -207,6 +253,8 @@ export function KlineChart({
   input,
   layout,
   scripts = [],
+  overlay = null,
+  focusTimeIso = null,
   onOpenSettings,
   onOpenEditor,
   onRemove,
@@ -225,8 +273,12 @@ export function KlineChart({
   const paneLayoutObserverRef = useRef<ResizeObserver | null>(null)
   const rebindPaneLayoutObserverRef = useRef<(() => void) | null>(null)
   const layoutRef = useRef(layout)
+  const overlayRef = useRef(overlay)
+  const markersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
+  const highlightRef = useRef<ReplayHighlightPrimitive | null>(null)
   inputRef.current = input
   layoutRef.current = layout
+  overlayRef.current = overlay
 
   const [hoverBar, setHoverBar] = useState<PriceLegendBar | null>(null)
   const [hoverValues, setHoverValues] = useState<Record<string, number | null> | null>(null)
@@ -335,6 +387,12 @@ export function KlineChart({
     primitiveSeriesRef.current = primitiveSeries
     primitivesRef.current = initialPrimitives
 
+    const markersApi = createSeriesMarkers(candle, [])
+    const highlight = new ReplayHighlightPrimitive()
+    candle.attachPrimitive(highlight)
+    markersApiRef.current = markersApi
+    highlightRef.current = highlight
+
     candle.setData(toCandleData(initial.candle))
     volume.setData(toVolumeData(initial.volume))
     for (const primitive of initialPrimitives) {
@@ -343,6 +401,13 @@ export function KlineChart({
         applyPrimitiveData(series, primitive, initial.series[primitive.id] ?? [])
       }
     }
+
+    const initialTimes = new Map<string, CandlePoint>()
+    for (const point of initial.candle) {
+      initialTimes.set(point.time, point)
+    }
+    markersApi.setMarkers(overlayMarkers(overlayRef.current, initialTimes))
+    highlight.setHighlight(overlayRef.current?.highlight ?? null)
 
     const onCrosshairMove = (param: MouseEventParams<Time>): void => {
       if (!param.time) {
@@ -451,10 +516,14 @@ export function KlineChart({
       paneLayoutObserverRef.current = null
       rebindPaneLayoutObserverRef.current = null
       chart.unsubscribeCrosshairMove(onCrosshairMove)
+      candle.detachPrimitive(highlight)
+      markersApi.detach()
       chart.remove()
       chartRef.current = null
       candleRef.current = null
       volumeRef.current = null
+      markersApiRef.current = null
+      highlightRef.current = null
       primitiveSeriesRef.current = new Map()
       primitivesRef.current = []
     }
@@ -479,6 +548,8 @@ export function KlineChart({
     })
     primitivesRef.current = visibleInput.primitives
 
+    markersApiRef.current?.setMarkers(overlayMarkers(overlayRef.current, candleByTimeRef.current))
+
     if (rebindPaneLayoutObserverRef.current) {
       rebindPaneLayoutObserverRef.current()
     } else {
@@ -489,6 +560,19 @@ export function KlineChart({
       })
     }
   }, [visibleInput, layout])
+
+  useEffect(() => {
+    markersApiRef.current?.setMarkers(overlayMarkers(overlay, candleByTime))
+    highlightRef.current?.setHighlight(overlay?.highlight ?? null)
+  }, [overlay, candleByTime])
+
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart || !focusTimeIso) {
+      return
+    }
+    ensureTimeVisible(chart, focusTimeIso)
+  }, [focusTimeIso, candleByTime])
 
   useEffect(() => {
     const cleanups: Array<() => void> = []

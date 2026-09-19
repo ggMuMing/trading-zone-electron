@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Any
 
 
 class StrategyClass(ABC):
@@ -15,11 +16,11 @@ class StrategyClass(ABC):
         pass
 
     @abstractmethod
-    def output_result(self):
+    def output_result(self) -> dict[str, Any]:
         pass
 
-    def run(self):
+    def run(self) -> dict[str, Any]:
         self.read_data()
         self.compute_algorithm()
         self.analyze_result()
-        self.output_result()
+        return self.output_result()

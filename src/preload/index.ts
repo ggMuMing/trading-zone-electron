@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { Stock } from '../shared/types/stock'
-import type { MarketClearResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
+import type { MarketClearResult, StrategyListResult, StrategyRunParams, StrategyRunResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
 import type { ChartInput } from '../shared/types/chart'
 import type { ChartLayout, LayoutItemParams, LayoutReorderDirection } from '../shared/types/chartLayout'
 import type { IndicatorScript, ScriptTryParams, ScriptTryResult } from '../shared/types/indicatorScript'
@@ -112,6 +112,11 @@ const api = {
   },
   python: {
     ready: (): Promise<WorkerReadyMessage | null> => ipcRenderer.invoke('python:ready')
+  },
+  strategy: {
+    list: (): Promise<StrategyListResult> => ipcRenderer.invoke('strategy:list'),
+    run: (params: StrategyRunParams): Promise<StrategyRunResult> =>
+      ipcRenderer.invoke('strategy:run', params)
   }
 }
 

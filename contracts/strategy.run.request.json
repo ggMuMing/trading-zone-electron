@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trading-zone.local/contracts/strategy.run.request.json",
+  "title": "StrategyRunRequest",
+  "description": "Params for method strategy.run",
+  "type": "object",
+  "required": ["strategy_id", "ts_code", "start_date", "end_date"],
+  "properties": {
+    "strategy_id": { "type": "string", "minLength": 1 },
+    "ts_code": { "type": "string", "minLength": 1 },
+    "start_date": { "type": "string", "pattern": "^[0-9]{8}$" },
+    "end_date": { "type": "string", "pattern": "^[0-9]{8}$" },
+    "adjust": {
+      "type": "string",
+      "enum": ["none", "qfq", "hfq"],
+      "default": "qfq"
+    }
+  },
+  "additionalProperties": false
+}

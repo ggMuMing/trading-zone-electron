@@ -30,22 +30,33 @@ import type {
 import type { IndicatorScript, ScriptTryParams, ScriptTryResult } from '../../../shared/types/indicatorScript'
 import type { AdjustType, MarketCoverageResult, MarketQueryParams } from '../../../shared/types/market'
 import type { Stock } from '../../../shared/types/stock'
+import type { StrategyInfo } from '../../../shared/types/pythonProtocol'
 import { ChartToolbar } from './chart/ChartToolbar'
 import { IndustryBreadcrumb } from './chart/IndustryBreadcrumb'
 import { IndicatorDialog } from './chart/IndicatorDialog'
 import { IndicatorSettingsDialog } from './chart/IndicatorSettingsDialog'
 import { KlineChart } from './chart/KlineChart'
 import { ScriptEditorPanel, type ScriptDraft } from './chart/scriptEditor/ScriptEditorPanel'
+import { StrategyPanel } from './chart/StrategyPanel'
+import type { StrategyChartOverlay } from './chart/strategyOverlay'
 import { StockPicker } from './StockPicker'
 
 const PICKER_WIDTH_STORAGE_KEY = 'trading-zone.chart.stockPickerWidth'
+const STRATEGY_WIDTH_STORAGE_KEY = 'trading-zone.chart.strategyPanelWidth'
 const UNIVERSE_STORAGE_KEY = 'trading-zone.chart.universeId'
 const PICKER_WIDTH_MIN = 180
 const PICKER_WIDTH_MAX = 320
 const PICKER_WIDTH_DEFAULT = 220
+const STRATEGY_WIDTH_MIN = 280
+const STRATEGY_WIDTH_DEFAULT = 360
 
 function clampPickerWidth(value: number): number {
   return Math.min(PICKER_WIDTH_MAX, Math.max(PICKER_WIDTH_MIN, Math.round(value)))
+}
+
+function clampStrategyWidth(value: number, maxWidth: number): number {
+  const max = Math.max(STRATEGY_WIDTH_MIN, maxWidth)
+  return Math.min(max, Math.max(STRATEGY_WIDTH_MIN, Math.round(value)))
 }
 
 function paramsEqual(left: LayoutItemParams, right: LayoutItemParams): boolean {
@@ -90,6 +101,22 @@ function loadPickerWidth(): number {
   }
 }
 
+function loadStrategyWidth(): number {
+  try {
+    const raw = localStorage.getItem(STRATEGY_WIDTH_STORAGE_KEY)
+    if (!raw) {
+      return STRATEGY_WIDTH_DEFAULT
+    }
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed)) {
+      return STRATEGY_WIDTH_DEFAULT
+    }
+    return Math.max(STRATEGY_WIDTH_MIN, Math.round(parsed))
+  } catch {
+    return STRATEGY_WIDTH_DEFAULT
+  }
+}
+
 export function ChartPage(): React.JSX.Element {
   const [loading, setLoading] = useState(true)
   const [querying, setQuerying] = useState(false)
@@ -115,6 +142,14 @@ export function ChartPage(): React.JSX.Element {
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const pickerWidthRef = useRef(pickerWidth)
   pickerWidthRef.current = pickerWidth
+  const [selectedStrategy, setSelectedStrategy] = useState<StrategyInfo | null>(null)
+  const [strategyOverlay, setStrategyOverlay] = useState<StrategyChartOverlay | null>(null)
+  const [strategyWidth, setStrategyWidth] = useState(loadStrategyWidth)
+  const [strategyResizing, setStrategyResizing] = useState(false)
+  const strategyResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
+  const strategyWidthRef = useRef(strategyWidth)
+  strategyWidthRef.current = strategyWidth
+  const chartRowRef = useRef<HTMLDivElement>(null)
 
   const resolvePickerStocks = useCallback(
     async (nextUniverseId: string, listed: Stock[]): Promise<Stock[]> => {
@@ -252,7 +287,7 @@ export function ChartPage(): React.JSX.Element {
   }, [selectedCode, effectiveAdjust, period, executeScripts])
 
   useEffect(() => {
-    if (!resizing) {
+    if (!resizing && !strategyResizing) {
       return
     }
     const previousCursor = document.body.style.cursor
@@ -263,10 +298,20 @@ export function ChartPage(): React.JSX.Element {
       document.body.style.cursor = previousCursor
       document.body.style.userSelect = previousSelect
     }
-  }, [resizing])
+  }, [resizing, strategyResizing])
 
   const persistPickerWidth = (value: number): void => {
     localStorage.setItem(PICKER_WIDTH_STORAGE_KEY, String(value))
+  }
+
+  const strategyMaxWidth = (): number => {
+    const rowWidth = chartRowRef.current?.clientWidth ?? window.innerWidth
+    const workspace = Math.max(0, rowWidth - pickerWidthRef.current - 16)
+    return Math.floor(workspace / 2)
+  }
+
+  const persistStrategyWidth = (value: number): void => {
+    localStorage.setItem(STRATEGY_WIDTH_STORAGE_KEY, String(value))
   }
 
   const handleSplitterPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
@@ -295,6 +340,56 @@ export function ChartPage(): React.JSX.Element {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
   }
+
+  const handleStrategySplitterPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    strategyResizeRef.current = { startX: event.clientX, startWidth: strategyWidth }
+    setStrategyResizing(true)
+  }
+
+  const handleStrategySplitterPointerMove = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const drag = strategyResizeRef.current
+    if (!drag) {
+      return
+    }
+    setStrategyWidth(clampStrategyWidth(drag.startWidth + (drag.startX - event.clientX), strategyMaxWidth()))
+  }
+
+  const handleStrategySplitterPointerUp = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (!strategyResizeRef.current) {
+      return
+    }
+    strategyResizeRef.current = null
+    setStrategyResizing(false)
+    persistStrategyWidth(strategyWidthRef.current)
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+  }
+
+  useEffect(() => {
+    if (!selectedStrategy) {
+      setStrategyOverlay(null)
+    }
+  }, [selectedStrategy])
+
+  const closeStrategyPanel = useCallback((): void => {
+    setStrategyOverlay(null)
+    setSelectedStrategy(null)
+  }, [])
+
+  useEffect(() => {
+    if (!selectedStrategy) {
+      return
+    }
+    const clampToWorkspace = (): void => {
+      setStrategyWidth((current) => clampStrategyWidth(current, strategyMaxWidth()))
+    }
+    clampToWorkspace()
+    window.addEventListener('resize', clampToWorkspace)
+    return () => window.removeEventListener('resize', clampToWorkspace)
+  }, [selectedStrategy])
 
   const applyLayoutAndExecute = (next: ChartLayout): void => {
     setLayout(next)
@@ -480,7 +575,10 @@ export function ChartPage(): React.JSX.Element {
           </Paper>
         </Box>
       ) : (
-        <Box sx={{ flex: 1, display: 'flex', minHeight: 0, px: 2, py: 2, gap: 0.5, position: 'relative', padding: 0 }}>
+        <Box
+          ref={chartRowRef}
+          sx={{ flex: 1, display: 'flex', minHeight: 0, px: 2, py: 2, gap: 0.5, position: 'relative', padding: 0 }}
+        >
           <StockPicker
             stocks={pickerStocks}
             selectedCode={selectedCode}
@@ -605,6 +703,8 @@ export function ChartPage(): React.JSX.Element {
                       input={chartInput.value}
                       layout={layout}
                       scripts={scripts}
+                      overlay={strategyOverlay}
+                      focusTimeIso={strategyOverlay?.highlight?.timeIso ?? null}
                       onOpenSettings={openLayoutSettings}
                       onOpenEditor={openLayoutEditor}
                       onRemove={(id) => void handleRemoveIndicator(id)}
@@ -615,6 +715,70 @@ export function ChartPage(): React.JSX.Element {
               )}
             </Box>
           </Paper>
+          {selectedStrategy ? (
+            <>
+              <Box
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="调整策略面板宽度"
+                aria-valuemin={STRATEGY_WIDTH_MIN}
+                aria-valuemax={strategyMaxWidth()}
+                aria-valuenow={strategyWidth}
+                onPointerDown={handleStrategySplitterPointerDown}
+                onPointerMove={handleStrategySplitterPointerMove}
+                onPointerUp={handleStrategySplitterPointerUp}
+                onPointerCancel={handleStrategySplitterPointerUp}
+                sx={{
+                  width: 8,
+                  flexShrink: 0,
+                  cursor: 'col-resize',
+                  alignSelf: 'stretch',
+                  position: 'relative',
+                  touchAction: 'none',
+                  '&::after': {
+                    content: '""',
+                    position: 'absolute',
+                    top: 8,
+                    bottom: 8,
+                    left: '50%',
+                    width: 2,
+                    transform: 'translateX(-50%)',
+                    borderRadius: 1,
+                    bgcolor: strategyResizing ? 'primary.main' : 'divider'
+                  },
+                  '&:hover::after': {
+                    bgcolor: 'primary.main'
+                  }
+                }}
+              />
+              <Paper
+                elevation={0}
+                sx={{
+                  width: clampStrategyWidth(strategyWidth, strategyMaxWidth()),
+                  flexShrink: 0,
+                  border: 1,
+                  borderColor: 'divider',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  minWidth: 0,
+                  overflow: 'hidden'
+                }}
+              >
+                <StrategyPanel
+                  key={selectedStrategy.id}
+                  strategyId={selectedStrategy.id}
+                  strategyName={selectedStrategy.name}
+                  tsCode={selectedCode}
+                  adjust={effectiveAdjust}
+                  defaultStart={MARKET_SYNC_EARLIEST}
+                  defaultEnd={queryEnd}
+                  disabled={querying}
+                  onClose={closeStrategyPanel}
+                  onOverlayChange={setStrategyOverlay}
+                />
+              </Paper>
+            </>
+          ) : null}
           {scriptDraft ? (
             <ScriptEditorPanel
               draft={scriptDraft}
@@ -637,12 +801,14 @@ export function ChartPage(): React.JSX.Element {
         exampleSource={exampleSource}
         layout={layout}
         scripts={scripts}
+        selectedStrategyId={selectedStrategy?.id ?? null}
         disabled={querying}
         onClose={() => setIndicatorOpen(false)}
         onAdd={(ref) => void handleAddIndicator(ref)}
         onCreateEditor={openNewScriptEditor}
         onEditEditor={openEditScriptEditor}
         onRemoveScript={(id) => void handleRemoveScript(id)}
+        onSelectStrategy={(strategy) => setSelectedStrategy(strategy)}
       />
       <IndicatorSettingsDialog
         item={settingsItem}

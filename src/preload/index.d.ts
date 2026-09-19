@@ -1,6 +1,6 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type { Stock } from '../shared/types/stock'
-import type { MarketClearResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
+import type { MarketClearResult, StrategyListResult, StrategyRunParams, StrategyRunResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
 import type { ChartInput } from '../shared/types/chart'
 import type { ChartLayout, LayoutItemParams, LayoutReorderDirection } from '../shared/types/chartLayout'
 import type { IndicatorScript, ScriptTryParams, ScriptTryResult } from '../shared/types/indicatorScript'
@@ -83,6 +83,10 @@ export interface AppApi {
   }
   python: {
     ready: () => Promise<WorkerReadyMessage | null>
+  }
+  strategy: {
+    list: () => Promise<StrategyListResult>
+    run: (params: StrategyRunParams) => Promise<StrategyRunResult>
   }
 }
 

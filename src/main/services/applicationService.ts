@@ -43,6 +43,9 @@ import {
   type StockListResult,
   type IndexConstituentsResult as PyIndexConstituentsResult,
   type IndexWeightSyncResult as PyIndexWeightSyncResult,
+  type StrategyListResult,
+  type StrategyRunParams,
+  type StrategyRunResult,
   type SwIndustryWorkerResult
 } from '../../shared/types/pythonProtocol'
 import { pythonBridge, readExampleMaSource } from '../bridge/pythonBridge'
@@ -632,6 +635,40 @@ export const applicationService = {
       as_of: result.as_of,
       con_codes: stocks.map((stock) => stock.ts_code)
     }
+  },
+
+  async listStrategies(): Promise<StrategyListResult> {
+    return pythonBridge.call<StrategyListResult>(PYTHON_METHODS.strategyList)
+  },
+
+  async runStrategy(params: StrategyRunParams): Promise<StrategyRunResult> {
+    const strategyId = params.strategy_id?.trim()
+    if (!strategyId) {
+      throw new Error('strategy_id is required')
+    }
+    const tsCode = params.ts_code?.trim()
+    if (!tsCode) {
+      throw new Error('ts_code is required')
+    }
+    const startDate = params.start_date ?? MARKET_SYNC_EARLIEST
+    const endDate = params.end_date ?? todayYyyymmdd()
+    if (!DATE_RE.test(startDate) || !DATE_RE.test(endDate)) {
+      throw new Error('start_date and end_date must be YYYYMMDD')
+    }
+    if (startDate > endDate) {
+      throw new Error('start_date must be <= end_date')
+    }
+    const adjust = params.adjust ?? 'qfq'
+    if (adjust !== 'none' && adjust !== 'qfq' && adjust !== 'hfq') {
+      throw new Error('adjust must be none | qfq | hfq')
+    }
+    return pythonBridge.call<StrategyRunResult>(PYTHON_METHODS.strategyRun, {
+      strategy_id: strategyId,
+      ts_code: tsCode,
+      start_date: startDate,
+      end_date: endDate,
+      adjust
+    })
   }
 }
 
