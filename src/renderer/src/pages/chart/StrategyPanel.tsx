@@ -534,7 +534,7 @@ export function StrategyPanel({
         variant="scrollable"
         scrollButtons="auto"
         aria-label="买卖点列表"
-        sx={{ px: 1 }}
+        sx={{ px: 1, pt: '7px' }}
       >
         <SettingsTab disableRipple value="buy" label="买点" />
         <SettingsTab disableRipple value="sell" label="卖点" />
