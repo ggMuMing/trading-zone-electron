@@ -2,8 +2,6 @@ import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
-import Tab from '@mui/material/Tab'
-import Tabs from '@mui/material/Tabs'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
 import TableCell from '@mui/material/TableCell'
@@ -27,6 +25,7 @@ import { isoToYyyymmdd, yyyymmddToIso } from '../../../../shared/constants/marke
 import type { AdjustType } from '../../../../shared/types/market'
 import type { StrategyRunResult } from '../../../../shared/types/pythonProtocol'
 import { CHART_ICON_SX, ChartIconButton } from './ChartIconButton'
+import { SettingsTab, SettingsTabs } from './SettingsTabs'
 import {
   highlightKindOf,
   isSignalTruthy,
@@ -449,82 +448,99 @@ export function StrategyPanel({
         </ChartIconButton>
       </Box>
 
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1 }}>
-        <TextField
-          size="small"
-          type="date"
-          label="起始"
-          value={startDate}
-          disabled={busy}
-          onChange={(event) => setStartDate(event.target.value)}
-          slotProps={{ inputLabel: { shrink: true } }}
-          sx={{ flex: 1, minWidth: 0 }}
-        />
-        <TextField
-          size="small"
-          type="date"
-          label="结束"
-          value={endDate}
-          disabled={busy}
-          onChange={(event) => setEndDate(event.target.value)}
-          slotProps={{ inputLabel: { shrink: true } }}
-          sx={{ flex: 1, minWidth: 0 }}
-        />
-        <ChartIconButton
-          ariaLabel="执行策略"
-          title="执行"
-          roomy
-          disabled={busy || !tsCode}
-          onClick={() => void handleRun()}
-        >
-          <PlayArrow sx={CHART_ICON_SX} />
-        </ChartIconButton>
-      </Box>
-
-      {error ? (
-        <Alert severity="error" sx={{ mx: 1, mb: 1 }} onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      ) : null}
-
-      {statsEntries.length > 0 ? (
+      <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
         <Box
           sx={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-            columnGap: 1,
-            rowGap: 0.5,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
             px: 1,
-            pb: 1
+            py: (theme) => `calc(${theme.spacing(1)} + 5px)`
           }}
         >
-          {statsEntries.map(([key, value]) => (
-            <Typography key={key} variant="body2" noWrap>
-              <Box component="span" sx={{ fontWeight: 700 }}>
-                {STAT_LABELS[key] ?? key}
-              </Box>
-              ：{formatStatValue(value)}
-            </Typography>
-          ))}
+          <TextField
+            size="small"
+            type="date"
+            label="起始"
+            value={startDate}
+            disabled={busy}
+            onChange={(event) => setStartDate(event.target.value)}
+            slotProps={{ inputLabel: { shrink: true } }}
+            sx={{ flex: 1, minWidth: 0 }}
+          />
+          <TextField
+            size="small"
+            type="date"
+            label="结束"
+            value={endDate}
+            disabled={busy}
+            onChange={(event) => setEndDate(event.target.value)}
+            slotProps={{ inputLabel: { shrink: true } }}
+            sx={{ flex: 1, minWidth: 0 }}
+          />
+          <ChartIconButton
+            ariaLabel="执行策略"
+            title="执行"
+            roomy
+            disabled={busy || !tsCode}
+            onClick={() => void handleRun()}
+          >
+            <PlayArrow sx={CHART_ICON_SX} />
+          </ChartIconButton>
         </Box>
-      ) : (
-        <Typography variant="body2" color="text.secondary" sx={{ px: 1, pb: 1 }}>
-          {running ? '执行中…' : '选择区间后点击执行'}
-        </Typography>
-      )}
+        {error ? (
+          <Alert severity="error" sx={{ mx: 1, mb: 1 }} onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        ) : null}
+      </Box>
 
-      <Tabs
+      <Box
+        sx={{
+          px: 1,
+          py: (theme) => `calc(${theme.spacing(1)} + 5px)`,
+          borderBottom: 1,
+          borderColor: 'divider'
+        }}
+      >
+        {statsEntries.length > 0 ? (
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+              columnGap: 1,
+              rowGap: 0.5
+            }}
+          >
+            {statsEntries.map(([key, value]) => (
+              <Typography key={key} variant="body2" noWrap>
+                <Box component="span" sx={{ fontWeight: 700 }}>
+                  {STAT_LABELS[key] ?? key}
+                </Box>
+                ：{formatStatValue(value)}
+              </Typography>
+            ))}
+          </Box>
+        ) : (
+          <Typography variant="body2" color="text.secondary">
+            {running ? '执行中…' : '选择区间后点击执行'}
+          </Typography>
+        )}
+      </Box>
+
+      <SettingsTabs
         value={tab}
         onChange={handleTabChange}
         variant="scrollable"
         scrollButtons="auto"
-        sx={{ minHeight: 36, borderBottom: 1, borderColor: 'divider', px: 0.5 }}
+        aria-label="买卖点列表"
+        sx={{ px: 1 }}
       >
-        <Tab value="buy" label="买点" sx={{ minHeight: 36, py: 0 }} />
-        <Tab value="sell" label="卖点" sx={{ minHeight: 36, py: 0 }} />
-        <Tab value="mixed" label="买卖混合" sx={{ minHeight: 36, py: 0 }} />
-        <Tab value="custom" label="自选数据" sx={{ minHeight: 36, py: 0 }} />
-      </Tabs>
+        <SettingsTab disableRipple value="buy" label="买点" />
+        <SettingsTab disableRipple value="sell" label="卖点" />
+        <SettingsTab disableRipple value="mixed" label="买卖混合" />
+        <SettingsTab disableRipple value="custom" label="自选数据" />
+      </SettingsTabs>
 
       {tab === 'custom' ? (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 1, flexWrap: 'wrap' }}>
@@ -587,9 +603,6 @@ export function StrategyPanel({
         >
           {timeAsc ? <ArrowUpward sx={CHART_ICON_SX} /> : <ArrowDownward sx={CHART_ICON_SX} />}
         </ChartIconButton>
-        <Typography variant="caption" color="text.secondary">
-          {tabRows.length} 行
-        </Typography>
         <ChartIconButton
           ariaLabel="上一根K线"
           title="上一根"
@@ -635,6 +648,9 @@ export function StrategyPanel({
         >
           <SkipNext sx={CHART_ICON_SX} />
         </ChartIconButton>
+        <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto', flexShrink: 0 }}>
+          {tabRows.length} 行
+        </Typography>
       </Box>
       <Menu
         anchorEl={columnMenu}

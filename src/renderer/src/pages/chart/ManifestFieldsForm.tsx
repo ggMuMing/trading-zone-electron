@@ -1,89 +1,17 @@
 import Box from '@mui/material/Box'
 import Checkbox from '@mui/material/Checkbox'
-import Tab from '@mui/material/Tab'
-import Tabs from '@mui/material/Tabs'
-import type { TabsProps } from '@mui/material/Tabs'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
-import { styled } from '@mui/material/styles'
 import { useEffect, useState, type ReactNode } from 'react'
 import type { LineWidth, PlotStyleParams, ScriptParams } from '../../../../shared/types/chartLayout'
 import type { IndicatorManifest, ParamField, PlotStyleField } from '../../../../shared/types/indicatorScript'
+import { SettingsTab, SettingsTabs } from './SettingsTabs'
 import { StylePalette } from './StylePalette'
 
-const STYLE_COLUMNS = 'auto max-content auto'
-const PARAM_COLUMNS = 'minmax(72px, auto) 1fr'
-const STYLE_NAME_WIDTH = 40
+const STYLE_COLUMNS = 'auto minmax(88px, max-content) auto'
+const PARAM_COLUMNS = 'max-content 1fr'
 
 type FormTab = 'params' | 'styles'
-
-const TAB_PAD_X = 1.5
-
-const SettingsTabsRoot = styled(Tabs)(({ theme }) => ({
-  minHeight: 36,
-  borderBottom: `1px solid ${theme.palette.divider}`,
-  '& .MuiTabs-indicator': {
-    display: 'flex',
-    backgroundColor: 'transparent',
-    height: 2
-  },
-  '& .MuiTabs-indicatorSpan': {
-    flex: 1,
-    backgroundColor: theme.palette.primary.main
-  },
-  '&[data-selected="params"] .MuiTabs-indicatorSpan': {
-    marginLeft: 0,
-    marginRight: theme.spacing(TAB_PAD_X)
-  },
-  '&[data-selected="styles"] .MuiTabs-indicatorSpan': {
-    marginLeft: theme.spacing(TAB_PAD_X),
-    marginRight: 0
-  }
-}))
-
-function SettingsTabs(props: TabsProps): React.JSX.Element {
-  return (
-    <SettingsTabsRoot
-      {...props}
-      data-selected={props.value}
-      slotProps={{
-        ...props.slotProps,
-        indicator: {
-          children: <span className="MuiTabs-indicatorSpan" />
-        }
-      }}
-    />
-  )
-}
-
-const SettingsTab = styled(Tab)(({ theme }) => ({
-  textTransform: 'none',
-  minHeight: 36,
-  minWidth: 0,
-  paddingTop: theme.spacing(0.75),
-  paddingBottom: theme.spacing(0.75),
-  paddingLeft: theme.spacing(TAB_PAD_X),
-  paddingRight: theme.spacing(TAB_PAD_X),
-  fontWeight: theme.typography.fontWeightRegular,
-  color: theme.palette.text.secondary,
-  '&:hover': {
-    color: theme.palette.primary.main,
-    opacity: 1
-  },
-  '&.Mui-selected': {
-    color: theme.palette.primary.main,
-    fontWeight: theme.typography.fontWeightMedium
-  },
-  '&.Mui-focusVisible': {
-    backgroundColor: theme.palette.action.focus
-  },
-  '&:first-of-type': {
-    paddingLeft: 0
-  },
-  '&:last-of-type': {
-    paddingRight: 0
-  }
-}))
 
 function setInput(value: ScriptParams, name: string, next: number | boolean): ScriptParams {
   return { ...value, inputs: { ...value.inputs, [name]: next } }
@@ -146,7 +74,7 @@ function StyleName({ children }: { children: ReactNode }): React.JSX.Element {
       variant="body2"
       noWrap
       title={typeof children === 'string' ? children : undefined}
-      sx={{ width: STYLE_NAME_WIDTH, fontSize: 13 }}
+      sx={{ minWidth: 88, fontSize: 13 }}
     >
       {children}
     </Typography>
@@ -163,14 +91,7 @@ function InputRow({
   onChange: (next: ScriptParams) => void
 }): React.JSX.Element {
   return (
-    <Box
-      sx={{
-        display: 'grid',
-        gridTemplateColumns: PARAM_COLUMNS,
-        columnGap: 1.5,
-        alignItems: 'center'
-      }}
-    >
+    <>
       <Typography variant="body2">{field.title}</Typography>
       {field.widget === 'bool' ? (
         <Checkbox
@@ -194,7 +115,7 @@ function InputRow({
           onChange={(event) => onChange(setInput(value, field.name, Number(event.target.value)))}
         />
       )}
-    </Box>
+    </>
   )
 }
 
@@ -299,7 +220,15 @@ export function ManifestFieldsForm({
         <SettingsTab disableRipple value="styles" label="样式" disabled={!hasStyles} />
       </SettingsTabs>
       {tab === 'params' ? (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: PARAM_COLUMNS,
+            columnGap: 1.5,
+            rowGap: 1.25,
+            alignItems: 'center'
+          }}
+        >
           {manifest.fields.map((field) => (
             <InputRow key={field.name} field={field} value={value} onChange={onChange} />
           ))}
