@@ -7,6 +7,7 @@ import type { AdjustType, MarketQueryParams } from '../../shared/types/market'
 import type { LayoutItemParams, ScriptParams } from '../../shared/types/chartLayout'
 import type { ScriptTryParams } from '../../shared/types/indicatorScript'
 import type { StrategyRunParams } from '../../shared/types/pythonProtocol'
+import { pipelineStepMeta, type PipelineStepId } from '../../shared/constants/pipeline'
 
 function parseMarketQueryParams(params: unknown, channel: string): MarketQueryParams {
   if (!params || typeof params !== 'object') {
@@ -67,6 +68,10 @@ export function registerHandlers(): void {
     return stocksRepository.listAll()
   })
 
+  ipcMain.handle('stocks:listDelisted', () => {
+    return stocksRepository.listDelisted()
+  })
+
   ipcMain.handle('stocks:count', () => {
     return stocksRepository.count()
   })
@@ -83,20 +88,31 @@ export function registerHandlers(): void {
     return applicationService.syncMarketPool()
   })
 
-  ipcMain.handle('market:sync', async (event, params: unknown) => {
+  ipcMain.handle('market:refreshCalendar', async () => {
+    return applicationService.refreshCalendar()
+  })
+
+  ipcMain.handle('market:pipelineStatus', async () => {
+    return applicationService.getPipelineStatus()
+  })
+
+  ipcMain.handle('market:runPipeline', async (event) => {
+    return applicationService.runPipeline((progress) => {
+      event.sender.send('market:syncProgress', progress)
+    })
+  })
+
+  ipcMain.handle('market:runStep', async (event, params: unknown) => {
     if (!params || typeof params !== 'object') {
-      throw new Error('market:sync requires params object')
+      throw new Error('market:runStep requires params object')
     }
-    const p = params as Record<string, unknown>
-    if (typeof p.start_date !== 'string' || typeof p.end_date !== 'string') {
-      throw new Error('start_date and end_date are required')
+    const stepId = (params as Record<string, unknown>).step_id
+    if (typeof stepId !== 'string' || !pipelineStepMeta(stepId)) {
+      throw new Error('step_id must be a known pipeline step')
     }
-    return applicationService.syncMarketWindow(
-      { start_date: p.start_date, end_date: p.end_date },
-      (progress) => {
-        event.sender.send('market:syncProgress', progress)
-      }
-    )
+    return applicationService.runPipelineStep(stepId as PipelineStepId, (progress) => {
+      event.sender.send('market:syncProgress', progress)
+    })
   })
 
   ipcMain.handle('market:syncStatus', () => {

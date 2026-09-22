@@ -76,7 +76,13 @@ export interface MarketCoverageResult {
   db_path: string
 }
 
-export type MarketSyncStage = 'stock_list' | 'plan' | 'fetch_day' | 'dashboard_backfill' | 'done'
+export type MarketSyncStage =
+  | 'stock_list'
+  | 'plan'
+  | 'fetch_day'
+  | 'dashboard_backfill'
+  | 'step'
+  | 'done'
 
 export interface MarketSyncProgress {
   stage: MarketSyncStage
@@ -86,6 +92,10 @@ export interface MarketSyncProgress {
   current_date?: string
   error_count: number
   message: string
+  /** Pipeline steps only: which step the progress belongs to, and where it sits in the run. */
+  step_id?: string
+  step_index?: number
+  step_total?: number
 }
 
 export interface MarketSyncStatus {

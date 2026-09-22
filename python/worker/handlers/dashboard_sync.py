@@ -20,32 +20,12 @@ INDEX_DAILY_FIELDS = (
 MARGIN_FIELDS = "trade_date,exchange_id,rzye,rqye,rzrqye"
 LIMIT_FIELDS = "ts_code,trade_date,limit_status"
 FUT_DAILY_FIELDS = "ts_code,trade_date,close"
-FUT_EXCHANGE = "CFFEX"
 
 
-def sync_dashboard_for_date(pro: Any, trade_date: str) -> dict[str, int]:
-    """Fetch one trade date of index / margin / limit_status. Empty windows are success."""
-    index_count = 0
-    for ts_code in DASHBOARD_ALL_INDEX_CODES:
-        wait_for_tushare_slot()
-        rows = fetch_index_daily(pro, ts_code, trade_date=trade_date)
-        index_count += market_db.upsert_index_daily(rows)
-
+def sync_limit_status_for_date(pro: Any, trade_date: str) -> int:
+    """涨跌停状态仍随股票日线按日拉。指数 / 两融 / 期指改由步骤 2/8/9 按区间全量拉取。"""
     wait_for_tushare_slot()
-    margin_count = market_db.upsert_margin(fetch_margin(pro, trade_date=trade_date))
-
-    wait_for_tushare_slot()
-    limit_count = market_db.upsert_limit_status(fetch_limit_status(pro, trade_date))
-
-    wait_for_tushare_slot()
-    fut_count = market_db.upsert_fut_daily(fetch_fut_daily(pro, exchange=FUT_EXCHANGE, trade_date=trade_date))
-
-    return {
-        "index_count": index_count,
-        "margin_count": margin_count,
-        "limit_count": limit_count,
-        "fut_count": fut_count,
-    }
+    return market_db.upsert_limit_status(fetch_limit_status(pro, trade_date))
 
 
 def dashboard_backfill(params: dict) -> DashboardBackfillResult:

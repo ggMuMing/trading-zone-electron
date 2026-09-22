@@ -10,6 +10,12 @@
       "type": "integer",
       "minimum": 0
     },
+    "listed_count": { "type": "integer", "minimum": 0 },
+    "delisted_count": { "type": "integer", "minimum": 0 },
+    "errors": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
     "stocks": {
       "type": "array",
       "items": {
@@ -22,7 +28,9 @@
           "area": { "type": ["string", "null"] },
           "industry": { "type": ["string", "null"] },
           "market": { "type": ["string", "null"] },
-          "list_date": { "type": ["string", "null"] }
+          "list_date": { "type": ["string", "null"] },
+          "list_status": { "enum": ["L", "D"] },
+          "delist_date": { "type": ["string", "null"] }
         },
         "additionalProperties": false
       }

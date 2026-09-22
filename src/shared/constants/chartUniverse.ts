@@ -4,7 +4,7 @@ import {
   DASHBOARD_MARKET_INDICES
 } from './dashboard'
 
-export type ChartUniverseKind = 'all' | 'index' | 'constituents' | 'industry'
+export type ChartUniverseKind = 'all' | 'delisted' | 'index' | 'constituents' | 'industry'
 
 export interface ChartUniverseOption {
   id: string
@@ -15,6 +15,8 @@ export interface ChartUniverseOption {
 }
 
 export const CHART_UNIVERSE_ALL = 'all'
+/** `stocks.list_status = 'D'`；历史日线仍在 DuckDB，按代码可查。 */
+export const CHART_UNIVERSE_DELISTED = 'delisted'
 export const CHART_UNIVERSE_INDEX_MARKET = 'index:market'
 export const CHART_UNIVERSE_INDEX_BROAD = 'index:broad'
 
@@ -60,6 +62,7 @@ export function resolveUniverseNavTab(universeId: string): UniverseNavTab {
 
 export const CHART_UNIVERSE_OPTIONS: ChartUniverseOption[] = [
   { id: CHART_UNIVERSE_ALL, label: '全市场', kind: 'all' },
+  { id: CHART_UNIVERSE_DELISTED, label: '退市股票', kind: 'delisted' },
   { id: CHART_UNIVERSE_INDEX_MARKET, label: '大盘指数', kind: 'index', group: 'market' },
   { id: CHART_UNIVERSE_INDEX_BROAD, label: '宽基指数', kind: 'index', group: 'broad' },
   ...DASHBOARD_MARKET_INDICES.map((item) => ({

@@ -14,6 +14,7 @@ import ExpandMore from '@mui/icons-material/ExpandMore'
 import { useEffect, useMemo, useState } from 'react'
 import {
   CHART_UNIVERSE_ALL,
+  CHART_UNIVERSE_DELISTED,
   CHART_UNIVERSE_INDEX_BROAD,
   CHART_UNIVERSE_INDEX_MARKET,
   CHART_UNIVERSE_OPTIONS,
@@ -235,6 +236,12 @@ export function UniversePickerDialog({
                 onClick={() => handleSelect(CHART_UNIVERSE_ALL)}
               >
                 <ListItemText primary="全市场" />
+              </ListItemButton>
+              <ListItemButton
+                selected={universeId === CHART_UNIVERSE_DELISTED}
+                onClick={() => handleSelect(CHART_UNIVERSE_DELISTED)}
+              >
+                <ListItemText primary="退市股票" />
               </ListItemButton>
               <ListItemButton
                 selected={universeId === CHART_UNIVERSE_INDEX_MARKET}

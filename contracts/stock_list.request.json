@@ -18,8 +18,8 @@
     },
     "list_status": {
       "type": "string",
-      "default": "L",
-      "description": "L=listed, D=delisted, P=paused"
+      "default": "L,D",
+      "description": "Comma separated statuses; the pipeline asks for L (listed) plus D (delisted)"
     }
   },
   "additionalProperties": false

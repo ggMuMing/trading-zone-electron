@@ -6,7 +6,7 @@ from typing import Any
 import tushare as ts
 
 from worker.db import market_db
-from worker.handlers.dashboard_sync import sync_dashboard_for_date
+from worker.handlers.dashboard_sync import sync_limit_status_for_date
 from worker.models import MarketSyncDayParams, MarketSyncDayResult, MarketSyncDayTimings
 from worker.rate_limit import wait_for_tushare_slot
 
@@ -63,23 +63,18 @@ def market_day(params: dict) -> MarketSyncDayResult:
     if adj_count <= 0 and not any(item.startswith("adj_factor:") for item in errors):
         errors.append(f"adj_factor: empty result for {parsed.trade_date}")
 
-    index_count = 0
-    margin_count = 0
     limit_count = 0
-    dashboard_error: str | None = None
+    limit_error: str | None = None
     if bar_count > 0:
         try:
-            dash = sync_dashboard_for_date(pro, parsed.trade_date)
-            index_count = int(dash["index_count"])
-            margin_count = int(dash["margin_count"])
-            limit_count = int(dash["limit_count"])
+            limit_count = sync_limit_status_for_date(pro, parsed.trade_date)
         except Exception as exc:  # noqa: BLE001
-            dashboard_error = f"dashboard: {exc}" if str(exc) else "dashboard failed"
+            limit_error = f"limit_status: {exc}" if str(exc) else "limit_status failed"
 
     status = "complete" if not errors else "partial"
     parts = list(errors)
-    if dashboard_error:
-        parts.append(dashboard_error)
+    if limit_error:
+        parts.append(limit_error)
     error = "; ".join(parts) if parts else None
     market_db.upsert_sync_trade_date(parsed.trade_date, bar_count, adj_count, status)
     return MarketSyncDayResult(
@@ -88,8 +83,6 @@ def market_day(params: dict) -> MarketSyncDayResult:
         adj_count=adj_count,
         status=status,
         error=error,
-        index_count=index_count,
-        margin_count=margin_count,
         limit_count=limit_count,
         timings_ms=MarketSyncDayTimings(
             wait=wait_ms,

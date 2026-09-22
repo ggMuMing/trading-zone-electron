@@ -27,6 +27,7 @@ export interface WorkerResponse<T = unknown> {
 export interface StockListParams {
   token: string
   exchange?: string
+  /** Comma separated `stock_basic` statuses; the pipeline asks for `L,D`. */
   list_status?: string
 }
 
@@ -39,11 +40,39 @@ export interface StockBasicRow {
   industry: string | null
   market: string | null
   list_date: string | null
+  list_status: 'L' | 'D'
+  delist_date: string | null
 }
 
 export interface StockListResult {
   stocks: StockBasicRow[]
   count: number
+  listed_count: number
+  delisted_count: number
+  errors: string[]
+}
+
+export interface TradeCalSyncResult {
+  start_date: string
+  end_date: string
+  open_days: number
+  last_closed_trade_date: string | null
+}
+
+export interface PipelineStepRunResult {
+  step_id: string
+  row_count: number
+  detail: string | null
+  error: string | null
+}
+
+export interface PipelinePlanResult {
+  step_id: string
+  start_date: string
+  end_date: string
+  total_days: number
+  complete_count: number
+  pending_dates: string[]
 }
 
 export interface MarketPoolSyncParams {
@@ -213,11 +242,16 @@ export const PYTHON_METHODS = {
   syncDashboardBackfill: 'data.sync.dashboard_backfill',
   syncIndexWeight: 'data.sync.index_weight',
   syncSwIndustry: 'data.sync.sw_industry',
+  syncTradeCal: 'data.sync.trade_cal',
+  syncPipelineStep: 'data.sync.pipeline_step',
   clearMarket: 'data.admin.clear_market',
   queryOhlcv: 'data.query.ohlcv',
   queryDashboard: 'data.query.dashboard',
   queryIndexConstituents: 'data.query.index_constituents',
   metaMarketCoverage: 'data.meta.market_coverage',
+  metaPipelineStatus: 'data.meta.pipeline_status',
+  metaPipelinePlan: 'data.meta.pipeline_plan',
+  metaMarkStep: 'data.meta.mark_step',
   computeIndicator: 'compute.indicator',
   computeScriptTry: 'compute.script_try',
   strategyList: 'strategy.list',

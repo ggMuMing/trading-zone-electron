@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pipeline.status.response.json",
+  "title": "data.meta.pipeline_status response",
+  "description": "Per-step two questions (initialized / fresh) plus the folded global state. Required steps only drive `global`.",
+  "type": "object",
+  "required": ["global", "last_closed_trade_date", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "global": {
+      "enum": ["init", "stale", "fresh", "running"]
+    },
+    "last_closed_trade_date": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9]{8}$",
+      "description": "Most recent closed open-market day. Null when the local calendar is empty."
+    },
+    "calendar_error": {
+      "type": ["string", "null"],
+      "description": "Filled by Main when the on-open calendar refresh failed; status still uses the local calendar."
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "required", "status", "initialized", "fresh"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "enum": [
+              "trade_cal",
+              "index_daily",
+              "stock_list",
+              "daily_bar",
+              "daily_bar_hist_2021",
+              "daily_bar_hist_2018",
+              "daily_bar_hist_2015",
+              "daily_bar_hist_2012",
+              "daily_bar_hist_2009",
+              "daily_bar_hist_2006",
+              "daily_bar_hist_2003",
+              "daily_bar_hist_2000",
+              "delisted",
+              "index_weight",
+              "sw_industry",
+              "fut_daily",
+              "margin"
+            ]
+          },
+          "required": { "type": "boolean" },
+          "status": {
+            "enum": ["not_started", "stale", "fresh", "running", "failed"]
+          },
+          "initialized": {
+            "type": "boolean",
+            "description": "One-way latch. Never cleared by a missing newest day; only clear_market resets it."
+          },
+          "fresh": { "type": "boolean" },
+          "coverage_start": { "type": ["string", "null"], "pattern": "^[0-9]{8}$" },
+          "coverage_end": { "type": ["string", "null"], "pattern": "^[0-9]{8}$" },
+          "detail": { "type": ["string", "null"] },
+          "error": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

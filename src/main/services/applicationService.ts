@@ -40,7 +40,10 @@ import {
   type MarketQueryResult as PyQueryResult,
   type MarketSyncDayResult,
   type MarketSyncPlanResult,
+  type PipelinePlanResult,
+  type PipelineStepRunResult,
   type StockListResult,
+  type TradeCalSyncResult,
   type IndexConstituentsResult as PyIndexConstituentsResult,
   type IndexWeightSyncResult as PyIndexWeightSyncResult,
   type StrategyListResult,
@@ -48,6 +51,19 @@ import {
   type StrategyRunResult,
   type SwIndustryWorkerResult
 } from '../../shared/types/pythonProtocol'
+import {
+  dailyBarHistoryStepMetas,
+  isDailyBarHistoryStepUnlocked,
+  isDailyBarPullStepId,
+  PIPELINE_STEPS,
+  pipelineStepMeta,
+  type PipelineStepId
+} from '../../shared/constants/pipeline'
+import type {
+  PipelineRunResult,
+  PipelineRunStepOutcome,
+  PipelineStatusResult
+} from '../../shared/types/pipeline'
 import { pythonBridge, readExampleMaSource } from '../bridge/pythonBridge'
 import { getTushareToken } from '../config/appConfig'
 import { chartLayoutRepository } from '../db/chartLayoutRepository'
@@ -69,16 +85,25 @@ const MARKET_CALL_TIMEOUT_MS = 180_000
 const MARKET_DAY_TIMEOUT_MS = 120_000
 const DASHBOARD_BACKFILL_TIMEOUT_MS = 1_800_000
 const SW_INDUSTRY_SYNC_TIMEOUT_MS = 180_000
+/** 全量类步骤按区间分窗拉取，单步可能跑很久。 */
+const PIPELINE_STEP_TIMEOUT_MS = 1_800_000
 const DATE_RE = /^[0-9]{8}$/
 
 export type SyncProgressHandler = (progress: MarketSyncProgress) => void
 
 let marketSyncing = false
 let lastSyncProgress: MarketSyncProgress | null = null
+let runningStepId: PipelineStepId | null = null
+let lastCalendarError: string | null = null
+/** 最近一次跑该步留下的失败信息；成功后清掉，避免失败看起来像空白未开始。 */
+const lastStepErrors = new Map<PipelineStepId, string>()
 
 export interface SyncStockListResult {
   count: number
   fetched: number
+  listed: number
+  delisted: number
+  marked_delisted: number
 }
 
 function requireToken(): string {
@@ -109,14 +134,23 @@ function assertYyyymmdd(value: string, label: string): string {
 export const applicationService = {
   async syncStockList(): Promise<SyncStockListResult> {
     const token = requireToken()
-    const result = await pythonBridge.call<StockListResult>(PYTHON_METHODS.syncStockList, {
-      token
-    })
+    const result = await pythonBridge.call<StockListResult>(
+      PYTHON_METHODS.syncStockList,
+      { token, list_status: 'L,D' },
+      MARKET_CALL_TIMEOUT_MS
+    )
 
     const count = stocksRepository.upsertMany(result.stocks)
+    const activeCodes = result.stocks
+      .filter((stock) => stock.list_status === 'L')
+      .map((stock) => stock.ts_code)
+    const markedDelisted = stocksRepository.markMissingAsDelisted(activeCodes)
     return {
       count,
-      fetched: result.count
+      fetched: result.count,
+      listed: result.listed_count ?? activeCodes.length,
+      delisted: result.delisted_count ?? 0,
+      marked_delisted: markedDelisted
     }
   },
 
@@ -154,6 +188,88 @@ export const applicationService = {
     }
   },
 
+  /**
+   * 打开数据管理页时唯一的自动拉取。失败不阻断：保留本地日历，步骤 1 标待更新，
+   * 其它步骤仍用本地日历继续判定。
+   */
+  async refreshCalendar(): Promise<PipelineStatusResult> {
+    lastCalendarError = null
+    const token = getTushareToken()
+    if (!token) {
+      lastCalendarError = 'Tushare token 未配置，交易日历未刷新（沿用本地日历）'
+    } else if (!marketSyncing) {
+      try {
+        await pythonBridge.call<TradeCalSyncResult>(
+          PYTHON_METHODS.syncTradeCal,
+          { token },
+          MARKET_CALL_TIMEOUT_MS
+        )
+        lastStepErrors.delete('trade_cal')
+      } catch (err: unknown) {
+        lastCalendarError = err instanceof Error ? err.message : String(err)
+      }
+    }
+    return this.getPipelineStatus()
+  },
+
+  async getPipelineStatus(): Promise<PipelineStatusResult> {
+    const status = await pythonBridge.call<PipelineStatusResult>(
+      PYTHON_METHODS.metaPipelineStatus,
+      {
+        stock_count: stocksRepository.count(),
+        delisted_count: stocksRepository.countDelisted(),
+        industry_count: swIndustryRepository.countNodes()
+      }
+    )
+
+    return {
+      ...status,
+      global: marketSyncing ? 'running' : status.global,
+      calendar_error: lastCalendarError,
+      steps: status.steps.map((step) => {
+        const error = lastStepErrors.get(step.id) ?? null
+        if (runningStepId === step.id) {
+          return { ...step, status: 'running', error }
+        }
+        if (error && !step.fresh) {
+          return { ...step, status: 'failed', error }
+        }
+        return { ...step, error }
+      })
+    }
+  },
+
+  /** 必做流水线。已最新的步骤跳过，中断后再次点击从第一个未完成的步骤继续。 */
+  async runPipeline(onProgress?: SyncProgressHandler): Promise<PipelineRunResult> {
+    const required = PIPELINE_STEPS.filter((step) => step.required).map((step) => step.id)
+    return runSteps(required, onProgress)
+  },
+
+  /** 历史子步（4.1…）的行内按钮：上一段未初始化时不放行。 */
+  async runPipelineStep(
+    stepId: PipelineStepId,
+    onProgress?: SyncProgressHandler
+  ): Promise<PipelineRunResult> {
+    const meta = pipelineStepMeta(stepId)
+    if (!meta) {
+      throw new Error(`未知步骤：${stepId}`)
+    }
+    if (meta.parent === 'daily_bar') {
+      const status = await this.getPipelineStatus()
+      const stepById = new Map(status.steps.map((step) => [step.id, step]))
+      if (!isDailyBarHistoryStepUnlocked(meta, stepById)) {
+        const hist = dailyBarHistoryStepMetas()
+        const index = hist.findIndex((step) => step.id === meta.id)
+        if (index <= 0) {
+          throw new Error('请先完成步骤 4 默认段，再补历史日线')
+        }
+        throw new Error(`请先完成步骤 ${hist[index - 1]?.ordinal ?? '4.x'}，再补本段历史`)
+      }
+    }
+    return runSteps([stepId], onProgress)
+  },
+
+  /** 旧的自选窗口路径：仅保留给历史验收脚本，不再挂在主路径 IPC 上。 */
   async syncMarketWindow(
     params: { start_date: string; end_date: string },
     onProgress?: SyncProgressHandler
@@ -312,7 +428,12 @@ export const applicationService = {
     if (marketSyncing) {
       throw new Error('行情同步正在进行中，无法清除')
     }
-    return pythonBridge.call<MarketClearResult>(PYTHON_METHODS.clearMarket, {})
+    const result = await pythonBridge.call<MarketClearResult>(PYTHON_METHODS.clearMarket, {})
+    // 清除是闩锁唯一的复位入口，配套把上一轮的失败痕迹也抹掉。
+    lastStepErrors.clear()
+    lastCalendarError = null
+    lastSyncProgress = null
+    return result
   },
 
   ensureMarketPool(): void {
@@ -670,6 +791,188 @@ export const applicationService = {
       adjust
     })
   }
+}
+
+function emitProgress(
+  handler: SyncProgressHandler | undefined,
+  progress: MarketSyncProgress
+): void {
+  lastSyncProgress = progress
+  handler?.(progress)
+}
+
+async function runSteps(
+  stepIds: PipelineStepId[],
+  onProgress?: SyncProgressHandler
+): Promise<PipelineRunResult> {
+  if (marketSyncing) {
+    throw new Error('行情同步正在进行中')
+  }
+  const token = requireToken()
+
+  const before = await applicationService.getPipelineStatus()
+  const freshIds = new Set(before.steps.filter((step) => step.fresh).map((step) => step.id))
+
+  const outcomes: PipelineRunStepOutcome[] = []
+  const errors: Array<{ step_id: string; message: string }> = []
+  marketSyncing = true
+  try {
+    for (let index = 0; index < stepIds.length; index += 1) {
+      const stepId = stepIds[index]
+      const meta = pipelineStepMeta(stepId)
+      const label = meta ? `步骤 ${meta.ordinal} ${meta.title}` : stepId
+      if (freshIds.has(stepId)) {
+        outcomes.push({ step_id: stepId, ran: false, message: '已最新，跳过', error: null })
+        continue
+      }
+      runningStepId = stepId
+      emitProgress(onProgress, {
+        stage: 'step',
+        done_days: 0,
+        total_pending: 0,
+        skipped_days: 0,
+        error_count: errors.length,
+        step_id: stepId,
+        step_index: index + 1,
+        step_total: stepIds.length,
+        message: `${label}…`
+      })
+      try {
+        const message = await executeStep(stepId, token, index, stepIds.length, onProgress)
+        lastStepErrors.delete(stepId)
+        outcomes.push({ step_id: stepId, ran: true, message, error: null })
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        lastStepErrors.set(stepId, message)
+        errors.push({ step_id: stepId, message })
+        outcomes.push({ step_id: stepId, ran: true, message: `${label} 失败`, error: message })
+      } finally {
+        runningStepId = null
+      }
+    }
+  } finally {
+    marketSyncing = false
+    runningStepId = null
+  }
+
+  const ranCount = outcomes.filter((item) => item.ran && !item.error).length
+  const skippedCount = outcomes.filter((item) => !item.ran).length
+  emitProgress(onProgress, {
+    stage: 'done',
+    done_days: 0,
+    total_pending: 0,
+    skipped_days: skippedCount,
+    error_count: errors.length,
+    message:
+      errors.length > 0
+        ? `完成 ${ranCount} 步，跳过 ${skippedCount} 步，失败 ${errors.length} 步`
+        : `完成 ${ranCount} 步，跳过 ${skippedCount} 步`
+  })
+
+  return { steps: outcomes, ran_count: ranCount, skipped_count: skippedCount, errors }
+}
+
+async function executeStep(
+  stepId: PipelineStepId,
+  token: string,
+  stepIndex: number,
+  stepTotal: number,
+  onProgress?: SyncProgressHandler
+): Promise<string> {
+  if (stepId === 'stock_list') {
+    const result = await applicationService.syncStockList()
+    await markStepSynced(stepId)
+    return `在市 ${result.listed} 只，退市 ${result.delisted} 只，本次新标记退市 ${result.marked_delisted} 只`
+  }
+
+  if (stepId === 'sw_industry') {
+    const result = await applicationService.syncSwIndustry()
+    await markStepSynced(stepId)
+    const errHint = result.errors.length > 0 ? `；失败 ${result.errors.length} 个一级` : ''
+    return `分类 ${result.classify_count} 个，成分 ${result.member_count} 只${errHint}`
+  }
+
+  if (stepId === 'delisted') {
+    // 派生步：不自己拉数，跟随步骤 3 与步骤 4 默认段。
+    return `退市 ${stocksRepository.countDelisted()} 只（由股票列表与股票日线派生）`
+  }
+
+  if (isDailyBarPullStepId(stepId)) {
+    return runDailyBarStep(stepId, token, stepIndex, stepTotal, onProgress)
+  }
+
+  const result = await pythonBridge.call<PipelineStepRunResult>(
+    PYTHON_METHODS.syncPipelineStep,
+    { token, step_id: stepId },
+    PIPELINE_STEP_TIMEOUT_MS
+  )
+  if (result.error) {
+    throw new Error(result.error)
+  }
+  return result.detail ?? `写入 ${result.row_count} 行`
+}
+
+/** 分批拉股票日线。区间来自 Python 的固定窗口，pending 只来自 `sync_trade_date` 水位。 */
+async function runDailyBarStep(
+  stepId: PipelineStepId,
+  token: string,
+  stepIndex: number,
+  stepTotal: number,
+  onProgress?: SyncProgressHandler
+): Promise<string> {
+  const plan = await pythonBridge.call<PipelinePlanResult>(PYTHON_METHODS.metaPipelinePlan, {
+    step_id: stepId
+  })
+  const meta = pipelineStepMeta(stepId)
+  const ordinal = meta ? `步骤 ${meta.ordinal}` : stepId
+  const pending = plan.pending_dates ?? []
+  const failures: string[] = []
+  let barCount = 0
+  let adjCount = 0
+
+  for (let index = 0; index < pending.length; index += 1) {
+    const tradeDate = pending[index]
+    emitProgress(onProgress, {
+      stage: 'fetch_day',
+      done_days: index,
+      total_pending: pending.length,
+      skipped_days: plan.complete_count,
+      current_date: tradeDate,
+      error_count: failures.length,
+      step_id: stepId,
+      step_index: stepIndex + 1,
+      step_total: stepTotal,
+      message: `${ordinal} 补齐交易日 ${index + 1}/${pending.length}（${tradeDate}）`
+    })
+    try {
+      const day = await pythonBridge.call<MarketSyncDayResult>(
+        PYTHON_METHODS.syncMarketDay,
+        { token, trade_date: tradeDate },
+        MARKET_DAY_TIMEOUT_MS
+      )
+      barCount += day.bar_count
+      adjCount += day.adj_count
+      if (day.status !== 'complete' && day.error) {
+        failures.push(`${tradeDate}: ${day.error}`)
+      }
+    } catch (err: unknown) {
+      failures.push(`${tradeDate}: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  applicationService.ensureMarketPool()
+
+  if (failures.length > 0) {
+    throw new Error(
+      `补齐 ${pending.length - failures.length}/${pending.length} 日，失败 ${failures.length} 日：${failures[0]}`
+    )
+  }
+  return `补齐 ${pending.length} 日，跳过 ${plan.complete_count} 日，日线 ${barCount} 行 / 复权 ${adjCount} 行`
+}
+
+/** 快照类步骤把「跑过的那个已收盘开市日」记下来，作为是否过期的标尺。 */
+async function markStepSynced(stepId: PipelineStepId): Promise<void> {
+  await pythonBridge.call(PYTHON_METHODS.metaMarkStep, { step_id: stepId })
 }
 
 async function loadScriptManifest(source: string): Promise<IndicatorManifest> {

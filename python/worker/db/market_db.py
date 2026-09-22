@@ -101,6 +101,14 @@ CREATE TABLE IF NOT EXISTS fut_daily (
   synced_at TIMESTAMP NOT NULL,
   PRIMARY KEY (ts_code, trade_date)
 );
+
+CREATE TABLE IF NOT EXISTS sync_step_state (
+  step_id VARCHAR PRIMARY KEY,
+  initialized INTEGER NOT NULL,
+  initialized_at TIMESTAMP,
+  last_sync_date VARCHAR,
+  last_synced_at TIMESTAMP
+);
 """
 
 _conn: duckdb.DuckDBPyConnection | None = None
@@ -960,6 +968,194 @@ def list_complete_dates(start_date: str, end_date: str) -> list[str]:
     return [str(r[0]) for r in rows]
 
 
+def complete_date_bounds(start_date: str, end_date: str) -> tuple[str | None, str | None, int]:
+    """(min, max, count) of watermark days marked complete inside the window."""
+    conn = get_conn()
+    row = conn.execute(
+        """
+        SELECT MIN(trade_date), MAX(trade_date), COUNT(*)
+        FROM sync_trade_date
+        WHERE status = 'complete'
+          AND bar_count > 0
+          AND trade_date >= ?
+          AND trade_date <= ?
+        """,
+        [start_date, end_date],
+    ).fetchone()
+    if not row:
+        return None, None, 0
+    return (
+        str(row[0]) if row[0] is not None else None,
+        str(row[1]) if row[1] is not None else None,
+        int(row[2] or 0),
+    )
+
+
+def get_step_state(step_id: str) -> dict[str, Any] | None:
+    conn = get_conn()
+    row = conn.execute(
+        """
+        SELECT step_id, initialized, initialized_at, last_sync_date, last_synced_at
+        FROM sync_step_state
+        WHERE step_id = ?
+        """,
+        [step_id],
+    ).fetchone()
+    if not row:
+        return None
+    return {
+        "step_id": str(row[0]),
+        "initialized": bool(row[1]),
+        "initialized_at": str(row[2]) if row[2] is not None else None,
+        "last_sync_date": str(row[3]) if row[3] is not None else None,
+        "last_synced_at": str(row[4]) if row[4] is not None else None,
+    }
+
+
+def set_step_initialized(step_id: str) -> None:
+    """One-way latch. A later missing day must never clear it; only clear_market resets."""
+    conn = get_conn()
+    existing = get_step_state(step_id)
+    if existing and existing["initialized"]:
+        return
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO sync_step_state
+          (step_id, initialized, initialized_at, last_sync_date, last_synced_at)
+        VALUES (?, 1, ?, ?, ?)
+        """,
+        [
+            step_id,
+            _now_iso(),
+            existing["last_sync_date"] if existing else None,
+            existing["last_synced_at"] if existing else None,
+        ],
+    )
+
+
+def set_step_synced(step_id: str, last_sync_date: str | None) -> None:
+    """Snapshot steps record which closed trade date they were last refreshed against."""
+    conn = get_conn()
+    existing = get_step_state(step_id)
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO sync_step_state
+          (step_id, initialized, initialized_at, last_sync_date, last_synced_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        [
+            step_id,
+            1 if existing and existing["initialized"] else 0,
+            existing["initialized_at"] if existing else None,
+            last_sync_date,
+            _now_iso(),
+        ],
+    )
+
+
+def last_open_trade_date_on_or_before(bound: str) -> str | None:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT MAX(trade_date) FROM trade_cal WHERE is_open = 1 AND trade_date <= ?",
+        [bound],
+    ).fetchone()
+    if not row or row[0] is None:
+        return None
+    return str(row[0])
+
+
+def previous_open_trade_date(bound: str) -> str | None:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT MAX(trade_date) FROM trade_cal WHERE is_open = 1 AND trade_date < ?",
+        [bound],
+    ).fetchone()
+    if not row or row[0] is None:
+        return None
+    return str(row[0])
+
+
+def trade_cal_bounds() -> tuple[str | None, str | None, int]:
+    conn = get_conn()
+    row = conn.execute(
+        """
+        SELECT MIN(trade_date), MAX(trade_date), COUNT(*)
+        FROM trade_cal
+        WHERE is_open = 1
+        """
+    ).fetchone()
+    if not row:
+        return None, None, 0
+    return (
+        str(row[0]) if row[0] is not None else None,
+        str(row[1]) if row[1] is not None else None,
+        int(row[2] or 0),
+    )
+
+
+def index_daily_bounds(ts_codes: list[str]) -> dict[str, tuple[str, str]]:
+    if not ts_codes:
+        return {}
+    conn = get_conn()
+    placeholders = ", ".join(["?"] * len(ts_codes))
+    rows = conn.execute(
+        f"""
+        SELECT ts_code, MIN(trade_date), MAX(trade_date)
+        FROM index_daily
+        WHERE ts_code IN ({placeholders})
+        GROUP BY ts_code
+        """,
+        ts_codes,
+    ).fetchall()
+    return {str(r[0]): (str(r[1]), str(r[2])) for r in rows if r[1] is not None}
+
+
+def fut_daily_bounds(ts_codes: list[str]) -> dict[str, tuple[str, str]]:
+    if not ts_codes:
+        return {}
+    conn = get_conn()
+    placeholders = ", ".join(["?"] * len(ts_codes))
+    rows = conn.execute(
+        f"""
+        SELECT ts_code, MIN(trade_date), MAX(trade_date)
+        FROM fut_daily
+        WHERE ts_code IN ({placeholders})
+        GROUP BY ts_code
+        """,
+        ts_codes,
+    ).fetchall()
+    return {str(r[0]): (str(r[1]), str(r[2])) for r in rows if r[1] is not None}
+
+
+def margin_bounds_by_exchange() -> dict[str, tuple[str, str]]:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT exchange_id, MIN(trade_date), MAX(trade_date)
+        FROM margin
+        GROUP BY exchange_id
+        """
+    ).fetchall()
+    return {str(r[0]): (str(r[1]), str(r[2])) for r in rows if r[1] is not None}
+
+
+def index_weight_bounds_by_index(index_codes: list[str]) -> dict[str, tuple[str, str]]:
+    if not index_codes:
+        return {}
+    conn = get_conn()
+    placeholders = ", ".join(["?"] * len(index_codes))
+    rows = conn.execute(
+        f"""
+        SELECT index_code, MIN(trade_date), MAX(trade_date)
+        FROM index_weight
+        WHERE index_code IN ({placeholders})
+        GROUP BY index_code
+        """,
+        index_codes,
+    ).fetchall()
+    return {str(r[0]): (str(r[1]), str(r[2])) for r in rows if r[1] is not None}
+
+
 def count_complete_days() -> int:
     conn = get_conn()
     row = conn.execute(
@@ -975,6 +1171,7 @@ def clear_market() -> str:
     conn = get_conn()
     conn.execute("DELETE FROM daily_bar")
     conn.execute("DELETE FROM adj_factor")
+    # Rows go, table stays: the daily-bar watermark is the only source for resume / gaps.
     conn.execute("DELETE FROM sync_trade_date")
     conn.execute("DELETE FROM trade_cal")
     conn.execute("DELETE FROM index_daily")
@@ -982,6 +1179,7 @@ def clear_market() -> str:
     conn.execute("DELETE FROM stock_limit_status")
     conn.execute("DELETE FROM index_weight")
     conn.execute("DELETE FROM fut_daily")
+    conn.execute("DELETE FROM sync_step_state")
     return str(resolve_db_path())
 
 

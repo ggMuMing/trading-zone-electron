@@ -24,12 +24,15 @@ from worker.handlers.market_day import market_day  # noqa: E402
 from worker.handlers.market_meta import market_coverage  # noqa: E402
 from worker.handlers.market_plan import market_plan  # noqa: E402
 from worker.handlers.market_query import query_ohlcv  # noqa: E402
+from worker.handlers.pipeline_run import pipeline_plan, pipeline_step, sync_trade_cal  # noqa: E402
+from worker.handlers.pipeline_status import mark_step, pipeline_status  # noqa: E402
 from worker.handlers.market_seed import (  # noqa: E402
     clear_fut_daily_fixture,
     clear_index_weight_fixture,
     seed_dashboard_fixture,
     seed_index_weight_fixture,
     seed_market_fixture,
+    seed_pipeline_fixture,
     seed_sync_fixture,
 )
 from worker.handlers.market_sync import sync_market_pool  # noqa: E402
@@ -48,13 +51,19 @@ HANDLERS: dict[str, Handler] = {
     "data.sync.dashboard_backfill": dashboard_backfill,
     "data.sync.index_weight": sync_index_weight,
     "data.sync.sw_industry": sync_sw_industry,
+    "data.sync.trade_cal": sync_trade_cal,
+    "data.sync.pipeline_step": pipeline_step,
     "data.admin.clear_market": clear_market,
     "data.query.ohlcv": query_ohlcv,
     "data.query.dashboard": query_dashboard,
     "data.query.index_constituents": query_index_constituents,
     "data.meta.market_coverage": market_coverage,
+    "data.meta.pipeline_status": pipeline_status,
+    "data.meta.pipeline_plan": pipeline_plan,
+    "data.meta.mark_step": mark_step,
     "data.test.seed_market_fixture": seed_market_fixture,
     "data.test.seed_sync_fixture": seed_sync_fixture,
+    "data.test.seed_pipeline_fixture": seed_pipeline_fixture,
     "data.test.seed_dashboard_fixture": seed_dashboard_fixture,
     "data.test.seed_index_weight_fixture": seed_index_weight_fixture,
     "data.test.clear_index_weight_fixture": clear_index_weight_fixture,

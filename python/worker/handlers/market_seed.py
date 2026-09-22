@@ -103,6 +103,75 @@ def seed_sync_fixture(params: dict) -> dict:
     }
 
 
+def seed_pipeline_fixture(params: dict) -> dict:
+    """Acceptance helper: make every DuckDB-backed required step fresh without Tushare.
+
+    Deliberately leaves the 4.1 closed interval untouched so the folding test can prove an
+    optional step never drags the global state back to `init`.
+    """
+    from worker.dashboard_codes import (
+        DASHBOARD_ALL_INDEX_CODES,
+        DASHBOARD_DISPLAY_INDICES,
+        DASHBOARD_FUT_CODES,
+    )
+    from worker.handlers.pipeline_status import resolve_last_closed_trade_date
+    from worker.pipeline_steps import STEP_TRADE_CAL
+
+    market_db.init_schema()
+    days = [str(d) for d in (params.get("trade_dates") or [])]
+    if not days:
+        raise ValueError("trade_dates is required")
+    days.sort()
+
+    market_db.upsert_trade_cal([(d, 1) for d in days])
+    for trade_date in days:
+        market_db.upsert_sync_trade_date(trade_date, bar_count=1, adj_count=1, status="complete")
+
+    index_rows = [
+        {"ts_code": code, "trade_date": day, "close": 1000.0, "vol": 1.0, "amount": 1.0}
+        for code in DASHBOARD_ALL_INDEX_CODES
+        for day in days
+    ]
+    market_db.upsert_index_daily(index_rows)
+
+    market_db.upsert_fut_daily(
+        [
+            {"ts_code": code, "trade_date": day, "close": 1000.0}
+            for code in DASHBOARD_FUT_CODES
+            for day in days
+        ]
+    )
+
+    market_db.upsert_margin(
+        [
+            {"trade_date": day, "exchange_id": exchange, "rzye": 1.0, "rqye": 1.0, "rzrqye": 2.0}
+            for exchange in ("SSE", "SZSE")
+            for day in days
+        ]
+    )
+
+    weight_date = str(params.get("index_weight_date") or days[-1])
+    market_db.upsert_index_weight(
+        [
+            {
+                "index_code": code,
+                "trade_date": weight_date,
+                "con_code": "000001.SZ",
+                "weight": 1.0,
+            }
+            for code, _name, _group in DASHBOARD_DISPLAY_INDICES
+        ]
+    )
+
+    last_closed = resolve_last_closed_trade_date()
+    market_db.set_step_synced(STEP_TRADE_CAL, last_closed)
+    return {
+        "trade_dates": days,
+        "last_closed_trade_date": last_closed,
+        "db_path": str(market_db.resolve_db_path()),
+    }
+
+
 _FUT_BASIS_OFFSETS: dict[str, float] = {"IH": -10.0, "IF": -20.0, "IC": 5.0, "IM": -30.0}
 
 

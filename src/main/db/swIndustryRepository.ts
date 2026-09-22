@@ -76,9 +76,11 @@ export const swIndustryRepository = {
   ): { member_count: number; skipped_not_in_stocks: number } {
     const db = getDb()
     const listed = new Set(
-      (db.prepare('SELECT ts_code FROM stocks').all() as Array<{ ts_code: string }>).map(
-        (row) => row.ts_code
-      )
+      (
+        db.prepare(`SELECT ts_code FROM stocks WHERE list_status = 'L'`).all() as Array<{
+          ts_code: string
+        }>
+      ).map((row) => row.ts_code)
     )
     const kept: SwIndustryMemberRow[] = []
     const seen = new Set<string>()
@@ -112,6 +114,13 @@ export const swIndustryRepository = {
       member_count: kept.length,
       skipped_not_in_stocks: rows.length - kept.length
     }
+  },
+
+  countNodes(): number {
+    const row = getDb().prepare('SELECT COUNT(*) AS count FROM sw_industry').get() as {
+      count: number
+    }
+    return row.count
   },
 
   listTree(): SwIndustryNode[] {
@@ -156,6 +165,7 @@ export const swIndustryRepository = {
          FROM sw_industry_member m
          JOIN stocks s ON s.ts_code = m.ts_code
          WHERE m.${column} = ?
+           AND s.list_status = 'L'
          ORDER BY s.ts_code`
       )
       .all(indexCode) as Array<{ ts_code: string }>

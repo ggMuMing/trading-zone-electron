@@ -6,18 +6,32 @@ import CircularProgress from '@mui/material/CircularProgress'
 import LinearProgress from '@mui/material/LinearProgress'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
+import IconButton from '@mui/material/IconButton'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
+import ExpandLess from '@mui/icons-material/ExpandLess'
+import ExpandMore from '@mui/icons-material/ExpandMore'
 import SyncIcon from '@mui/icons-material/Sync'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
-  MARKET_SYNC_DEFAULT_START,
-  MARKET_SYNC_EARLIEST,
-  isoToYyyymmdd,
-  todayYyyymmdd,
-  yyyymmddToIso
-} from '../../../shared/constants/market'
-import type { BoardStats, MarketCoverageResult, MarketSyncProgress } from '../../../shared/types/market'
+  isDailyBarHistoryStepUnlocked,
+  PIPELINE_STEPS,
+  type PipelineStepId,
+  type PipelineStepMeta
+} from '../../../shared/constants/pipeline'
+import { yyyymmddToIso } from '../../../shared/constants/market'
+import type { BoardStats, MarketSyncProgress } from '../../../shared/types/market'
+import type {
+  PipelineGlobalStatus,
+  PipelineStatusResult,
+  PipelineStepState,
+  PipelineStepStatus
+} from '../../../shared/types/pipeline'
 
 const BOARD_LABELS: Array<{ key: keyof Omit<BoardStats, 'total'>; label: string }> = [
   { key: 'sse_main', label: '上证主板' },
@@ -28,11 +42,55 @@ const BOARD_LABELS: Array<{ key: keyof Omit<BoardStats, 'total'>; label: string 
   { key: 'other', label: '其他' }
 ]
 
-function formatYmd(value: string | null | undefined): string {
-  if (!value) {
+const STEP_STATUS_LABELS: Record<PipelineStepStatus, string> = {
+  not_started: '未开始',
+  stale: '待更新',
+  fresh: '最新',
+  running: '进行中',
+  failed: '失败'
+}
+
+const STEP_STATUS_COLORS: Record<PipelineStepStatus, 'default' | 'success' | 'warning' | 'error'> =
+  {
+    not_started: 'default',
+    stale: 'warning',
+    fresh: 'success',
+    running: 'warning',
+    failed: 'error'
+  }
+
+const GLOBAL_BUTTON_LABELS: Record<PipelineGlobalStatus, string> = {
+  init: '初始化数据',
+  stale: '更新数据',
+  fresh: '数据已更新',
+  running: '进行中…'
+}
+
+const EXPAND_COL_WIDTH = 44
+const ORDINAL_COL_WIDTH = 120
+
+function childrenByParent(): Map<PipelineStepId, PipelineStepMeta[]> {
+  const map = new Map<PipelineStepId, PipelineStepMeta[]>()
+  for (const step of PIPELINE_STEPS) {
+    if (!step.parent) {
+      continue
+    }
+    const list = map.get(step.parent) ?? []
+    list.push(step)
+    map.set(step.parent, list)
+  }
+  return map
+}
+
+const PIPELINE_CHILDREN_BY_PARENT = childrenByParent()
+
+function formatCoverage(step: PipelineStepState): string {
+  if (!step.coverage_start && !step.coverage_end) {
     return '—'
   }
-  return yyyymmddToIso(value)
+  const start = step.coverage_start ? yyyymmddToIso(step.coverage_start) : '—'
+  const end = step.coverage_end ? yyyymmddToIso(step.coverage_end) : '—'
+  return `${start} ～ ${end}`
 }
 
 interface SettingsPageProps {
@@ -57,28 +115,38 @@ export function SettingsPage({
   const [hasToken, setHasToken] = useState(false)
   const [tokenMasked, setTokenMasked] = useState<string | null>(null)
   const [tokenInput, setTokenInput] = useState('')
-  const [startDate, setStartDate] = useState(MARKET_SYNC_DEFAULT_START)
-  const [endDate, setEndDate] = useState(todayYyyymmdd())
-  const [coverage, setCoverage] = useState<MarketCoverageResult | null>(null)
+  const [status, setStatus] = useState<PipelineStatusResult | null>(null)
   const [boardStats, setBoardStats] = useState<BoardStats | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
-  const [syncingIndexWeights, setSyncingIndexWeights] = useState(false)
-  const [syncingIndustry, setSyncingIndustry] = useState(false)
+  /** 步骤 4 等带子步的行：默认收起，4.1 不占用主列表。 */
+  const [expandedParents, setExpandedParents] = useState<Partial<Record<PipelineStepId, boolean>>>(
+    {}
+  )
 
-  const loadAll = async (): Promise<void> => {
+  const visiblePipelineSteps = useMemo(
+    () =>
+      PIPELINE_STEPS.filter((meta) => {
+        if (!meta.parent) {
+          return true
+        }
+        return expandedParents[meta.parent] === true
+      }),
+    [expandedParents]
+  )
+
+  /** 打开页只自动刷新交易日历；失败保留本地日历，其它步骤照常出状态。 */
+  const loadAll = async (refreshCalendar: boolean): Promise<void> => {
     setLoading(true)
     setError(null)
     try {
-      const [ready, tokenConfigured, masked, cov, boards] = await Promise.all([
+      const [ready, tokenConfigured, masked, boards] = await Promise.all([
         window.api.python.ready(),
         window.api.config.hasTushareToken(),
         window.api.config.getTushareTokenMasked(),
-        window.api.market.coverage(),
         window.api.stocks.boardStats()
       ])
       setHasToken(tokenConfigured)
       setTokenMasked(masked)
-      setCoverage(cov)
       setBoardStats(boards)
       if (ready) {
         const importsOk = Object.values(ready.imports).every(Boolean)
@@ -89,6 +157,11 @@ export function SettingsPage({
       } else {
         setPythonReady('未就绪')
       }
+      setStatus(
+        refreshCalendar
+          ? await window.api.market.refreshCalendar()
+          : await window.api.market.pipelineStatus()
+      )
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -97,18 +170,15 @@ export function SettingsPage({
   }
 
   useEffect(() => {
-    void loadAll()
+    void loadAll(true)
   }, [])
 
-  const today = todayYyyymmdd()
-  const startIso = yyyymmddToIso(startDate)
-  const endIso = yyyymmddToIso(endDate)
-  const minStartIso = yyyymmddToIso(MARKET_SYNC_EARLIEST)
-  const maxStartIso = endIso
-  const minEndIso = startIso
-  const maxEndIso = yyyymmddToIso(today)
-  const isEmpty = (coverage?.total_bars ?? 0) === 0
-  const busy = loading || syncing || clearing || syncingIndexWeights || syncingIndustry
+  const globalStatus: PipelineGlobalStatus = syncing ? 'running' : status?.global ?? 'init'
+  const busy = loading || syncing || clearing
+  const stepById = new Map<string, PipelineStepState>(
+    (status?.steps ?? []).map((step) => [step.id, step])
+  )
+  const runningStepId = progress?.step_id ?? null
 
   const handleSaveToken = async (): Promise<void> => {
     setError(null)
@@ -117,72 +187,38 @@ export function SettingsPage({
       await window.api.config.setTushareToken(tokenInput)
       setTokenInput('')
       setMessage('Token 已保存到本地配置')
-      await loadAll()
+      await loadAll(true)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
     }
   }
 
-  const handleSyncIndexWeights = async (): Promise<void> => {
-    setSyncingIndexWeights(true)
-    setError(null)
-    setMessage(null)
-    setConfirmClear(false)
-    try {
-      const result = await window.api.market.syncIndexWeights()
-      const errHint = result.errors.length > 0 ? `；失败 ${result.errors.length} 只` : ''
-      const snapshotDates = Object.values(result.as_of_dates)
-      const latestSnapshot =
-        snapshotDates.length > 0 ? snapshotDates.sort().at(-1) ?? '—' : '—'
-      setMessage(
-        `成分股已更新：新增/刷新 ${result.updated_count} 只，跳过 ${result.skipped_count} 只，空窗 ${result.empty_count} 只；快照 ${latestSnapshot}${errHint}`
-      )
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setSyncingIndexWeights(false)
-    }
-  }
-
-  const handleSyncIndustry = async (): Promise<void> => {
-    setSyncingIndustry(true)
-    setError(null)
-    setMessage(null)
-    setConfirmClear(false)
-    try {
-      const result = await window.api.industry.sync()
-      const errHint = result.errors.length > 0 ? `；失败 ${result.errors.length} 个一级` : ''
-      setMessage(
-        `行业分类已更新：分类 ${result.classify_count} 个，成分入库 ${result.member_count} 只（拉取 ${result.member_fetched}，跳过非在市 ${result.skipped_not_in_stocks}）${errHint}`
-      )
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setSyncingIndustry(false)
-    }
-  }
-
-  const handleSync = async (): Promise<void> => {
+  const runAndReload = async (run: () => Promise<{ errors: Array<{ message: string }> }>) => {
     onSyncingChange(true)
     setError(null)
     setMessage(null)
     setConfirmClear(false)
     try {
-      const result = await window.api.market.sync({
-        start_date: startDate,
-        end_date: endDate
-      })
-      const errHint =
-        result.errors.length > 0 ? `；失败 ${result.errors.length} 日` : ''
-      setMessage(
-        `更新完成：列表 ${result.stock_list_count} 条，补齐 ${result.fetched_days} 日，跳过 ${result.skipped_days} 日，日线 ${result.bar_count} 行${errHint}`
-      )
-      await loadAll()
+      const result = await run()
+      if (result.errors.length > 0) {
+        setError(result.errors.map((item) => item.message).join('；'))
+      } else {
+        setMessage('数据已更新到最近一个已收盘开市日')
+      }
+      await loadAll(false)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       onSyncingChange(false)
     }
+  }
+
+  const handleRunPipeline = (): void => {
+    void runAndReload(() => window.api.market.runPipeline())
+  }
+
+  const handleRunStep = (stepId: PipelineStepId): void => {
+    void runAndReload(() => window.api.market.runStep({ step_id: stepId }))
   }
 
   const handleClear = async (): Promise<void> => {
@@ -198,8 +234,8 @@ export function SettingsPage({
     setConfirmClear(false)
     try {
       await window.api.market.clear()
-      setMessage('已清除本地行情数据（Token 与股票列表保留）')
-      await loadAll()
+      setMessage('已清除本地行情数据与初始化状态（Token 与股票列表保留）')
+      await loadAll(false)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -210,11 +246,7 @@ export function SettingsPage({
   const progressValue =
     progress && progress.total_pending > 0
       ? Math.round((progress.done_days / progress.total_pending) * 100)
-      : progress?.stage === 'done'
-        ? 100
-        : syncing
-          ? undefined
-          : 0
+      : undefined
 
   return (
     <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 2 }}>
@@ -237,12 +269,12 @@ export function SettingsPage({
           />
         </Stack>
 
-        {(loading || syncing || clearing) && (
+        {loading || syncing || clearing ? (
           <LinearProgress
-            variant={progressValue === undefined || clearing ? 'indeterminate' : 'determinate'}
-            value={clearing ? undefined : progressValue}
+            variant={progressValue === undefined ? 'indeterminate' : 'determinate'}
+            value={progressValue}
           />
-        )}
+        ) : null}
         {progress && syncing ? (
           <Typography variant="body2" color="text.secondary">
             {progress.message}
@@ -255,7 +287,13 @@ export function SettingsPage({
         ) : null}
         {confirmClear && !clearing ? (
           <Alert severity="warning" onClose={() => setConfirmClear(false)}>
-            再次点击「确认清除行情？」将清空日线、复权因子与交易日覆盖表。Token 与股票列表不会删除。
+            再次点击「确认清除数据？」将清空日线、复权因子、指数、两融、期指、成分、交易日覆盖表与初始化状态。Token
+            与股票列表不会删除。
+          </Alert>
+        ) : null}
+        {status?.calendar_error ? (
+          <Alert severity="info">
+            交易日历未能刷新，已沿用本地日历继续判定：{status.calendar_error}
           </Alert>
         ) : null}
 
@@ -283,123 +321,192 @@ export function SettingsPage({
               placeholder="写入 userData；也可设环境变量 TUSHARE_TOKEN"
               fullWidth
             />
-            <Button variant="outlined" onClick={() => void handleSaveToken()} disabled={!tokenInput.trim() || busy}>
+            <Button
+              variant="outlined"
+              onClick={() => void handleSaveToken()}
+              disabled={!tokenInput.trim() || busy}
+            >
               保存
             </Button>
           </Stack>
         </Paper>
 
         <Paper elevation={0} sx={{ p: 2, border: 1, borderColor: 'divider' }}>
-          <Typography variant="subtitle2" gutterBottom>
-            更新窗口
-          </Typography>
-          <Stack spacing={1.5}>
-            <Stack direction="row" spacing={1} sx={{ width: '100%' }}>
-              <TextField
-                size="small"
-                type="date"
-                label="起始日"
-                value={startIso}
-                onChange={(e) => {
-                  const next = isoToYyyymmdd(e.target.value)
-                  setStartDate(next)
-                  if (next > endDate) {
-                    setEndDate(next > today ? today : next)
-                  }
-                }}
-                disabled={busy}
-                sx={{ width: '25%' }}
-                slotProps={{
-                  inputLabel: { shrink: true },
-                  htmlInput: { min: minStartIso, max: maxStartIso }
-                }}
-              />
-              <TextField
-                size="small"
-                type="date"
-                label="截止日"
-                value={endIso}
-                onChange={(e) => setEndDate(isoToYyyymmdd(e.target.value))}
-                disabled={busy}
-                sx={{ width: '25%' }}
-                slotProps={{
-                  inputLabel: { shrink: true },
-                  htmlInput: { min: minEndIso, max: maxEndIso }
-                }}
-              />
-            </Stack>
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              <Button
-                variant="contained"
-                startIcon={syncing ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />}
-                onClick={() => void handleSync()}
-                disabled={busy}
-              >
-                {syncing ? '更新中…' : '更新数据'}
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={
-                  syncingIndexWeights ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />
-                }
-                onClick={() => void handleSyncIndexWeights()}
-                disabled={busy || !hasToken}
-              >
-                {syncingIndexWeights ? '更新中…' : '更新成分股'}
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={
-                  syncingIndustry ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />
-                }
-                onClick={() => void handleSyncIndustry()}
-                disabled={busy || !hasToken}
-              >
-                {syncingIndustry ? '更新中…' : '更新行业分类'}
-              </Button>
-              <Button
-                color="warning"
-                variant="outlined"
-                onClick={() => void handleClear()}
-                disabled={busy}
-                startIcon={clearing ? <CircularProgress size={16} color="inherit" /> : undefined}
-              >
-                {clearing ? '清除中…' : confirmClear ? '确认清除行情？' : '清除所有股票数据'}
-              </Button>
-            </Stack>
+          <Stack direction="row" alignItems="flex-start" spacing={1}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="subtitle2">数据管理</Typography>
+              <Typography variant="caption" color="text.secondary">
+                区间写死在代码里：全量类 2000-01-01 起按品种上市日裁剪，股票日线默认段 2024-01-01
+                起，更早历史用行内子步倒序补。
+              </Typography>
+            </Box>
+            <Chip
+              size="small"
+              label={`截至 ${
+                status?.last_closed_trade_date
+                  ? yyyymmddToIso(status.last_closed_trade_date)
+                  : '—'
+              }`}
+              variant="outlined"
+            />
           </Stack>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            最早 {MARKET_SYNC_EARLIEST}。可按 2～3 年分段向前补；缩小窗口不会删除已下载数据；已完整的交易日会被跳过。一次拉满十余年会很慢。
-          </Typography>
-        </Paper>
 
-        {isEmpty && !loading ? (
-          <Paper elevation={0} sx={{ p: 3, border: 1, borderColor: 'divider', textAlign: 'center' }}>
-            <Typography variant="h6" gutterBottom>
-              尚未拉取行情数据
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1.5 }}>
+            <Button
+              variant="contained"
+              startIcon={syncing ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />}
+              onClick={handleRunPipeline}
+              disabled={busy || globalStatus === 'fresh' || !hasToken}
+            >
+              {GLOBAL_BUTTON_LABELS[globalStatus]}
+            </Button>
+            <Button
+              color="warning"
+              variant="outlined"
+              onClick={() => void handleClear()}
+              disabled={busy}
+              startIcon={clearing ? <CircularProgress size={16} color="inherit" /> : undefined}
+            >
+              {clearing ? '清除中…' : confirmClear ? '确认清除数据？' : '清除所有数据'}
+            </Button>
+            <Button variant="outlined" disabled title="本轮不开放">
+              自定义管理数据
+            </Button>
+          </Stack>
+
+          <Table size="small" sx={{ mt: 1.5, tableLayout: 'fixed' }}>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ width: EXPAND_COL_WIDTH, px: 0.5 }} aria-label="展开子步骤" />
+                <TableCell sx={{ width: ORDINAL_COL_WIDTH, minWidth: ORDINAL_COL_WIDTH }}>
+                  序号
+                </TableCell>
+                <TableCell>数据处理步骤</TableCell>
+                <TableCell sx={{ width: 210 }}>覆盖区间</TableCell>
+                <TableCell align="right" sx={{ width: 120 }}>
+                  当前状态
+                </TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {visiblePipelineSteps.map((meta) => {
+                const step = stepById.get(meta.id)
+                const stepStatus: PipelineStepStatus =
+                  runningStepId === meta.id ? 'running' : step?.status ?? 'not_started'
+                const histUnlocked = meta.parent
+                  ? isDailyBarHistoryStepUnlocked(meta, stepById)
+                  : true
+                const showInlineRun = !meta.required && stepStatus !== 'fresh'
+                const canRunSubStep = showInlineRun && histUnlocked
+                const lockTitle = meta.parent
+                  ? histUnlocked
+                    ? undefined
+                    : (() => {
+                        const hist = PIPELINE_STEPS.filter((s) => s.parent === 'daily_bar')
+                        const idx = hist.findIndex((s) => s.id === meta.id)
+                        if (idx <= 0) {
+                          return '请先完成步骤 4 默认段'
+                        }
+                        return `请先完成步骤 ${hist[idx - 1]?.ordinal ?? '4.x'}`
+                      })()
+                  : undefined
+                const childSteps = PIPELINE_CHILDREN_BY_PARENT.get(meta.id)
+                const hasChildSteps = Boolean(childSteps && childSteps.length > 0)
+                const expanded = expandedParents[meta.id] === true
+                return (
+                  <TableRow key={meta.id} hover>
+                    <TableCell sx={{ width: EXPAND_COL_WIDTH, px: 0.5, verticalAlign: 'middle' }}>
+                      {hasChildSteps ? (
+                        <IconButton
+                          size="small"
+                          aria-expanded={expanded}
+                          aria-label={expanded ? '收起历史子步骤' : '展开历史子步骤'}
+                          onClick={() =>
+                            setExpandedParents((prev) => ({
+                              ...prev,
+                              [meta.id]: !prev[meta.id]
+                            }))
+                          }
+                        >
+                          {expanded ? (
+                            <ExpandLess fontSize="small" />
+                          ) : (
+                            <ExpandMore fontSize="small" />
+                          )}
+                        </IconButton>
+                      ) : null}
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        width: ORDINAL_COL_WIDTH,
+                        minWidth: ORDINAL_COL_WIDTH,
+                        whiteSpace: 'nowrap',
+                        pl: meta.parent ? 1 : 2
+                      }}
+                    >
+                      <Typography variant="body2" color="text.secondary" noWrap>
+                        步骤 {meta.ordinal}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight={meta.parent ? 400 : 600}>
+                        {meta.title}
+                      </Typography>
+                      {step?.error ? (
+                        <Typography variant="caption" color="error">
+                          {step.error}
+                        </Typography>
+                      ) : step?.detail ? (
+                        <Typography variant="caption" color="text.secondary">
+                          {step.detail}
+                        </Typography>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {step ? formatCoverage(step) : '—'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={
+                          showInlineRun && !histUnlocked
+                            ? STEP_STATUS_LABELS.not_started
+                            : STEP_STATUS_LABELS[stepStatus]
+                        }
+                        color={
+                          showInlineRun && !histUnlocked
+                            ? STEP_STATUS_COLORS.not_started
+                            : STEP_STATUS_COLORS[stepStatus]
+                        }
+                        clickable={canRunSubStep && !busy && hasToken}
+                        disabled={busy || !hasToken || (showInlineRun && !canRunSubStep)}
+                        onClick={
+                          canRunSubStep && !busy && hasToken
+                            ? () => handleRunStep(meta.id)
+                            : undefined
+                        }
+                        title={lockTitle}
+                      />
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+
+          {!hasToken ? (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+              未配置 Token 时无法拉取数据，状态仍按本地库展示。
             </Typography>
-            <Typography variant="body2" color="text.secondary">
-              将同步 A 股列表，并按交易日补齐 {startDate} 至 {endDate} 的全市场日线、复权因子、指数、两融、涨跌状态与期指。
-            </Typography>
-          </Paper>
-        ) : (
-          <Paper elevation={0} sx={{ p: 2, border: 1, borderColor: 'divider' }}>
-            <Typography variant="subtitle2" gutterBottom>
-              库内覆盖
-            </Typography>
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              <Chip size="small" variant="outlined" label={`起始 ${formatYmd(coverage?.min_date)}`} />
-              <Chip size="small" variant="outlined" label={`截止 ${formatYmd(coverage?.max_date)}`} />
-              <Chip size="small" variant="outlined" label={`股票 ${coverage?.stock_count ?? 0}`} />
-              <Chip size="small" variant="outlined" label={`日线 ${coverage?.total_bars ?? 0} 行`} />
-              <Chip size="small" variant="outlined" label={`完整交易日 ${coverage?.complete_days ?? 0}`} />
-            </Stack>
-          </Paper>
-        )}
+          ) : null}
+        </Paper>
 
         <Paper elevation={0} sx={{ p: 2, border: 1, borderColor: 'divider' }}>
           <Typography variant="subtitle2" gutterBottom>
-            板块只数（股票列表）
+            板块只数（在市股票列表）
           </Typography>
           {boardStats && boardStats.total > 0 ? (
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -415,7 +522,7 @@ export function SettingsPage({
             </Stack>
           ) : (
             <Typography variant="body2" color="text.secondary">
-              尚无股票列表，更新数据后显示各板块只数。
+              尚无股票列表，跑完步骤 3 后显示各板块只数。
             </Typography>
           )}
         </Paper>

@@ -13,9 +13,10 @@ import type {
   MarketQueryResult,
   MarketSyncProgress,
   MarketSyncStatus,
-  SyncMarketPoolResult,
-  SyncMarketWindowResult
+  SyncMarketPoolResult
 } from '../shared/types/market'
+import type { PipelineRunResult, PipelineStatusResult } from '../shared/types/pipeline'
+import type { PipelineStepId } from '../shared/constants/pipeline'
 import type { DashboardQueryParams, DashboardQueryResult } from '../shared/types/dashboard'
 import type { IndexConstituentsResult, IndexWeightSyncResult } from '../shared/types/indexConstituents'
 import type {
@@ -28,6 +29,9 @@ import type {
 export interface SyncStockListResult {
   count: number
   fetched: number
+  listed: number
+  delisted: number
+  marked_delisted: number
 }
 
 const api = {
@@ -36,14 +40,20 @@ const api = {
   },
   stocks: {
     list: (): Promise<Stock[]> => ipcRenderer.invoke('stocks:list'),
+    listDelisted: (): Promise<Stock[]> => ipcRenderer.invoke('stocks:listDelisted'),
     count: (): Promise<number> => ipcRenderer.invoke('stocks:count'),
     sync: (): Promise<SyncStockListResult> => ipcRenderer.invoke('stocks:sync'),
     boardStats: (): Promise<BoardStats> => ipcRenderer.invoke('stocks:boardStats')
   },
   market: {
     syncPool: (): Promise<SyncMarketPoolResult> => ipcRenderer.invoke('market:syncPool'),
-    sync: (params: { start_date: string; end_date: string }): Promise<SyncMarketWindowResult> =>
-      ipcRenderer.invoke('market:sync', params),
+    refreshCalendar: (): Promise<PipelineStatusResult> =>
+      ipcRenderer.invoke('market:refreshCalendar'),
+    pipelineStatus: (): Promise<PipelineStatusResult> =>
+      ipcRenderer.invoke('market:pipelineStatus'),
+    runPipeline: (): Promise<PipelineRunResult> => ipcRenderer.invoke('market:runPipeline'),
+    runStep: (params: { step_id: PipelineStepId }): Promise<PipelineRunResult> =>
+      ipcRenderer.invoke('market:runStep', params),
     clear: (): Promise<MarketClearResult> => ipcRenderer.invoke('market:clear'),
     syncIndexWeights: (): Promise<IndexWeightSyncResult> =>
       ipcRenderer.invoke('market:syncIndexWeights'),

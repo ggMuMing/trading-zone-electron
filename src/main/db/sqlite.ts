@@ -6,14 +6,16 @@ let db: Database.Database | null = null
 
 const MIGRATION_SQL = `
 CREATE TABLE IF NOT EXISTS stocks (
-  ts_code   TEXT PRIMARY KEY NOT NULL,
-  symbol    TEXT NOT NULL,
-  name      TEXT NOT NULL,
-  area      TEXT,
-  industry  TEXT,
-  market    TEXT,
-  list_date TEXT,
-  synced_at TEXT NOT NULL
+  ts_code     TEXT PRIMARY KEY NOT NULL,
+  symbol      TEXT NOT NULL,
+  name        TEXT NOT NULL,
+  area        TEXT,
+  industry    TEXT,
+  market      TEXT,
+  list_date   TEXT,
+  list_status TEXT NOT NULL DEFAULT 'L',
+  delist_date TEXT,
+  synced_at   TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_stocks_name ON stocks(name);
@@ -79,6 +81,18 @@ CREATE INDEX IF NOT EXISTS idx_sw_member_l1 ON sw_industry_member(l1_code);
 CREATE INDEX IF NOT EXISTS idx_sw_member_l2 ON sw_industry_member(l2_code);
 CREATE INDEX IF NOT EXISTS idx_sw_member_l3 ON sw_industry_member(l3_code);
 `
+
+function addStockDelistColumns(database: Database.Database): void {
+  const columns = database.pragma('table_info(stocks)') as Array<{ name: string }>
+  const names = new Set(columns.map((column) => column.name))
+  if (!names.has('list_status')) {
+    database.exec(`ALTER TABLE stocks ADD COLUMN list_status TEXT NOT NULL DEFAULT 'L'`)
+  }
+  if (!names.has('delist_date')) {
+    database.exec(`ALTER TABLE stocks ADD COLUMN delist_date TEXT`)
+  }
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_stocks_list_status ON stocks(list_status)`)
+}
 
 function dropLayoutItemBuiltinUnique(database: Database.Database): void {
   const row = database
@@ -166,6 +180,7 @@ export function initDb(userDataPath: string): Database.Database {
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
   db.exec(MIGRATION_SQL)
+  addStockDelistColumns(db)
   dropLayoutItemBuiltinUnique(db)
   migrateLayoutItemKindRef(db)
 

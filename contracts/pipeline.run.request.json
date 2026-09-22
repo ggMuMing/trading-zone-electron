@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pipeline.run.request.json",
+  "title": "data.sync.pipeline_step request",
+  "description": "Runs one Python-side pipeline step. Windows are code constants; callers never pass start/end.",
+  "type": "object",
+  "required": ["token", "step_id"],
+  "additionalProperties": false,
+  "properties": {
+    "token": { "type": "string", "minLength": 1 },
+    "step_id": {
+      "enum": ["trade_cal", "index_daily", "index_weight", "fut_daily", "margin"],
+      "description": "Steps whose fetch + write stay entirely inside DuckDB. stock_list / sw_industry / daily_bar are orchestrated by Main."
+    }
+  }
+}

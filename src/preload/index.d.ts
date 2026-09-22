@@ -12,9 +12,10 @@ import type {
   MarketQueryResult,
   MarketSyncProgress,
   MarketSyncStatus,
-  SyncMarketPoolResult,
-  SyncMarketWindowResult
+  SyncMarketPoolResult
 } from '../shared/types/market'
+import type { PipelineRunResult, PipelineStatusResult } from '../shared/types/pipeline'
+import type { PipelineStepId } from '../shared/constants/pipeline'
 import type { DashboardQueryParams, DashboardQueryResult } from '../shared/types/dashboard'
 import type { IndexConstituentsResult, IndexWeightSyncResult } from '../shared/types/indexConstituents'
 import type {
@@ -27,19 +28,26 @@ import type {
 export interface SyncStockListResult {
   count: number
   fetched: number
+  listed: number
+  delisted: number
+  marked_delisted: number
 }
 
 export interface AppApi {
   ping: () => void
   stocks: {
     list: () => Promise<Stock[]>
+    listDelisted: () => Promise<Stock[]>
     count: () => Promise<number>
     sync: () => Promise<SyncStockListResult>
     boardStats: () => Promise<BoardStats>
   }
   market: {
     syncPool: () => Promise<SyncMarketPoolResult>
-    sync: (params: { start_date: string; end_date: string }) => Promise<SyncMarketWindowResult>
+    refreshCalendar: () => Promise<PipelineStatusResult>
+    pipelineStatus: () => Promise<PipelineStatusResult>
+    runPipeline: () => Promise<PipelineRunResult>
+    runStep: (params: { step_id: PipelineStepId }) => Promise<PipelineRunResult>
     clear: () => Promise<MarketClearResult>
     syncIndexWeights: () => Promise<IndexWeightSyncResult>
     indexConstituents: (params: { index_code: string }) => Promise<IndexConstituentsResult>

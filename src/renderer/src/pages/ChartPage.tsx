@@ -7,6 +7,7 @@ import { DEFAULT_SCRIPT_TITLE } from '../../../shared/chart/indicatorScript'
 import { validateChartInput } from '../../../shared/chart/validateChartInput'
 import {
   CHART_UNIVERSE_ALL,
+  CHART_UNIVERSE_DELISTED,
   CHART_UNIVERSE_INDEX_BROAD,
   CHART_UNIVERSE_INDEX_MARKET,
   industryUniverseId,
@@ -81,6 +82,8 @@ function indexMetaToStock(meta: DashboardIndexMeta): Stock {
     industry: null,
     market: null,
     list_date: null,
+    list_status: 'L',
+    delist_date: null,
     synced_at: ''
   }
 }
@@ -156,6 +159,11 @@ export function ChartPage(): React.JSX.Element {
       if (nextUniverseId === CHART_UNIVERSE_ALL) {
         setUniverseCaption(null)
         return listed
+      }
+      if (nextUniverseId === CHART_UNIVERSE_DELISTED) {
+        const delisted = await window.api.stocks.listDelisted()
+        setUniverseCaption(`退市 ${delisted.length} 只`)
+        return delisted
       }
       if (nextUniverseId === CHART_UNIVERSE_INDEX_MARKET) {
         setUniverseCaption(null)
@@ -537,11 +545,15 @@ export function ChartPage(): React.JSX.Element {
   const industryEmpty =
     parseIndustryIndexCode(universeId) !== null && pickerStocks.length === 0 && !universeLoading
   const selected = pickerStocks.find((stock) => stock.ts_code === selectedCode)
+  const delistedEmpty =
+    universeId === CHART_UNIVERSE_DELISTED && pickerStocks.length === 0 && !universeLoading
   const constituentsEmptyHint = constituentsEmpty
     ? '尚无成分股数据，请到配置页更新成分股'
     : industryEmpty
       ? '尚无行业数据，请到配置页更新行业分类'
-      : null
+      : delistedEmpty
+        ? '尚无退市股票，请到配置页更新数据'
+        : null
   const chartInput = useMemo(() => {
     if (!chartRaw) {
       return null

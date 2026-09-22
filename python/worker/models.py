@@ -39,17 +39,40 @@ class StockBasicRow(BaseModel):
     industry: str | None = None
     market: str | None = None
     list_date: str | None = None
+    list_status: Literal["L", "D"] = "L"
+    delist_date: str | None = None
 
 
 class StockListParams(BaseModel):
     token: str = Field(min_length=1)
     exchange: str = ""
-    list_status: str = "L"
+    #: Comma separated `stock_basic` statuses; the pipeline asks for listed plus delisted.
+    list_status: str = "L,D"
 
 
 class StockListResult(BaseModel):
     stocks: list[StockBasicRow]
     count: int
+    listed_count: int = 0
+    delisted_count: int = 0
+    errors: list[str] = Field(default_factory=list)
+
+
+class PipelineStatusParams(BaseModel):
+    """Counts Main owns in SQLite; every other step reads DuckDB directly."""
+
+    stock_count: int = 0
+    delisted_count: int = 0
+    industry_count: int = 0
+
+
+class PipelineStepParams(BaseModel):
+    token: str = Field(min_length=1)
+    step_id: str = Field(min_length=1)
+
+
+class TradeCalSyncParams(BaseModel):
+    token: str = Field(min_length=1)
 
 
 class MarketPoolSyncParams(BaseModel):
