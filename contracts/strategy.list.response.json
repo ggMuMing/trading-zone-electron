@@ -10,10 +10,40 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "name"],
+        "required": ["id", "name", "parameters"],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
-          "name": { "type": "string", "minLength": 1 }
+          "name": { "type": "string", "minLength": 1 },
+          "parameters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "title", "widget", "default"],
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "title": { "type": "string", "minLength": 1 },
+                "widget": { "type": "string", "enum": ["int", "float", "enum"] },
+                "default": {
+                  "anyOf": [{ "type": "number" }, { "type": "string" }]
+                },
+                "min": { "type": "number" },
+                "max": { "type": "number" },
+                "options": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["value", "label"],
+                    "properties": {
+                      "value": { "type": "string" },
+                      "label": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          }
         },
         "additionalProperties": false
       }

@@ -1,8 +1,17 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
+from worker.strategies.params import StrategyParam, coerce_parameters
+
 
 class StrategyClass(ABC):
+    parameters: tuple[StrategyParam, ...] = ()
+
+    def apply_parameters(self, params: dict[str, Any] | None = None) -> None:
+        resolved = coerce_parameters(self.parameters, params)
+        for name, value in resolved.items():
+            setattr(self, name, value)
+
     @abstractmethod
     def read_data(self):
         pass

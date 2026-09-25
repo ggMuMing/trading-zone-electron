@@ -14,6 +14,7 @@ import numpy as np
 
 from worker.db import market_db
 from worker.strategies.Strategy import StrategyClass
+from worker.strategies.params import StrategyParam, StrategyParamOption, declared_default
 
 
 def _to_yyyymmdd(value: str) -> str:
@@ -73,14 +74,33 @@ def _ensure_market_db() -> None:
     market_db._conn = duckdb.connect(str(path), read_only=True)
 
 
+MING_PARAMETERS: tuple[StrategyParam, ...] = (
+    StrategyParam("squeeze_period", "标准差 / ATR 周期", "int", 20, min=2),
+    StrategyParam("wr_n", "过去 n 日波幅", "int", 3, min=1),
+    StrategyParam(
+        "range_mode",
+        "信号 K 波幅",
+        "enum",
+        "co",
+        options=(
+            StrategyParamOption("co", "收−开"),
+            StrategyParamOption("cl", "收−低"),
+        ),
+    ),
+    StrategyParam("k", "波幅系数", "float", 0.6, min=0),
+    StrategyParam("vol_x", "成交量均线天数", "int", 5, min=1),
+    StrategyParam("vol_y", "成交倍量", "float", 1, min=0),
+)
+
+
 class MingSystemVer1(StrategyClass):
-    squeeze_period = 20
-    wr_n = 3
-    # "co": C-O（忽略下影线）；"cl": C-L（接受较长下影线）
-    range_mode = "co"
-    k = 0.6
-    vol_x = 5
-    vol_y = 1
+    parameters = MING_PARAMETERS
+    squeeze_period = declared_default(MING_PARAMETERS, "squeeze_period")
+    wr_n = declared_default(MING_PARAMETERS, "wr_n")
+    range_mode = declared_default(MING_PARAMETERS, "range_mode")
+    k = declared_default(MING_PARAMETERS, "k")
+    vol_x = declared_default(MING_PARAMETERS, "vol_x")
+    vol_y = declared_default(MING_PARAMETERS, "vol_y")
 
     def __init__(
         self,

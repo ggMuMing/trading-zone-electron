@@ -432,6 +432,7 @@ ALL PASSED
 - [Sprint9日线停牌与退市Review.md](./Sprint9日线停牌与退市Review.md)
 - [开发计划](../../../../.cursor/plans/sprint9_数据获取与清洗.plan.md)
 - [Sprint8迭代文档.md](../Sprint8/Sprint8迭代文档.md)
+- [Sprint9.2需求文档.md](./Sprint9.2需求文档.md)、[Sprint9.2迭代文档.md](./Sprint9.2迭代文档.md)、[开发计划](../../../../.cursor/plans/sprint9.2_策略调参.plan.md)
 
 ### B. 常用命令
 

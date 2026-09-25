@@ -201,9 +201,27 @@ export interface ComputeIndicatorParams {
   bars?: Record<string, unknown>[]
 }
 
+export type StrategyParamWidget = 'int' | 'float' | 'enum'
+
+export interface StrategyParamOption {
+  value: string
+  label: string
+}
+
+export interface StrategyParameter {
+  name: string
+  title: string
+  widget: StrategyParamWidget
+  default: number | string
+  min?: number
+  max?: number
+  options?: StrategyParamOption[]
+}
+
 export interface StrategyInfo {
   id: string
   name: string
+  parameters?: StrategyParameter[]
 }
 
 export interface StrategyListResult {
@@ -216,6 +234,7 @@ export interface StrategyRunParams {
   start_date: string
   end_date: string
   adjust?: 'none' | 'qfq' | 'hfq'
+  params?: Record<string, number | string>
 }
 
 export interface StrategyStats {

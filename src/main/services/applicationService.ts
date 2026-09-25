@@ -788,7 +788,8 @@ export const applicationService = {
       ts_code: tsCode,
       start_date: startDate,
       end_date: endDate,
-      adjust
+      adjust,
+      ...(params.params !== undefined ? { params: params.params } : {})
     })
   }
 }

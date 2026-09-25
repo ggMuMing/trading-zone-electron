@@ -31,6 +31,29 @@ function parseMarketQueryParams(params: unknown, channel: string): MarketQueryPa
   }
 }
 
+function parseStrategyParamValues(value: unknown): Record<string, number | string> | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('params must be an object')
+  }
+  const out: Record<string, number | string> = {}
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof item === 'number') {
+      if (!Number.isFinite(item)) {
+        throw new Error(`params.${key} must be a finite number`)
+      }
+      out[key] = item
+    } else if (typeof item === 'string') {
+      out[key] = item
+    } else {
+      throw new Error(`params.${key} must be a number or string`)
+    }
+  }
+  return out
+}
+
 function parseStrategyRunParams(params: unknown): StrategyRunParams {
   if (!params || typeof params !== 'object') {
     throw new Error('strategy:run requires params object')
@@ -52,12 +75,14 @@ function parseStrategyRunParams(params: unknown): StrategyRunParams {
   if (adjust !== undefined && adjust !== 'none' && adjust !== 'qfq' && adjust !== 'hfq') {
     throw new Error('adjust must be none | qfq | hfq')
   }
+  const strategyParams = parseStrategyParamValues(p.params)
   return {
     strategy_id: p.strategy_id.trim(),
     ts_code: p.ts_code.trim(),
     start_date: p.start_date.trim(),
     end_date: p.end_date.trim(),
-    adjust: adjust as AdjustType | undefined
+    adjust: adjust as AdjustType | undefined,
+    ...(strategyParams !== undefined ? { params: strategyParams } : {})
   }
 }
 

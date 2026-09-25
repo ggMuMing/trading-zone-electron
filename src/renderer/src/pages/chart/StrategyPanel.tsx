@@ -20,10 +20,10 @@ import SkipNext from '@mui/icons-material/SkipNext'
 import SkipPrevious from '@mui/icons-material/SkipPrevious'
 import Stop from '@mui/icons-material/Stop'
 import ViewColumn from '@mui/icons-material/ViewColumn'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { isoToYyyymmdd, yyyymmddToIso } from '../../../../shared/constants/market'
 import type { AdjustType } from '../../../../shared/types/market'
-import type { StrategyRunResult } from '../../../../shared/types/pythonProtocol'
+import type { StrategyParameter, StrategyRunResult } from '../../../../shared/types/pythonProtocol'
 import { CHART_ICON_SX, ChartIconButton } from './ChartIconButton'
 import { SettingsTab, SettingsTabs } from './SettingsTabs'
 import {
@@ -37,6 +37,7 @@ import {
 export interface StrategyPanelProps {
   strategyId: string
   strategyName: string
+  parameters?: StrategyParameter[]
   tsCode: string | null
   adjust: AdjustType
   defaultStart: string
@@ -175,6 +176,51 @@ function rowTime(row: Record<string, unknown>): string {
   return String(row.time ?? '')
 }
 
+function initialParamValues(parameters: StrategyParameter[]): Record<string, string> {
+  const values: Record<string, string> = {}
+  for (const param of parameters) {
+    values[param.name] = String(param.default)
+  }
+  return values
+}
+
+function validateStrategyParams(
+  parameters: StrategyParameter[],
+  values: Record<string, string>
+): { ok: true; params: Record<string, number | string> } | { ok: false; error: string } {
+  const params: Record<string, number | string> = {}
+  for (const param of parameters) {
+    const raw = values[param.name] ?? ''
+    if (param.widget === 'enum') {
+      const allowed = new Set((param.options ?? []).map((option) => option.value))
+      if (!allowed.has(raw)) {
+        return { ok: false, error: `${param.title}不是有效选项` }
+      }
+      params[param.name] = raw
+      continue
+    }
+    const text = raw.trim()
+    if (text === '') {
+      return { ok: false, error: `${param.title}不能为空` }
+    }
+    const number = Number(text)
+    if (!Number.isFinite(number)) {
+      return { ok: false, error: `${param.title}必须是数字` }
+    }
+    if (param.widget === 'int' && !Number.isInteger(number)) {
+      return { ok: false, error: `${param.title}必须是整数` }
+    }
+    if (param.min !== undefined && number < param.min) {
+      return { ok: false, error: `${param.title}不能小于 ${param.min}` }
+    }
+    if (param.max !== undefined && number > param.max) {
+      return { ok: false, error: `${param.title}不能大于 ${param.max}` }
+    }
+    params[param.name] = number
+  }
+  return { ok: true, params }
+}
+
 function isRowBelowVisible(row: HTMLElement, container: HTMLElement): boolean {
   const rowRect = row.getBoundingClientRect()
   const box = container.getBoundingClientRect()
@@ -184,6 +230,7 @@ function isRowBelowVisible(row: HTMLElement, container: HTMLElement): boolean {
 export function StrategyPanel({
   strategyId,
   strategyName,
+  parameters = [],
   tsCode,
   adjust,
   defaultStart,
@@ -194,6 +241,9 @@ export function StrategyPanel({
 }: StrategyPanelProps): React.JSX.Element {
   const [startDate, setStartDate] = useState(yyyymmddToIso(defaultStart))
   const [endDate, setEndDate] = useState(yyyymmddToIso(defaultEnd))
+  const [paramValues, setParamValues] = useState<Record<string, string>>(() =>
+    initialParamValues(parameters)
+  )
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<StrategyRunResult | null>(null)
@@ -326,6 +376,11 @@ export function StrategyPanel({
       setError('起始日不能晚于结束日')
       return
     }
+    const validated = validateStrategyParams(parameters, paramValues)
+    if (!validated.ok) {
+      setError(validated.error)
+      return
+    }
     setRunning(true)
     setError(null)
     resetReplay()
@@ -335,7 +390,8 @@ export function StrategyPanel({
         ts_code: tsCode,
         start_date: start,
         end_date: end,
-        adjust
+        adjust,
+        ...(parameters.length > 0 ? { params: validated.params } : {})
       })
       setResult(next)
       setExtraColumns([])
@@ -449,6 +505,64 @@ export function StrategyPanel({
       </Box>
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        {parameters.length > 0 ? (
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(8.5rem, max-content) minmax(0, 1fr)',
+              columnGap: 1,
+              rowGap: 1,
+              alignItems: 'center',
+              px: 1,
+              pt: 1
+            }}
+          >
+            {parameters.map((param) => (
+              <Fragment key={param.name}>
+                <Typography variant="body2" sx={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
+                  {param.title}
+                </Typography>
+                {param.widget === 'enum' ? (
+                  <TextField
+                    select
+                    size="small"
+                    value={paramValues[param.name] ?? ''}
+                    disabled={busy}
+                    onChange={(event) => {
+                      const nextValue = event.target.value
+                      setParamValues((current) => ({ ...current, [param.name]: nextValue }))
+                    }}
+                    sx={{ minWidth: 0 }}
+                  >
+                    {(param.options ?? []).map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                ) : (
+                  <TextField
+                    size="small"
+                    type="number"
+                    value={paramValues[param.name] ?? ''}
+                    disabled={busy}
+                    onChange={(event) => {
+                      const nextValue = event.target.value
+                      setParamValues((current) => ({ ...current, [param.name]: nextValue }))
+                    }}
+                    slotProps={{
+                      htmlInput: {
+                        step: param.widget === 'int' ? 1 : 'any',
+                        'aria-label': param.title
+                      }
+                    }}
+                    sx={{ minWidth: 0 }}
+                  />
+                )}
+              </Fragment>
+            ))}
+          </Box>
+        ) : null}
         <Box
           sx={{
             display: 'flex',

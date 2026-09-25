@@ -4,13 +4,38 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from worker.strategies import STRATEGY_REGISTRY, list_strategies
+from worker.strategies.params import coerce_parameters
+
+
+class StrategyParamOptionModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    value: str
+    label: str
+
+
+class StrategyParameterModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str
+    title: str
+    widget: Literal["int", "float", "enum"]
+    default: int | float | str
+    min: float | None = None
+    max: float | None = None
+    options: list[StrategyParamOptionModel] | None = None
+
+
+class StrategyInfoModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    name: str
+    parameters: list[StrategyParameterModel] = Field(default_factory=list)
 
 
 class StrategyListResult(BaseModel):
-    strategies: list[dict[str, str]]
+    strategies: list[StrategyInfoModel]
 
 
 class StrategyRunParams(BaseModel):
@@ -20,6 +45,7 @@ class StrategyRunParams(BaseModel):
     start_date: str = Field(min_length=8, max_length=8, pattern=r"^[0-9]{8}$")
     end_date: str = Field(min_length=8, max_length=8, pattern=r"^[0-9]{8}$")
     adjust: Literal["none", "qfq", "hfq"] = "qfq"
+    params: dict[str, Any] | None = None
 
     @field_validator("strategy_id")
     @classmethod
@@ -28,9 +54,15 @@ class StrategyRunParams(BaseModel):
             raise ValueError(f"unknown strategy_id: {value}")
         return value
 
+    @model_validator(mode="after")
+    def known_param_values(self) -> StrategyRunParams:
+        strategy_cls, _name = STRATEGY_REGISTRY[self.strategy_id]
+        coerce_parameters(strategy_cls.parameters, self.params)
+        return self
+
 
 def strategy_list(_params: dict[str, Any] | None = None) -> dict[str, Any]:
-    return StrategyListResult(strategies=list_strategies()).model_dump()
+    return StrategyListResult(strategies=list_strategies()).model_dump(exclude_none=True)
 
 
 def strategy_run(params: dict[str, Any]) -> dict[str, Any]:
@@ -42,6 +74,7 @@ def strategy_run(params: dict[str, Any]) -> dict[str, Any]:
         end_date=parsed.end_date,
         adjust=parsed.adjust,
     )
+    strategy.apply_parameters(parsed.params)
     payload = strategy.run()
     stats = payload.get("stats") if isinstance(payload, dict) else None
     series = payload.get("series") if isinstance(payload, dict) else None

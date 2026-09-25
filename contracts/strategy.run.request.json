@@ -14,6 +14,12 @@
       "type": "string",
       "enum": ["none", "qfq", "hfq"],
       "default": "qfq"
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [{ "type": "number" }, { "type": "string" }]
+      }
     }
   },
   "additionalProperties": false

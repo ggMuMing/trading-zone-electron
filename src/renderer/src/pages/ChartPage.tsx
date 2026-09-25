@@ -780,6 +780,7 @@ export function ChartPage(): React.JSX.Element {
                   key={selectedStrategy.id}
                   strategyId={selectedStrategy.id}
                   strategyName={selectedStrategy.name}
+                  parameters={selectedStrategy.parameters}
                   tsCode={selectedCode}
                   adjust={effectiveAdjust}
                   defaultStart={MARKET_SYNC_EARLIEST}

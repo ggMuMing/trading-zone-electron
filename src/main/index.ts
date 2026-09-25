@@ -8,6 +8,11 @@ import { initAppConfig } from './config/appConfig'
 import { closeDb, initDb } from './db/sqlite'
 import { registerHandlers } from './ipc/registerHandlers'
 
+const acceptanceUserData = process.env.ACCEPTANCE_USER_DATA?.trim()
+if (acceptanceUserData) {
+  app.setPath('userData', acceptanceUserData)
+}
+
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1100,
@@ -180,6 +185,17 @@ app.whenReady().then(async () => {
     try {
       const { runV02Sprint9Acceptance } = await import('./acceptance/runV02Sprint9')
       await runV02Sprint9Acceptance()
+    } catch (err) {
+      console.error('[acceptance] failed:', err)
+      app.exit(1)
+    }
+    return
+  }
+
+  if (process.env.V02_SPRINT92_ACCEPTANCE === '1') {
+    try {
+      const { runV02Sprint92Acceptance } = await import('./acceptance/runV02Sprint92')
+      await runV02Sprint92Acceptance()
     } catch (err) {
       console.error('[acceptance] failed:', err)
       app.exit(1)

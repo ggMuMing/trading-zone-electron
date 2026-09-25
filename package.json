@@ -29,6 +29,7 @@
     "acceptance:v02s7": "cross-env V02_SPRINT7_ACCEPTANCE=1 electron-vite dev",
     "acceptance:v02s8": "cross-env V02_SPRINT8_ACCEPTANCE=1 electron-vite dev",
     "acceptance:v02s9": "cross-env V02_SPRINT9_ACCEPTANCE=1 electron-vite dev",
+    "acceptance:v02s92": "cross-env V02_SPRINT92_ACCEPTANCE=1 electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "rebuild:native": "npx @electron/rebuild -f -w better-sqlite3",
     "build:unpack": "npm run build && electron-builder --dir",
