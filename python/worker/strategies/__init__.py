@@ -3,10 +3,12 @@ from __future__ import annotations
 from typing import Any
 
 from worker.strategies.MingSystemVer1 import MingSystemVer1
+from worker.strategies.MingSystemVer2 import MingSystemVer2
 from worker.strategies.Strategy import StrategyClass
 
 STRATEGY_REGISTRY: dict[str, tuple[type[StrategyClass], str]] = {
     "ming_system_ver1": (MingSystemVer1, "MingSystemVer1"),
+    "ming_system_ver2": (MingSystemVer2, "MingSystemVer2"),
 }
 
 
