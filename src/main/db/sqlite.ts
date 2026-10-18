@@ -80,6 +80,14 @@ CREATE TABLE IF NOT EXISTS sw_industry_member (
 CREATE INDEX IF NOT EXISTS idx_sw_member_l1 ON sw_industry_member(l1_code);
 CREATE INDEX IF NOT EXISTS idx_sw_member_l2 ON sw_industry_member(l2_code);
 CREATE INDEX IF NOT EXISTS idx_sw_member_l3 ON sw_industry_member(l3_code);
+
+CREATE TABLE IF NOT EXISTS paper_plan (
+  id         TEXT PRIMARY KEY NOT NULL,
+  payload    TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_paper_plan_updated ON paper_plan(updated_at);
 `
 
 function addStockDelistColumns(database: Database.Database): void {

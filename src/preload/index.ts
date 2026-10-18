@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { Stock } from '../shared/types/stock'
+import type { PaperPlan, PaperPlanDraft } from '../shared/types/paperPlan'
 import type { MarketClearResult, StrategyListResult, StrategyRunParams, StrategyRunResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
 import type { ChartInput } from '../shared/types/chart'
 import type { ChartLayout, LayoutItemParams, LayoutReorderDirection } from '../shared/types/chartLayout'
@@ -127,6 +128,14 @@ const api = {
     list: (): Promise<StrategyListResult> => ipcRenderer.invoke('strategy:list'),
     run: (params: StrategyRunParams): Promise<StrategyRunResult> =>
       ipcRenderer.invoke('strategy:run', params)
+  },
+  paperPlan: {
+    list: (): Promise<PaperPlan[]> => ipcRenderer.invoke('paperPlan:list'),
+    create: (params: { draft: PaperPlanDraft }): Promise<PaperPlan> =>
+      ipcRenderer.invoke('paperPlan:create', params),
+    update: (params: { id: string; draft: PaperPlanDraft }): Promise<PaperPlan> =>
+      ipcRenderer.invoke('paperPlan:update', params),
+    remove: (params: { id: string }): Promise<void> => ipcRenderer.invoke('paperPlan:remove', params)
   }
 }
 

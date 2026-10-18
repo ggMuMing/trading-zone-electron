@@ -31,6 +31,7 @@ export interface IndicatorDialogProps {
   scripts: IndicatorScript[]
   selectedStrategyId?: string | null
   disabled?: boolean
+  strategyDisabled?: boolean
   onClose: () => void
   onAdd: (ref: string) => void
   onCreateEditor: () => void
@@ -78,6 +79,7 @@ export function IndicatorDialog({
   scripts,
   selectedStrategyId = null,
   disabled = false,
+  strategyDisabled = false,
   onClose,
   onAdd,
   onCreateEditor,
@@ -173,7 +175,11 @@ export function IndicatorDialog({
             <ListItemButton selected={tab === 'indicator'} onClick={() => setTab('indicator')}>
               <ListItemText primary="指标" />
             </ListItemButton>
-            <ListItemButton selected={tab === 'strategy'} onClick={() => setTab('strategy')}>
+            <ListItemButton
+              selected={tab === 'strategy'}
+              disabled={strategyDisabled}
+              onClick={() => setTab('strategy')}
+            >
               <ListItemText primary="策略" />
             </ListItemButton>
           </List>
@@ -208,7 +214,7 @@ export function IndicatorDialog({
                           ariaLabel={selected ? '已选中策略' : selectedStrategyId ? '切换策略' : '添加策略'}
                           title={selected ? '已选中' : selectedStrategyId ? '切换' : '添加'}
                           roomy
-                          disabled={disabled || selected}
+                          disabled={disabled || strategyDisabled || selected}
                           onClick={() => {
                             onSelectStrategy(strategy)
                             onClose()

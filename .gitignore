@@ -2,6 +2,7 @@
 node_modules
 python/.venv
 python/venv
+python/statisticscripts/
 **/__pycache__/
 *.py[cod]
 

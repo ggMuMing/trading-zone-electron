@@ -1,11 +1,13 @@
 import { ipcMain } from 'electron'
 import { getTushareToken, hasTushareToken, setTushareToken } from '../config/appConfig'
+import { paperPlanRepository } from '../db/paperPlanRepository'
 import { stocksRepository } from '../db/stocksRepository'
 import { applicationService } from '../services/applicationService'
 import { pythonBridge } from '../bridge/pythonBridge'
 import type { AdjustType, MarketQueryParams } from '../../shared/types/market'
 import type { LayoutItemParams, ScriptParams } from '../../shared/types/chartLayout'
 import type { ScriptTryParams } from '../../shared/types/indicatorScript'
+import { readPaperPlanDraft } from '../../shared/paper/paperPlan'
 import type { StrategyRunParams } from '../../shared/types/pythonProtocol'
 import { pipelineStepMeta, type PipelineStepId } from '../../shared/constants/pipeline'
 
@@ -400,5 +402,39 @@ export function registerHandlers(): void {
 
   ipcMain.handle('strategy:run', (_event, params: unknown) => {
     return applicationService.runStrategy(parseStrategyRunParams(params))
+  })
+
+  ipcMain.handle('paperPlan:list', () => {
+    return paperPlanRepository.list()
+  })
+
+  ipcMain.handle('paperPlan:create', (_event, params: unknown) => {
+    if (!params || typeof params !== 'object') {
+      throw new Error('paperPlan:create requires params object')
+    }
+    const draft = (params as Record<string, unknown>).draft
+    return paperPlanRepository.create(readPaperPlanDraft(draft))
+  })
+
+  ipcMain.handle('paperPlan:update', (_event, params: unknown) => {
+    if (!params || typeof params !== 'object') {
+      throw new Error('paperPlan:update requires params object')
+    }
+    const raw = params as Record<string, unknown>
+    if (typeof raw.id !== 'string' || !raw.id.trim()) {
+      throw new Error('id must be a non-empty string')
+    }
+    return paperPlanRepository.update(raw.id.trim(), readPaperPlanDraft(raw.draft))
+  })
+
+  ipcMain.handle('paperPlan:remove', (_event, params: unknown) => {
+    if (!params || typeof params !== 'object') {
+      throw new Error('paperPlan:remove requires params object')
+    }
+    const id = (params as Record<string, unknown>).id
+    if (typeof id !== 'string' || !id.trim()) {
+      throw new Error('id must be a non-empty string')
+    }
+    paperPlanRepository.remove(id.trim())
   })
 }

@@ -796,7 +796,8 @@ def query_ohlcv_arrow(
             (SELECT adj_factor FROM adj_factor
              WHERE ts_code = ? ORDER BY trade_date ASC LIMIT 1) AS earliest,
             (SELECT adj_factor FROM adj_factor
-             WHERE ts_code = ? ORDER BY trade_date DESC LIMIT 1) AS latest
+             WHERE ts_code = ? AND trade_date <= ?
+             ORDER BY trade_date DESC LIMIT 1) AS latest
         ),
         windowed AS (
           SELECT
@@ -865,7 +866,7 @@ def query_ohlcv_arrow(
         FROM scaled
         ORDER BY trade_date
         """
-    params: list[Any] = [ts_code, ts_code, ts_code, start_date, end_date]
+    params: list[Any] = [ts_code, ts_code, end_date, ts_code, start_date, end_date]
     if limit is not None:
         params.append(limit)
     params.extend([adjust, adjust, adjust, adjust, adjust])

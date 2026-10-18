@@ -12,10 +12,20 @@ import {
   type SeriesMarker,
   type Time
 } from 'lightweight-charts'
-import type { CandlePoint, ChartInput, ValuePoint, VolumePoint } from '../../../../shared/types/chart'
+import type {
+  CandlePoint,
+  ChartInput,
+  ValuePoint,
+  VolumePoint
+} from '../../../../shared/types/chart'
 import type { ChartLayout } from '../../../../shared/types/chartLayout'
 import type { IndicatorScript } from '../../../../shared/types/indicatorScript'
-import { instanceIdOf, legendLabel, legendScriptTitle, subplotLegendTitle } from '../../../../shared/chart/legendLabel'
+import {
+  instanceIdOf,
+  legendLabel,
+  legendScriptTitle,
+  subplotLegendTitle
+} from '../../../../shared/chart/legendLabel'
 import { LWC_FONT_STACK } from '../../theme/lwcFont'
 import { PaneCornerActions } from './PaneCornerActions'
 import { PriceLegend, type PriceLegendBar, type PriceLegendOverlayGroup } from './PriceLegend'
@@ -55,6 +65,19 @@ function overlayMarkers(
       shape: marker.side === 'buy' ? 'arrowUp' : 'arrowDown',
       color: marker.side === 'buy' ? UP_COLOR : DOWN_COLOR
     }))
+}
+
+function centerOnTime(chart: IChartApi, timeIso: string): void {
+  const timeScale = chart.timeScale()
+  const index = timeScale.timeToIndex(timeIso as Time, true)
+  if (index === null) {
+    return
+  }
+  const visible = timeScale.getVisibleLogicalRange()
+  const span = visible && visible.to > visible.from ? visible.to - visible.from : 120
+  const half = span / 2
+  const idx = Number(index)
+  timeScale.setVisibleLogicalRange({ from: idx - half, to: idx + half })
 }
 
 function ensureTimeVisible(chart: IChartApi, timeIso: string): void {
@@ -132,7 +155,9 @@ function toCandleData(points: CandlePoint[]): Array<{
   }))
 }
 
-function toVolumeData(points: VolumePoint[] | undefined): Array<{ time: Time; value: number; color: string }> {
+function toVolumeData(
+  points: VolumePoint[] | undefined
+): Array<{ time: Time; value: number; color: string }> {
   if (!points) {
     return []
   }
@@ -145,7 +170,12 @@ function toVolumeData(points: VolumePoint[] | undefined): Array<{ time: Time; va
 
 function readSeriesValue(param: MouseEventParams<Time>, series: PrimitiveSeries): number | null {
   const data = param.seriesData.get(series)
-  if (!data || !('value' in data) || typeof data.value !== 'number' || !Number.isFinite(data.value)) {
+  if (
+    !data ||
+    !('value' in data) ||
+    typeof data.value !== 'number' ||
+    !Number.isFinite(data.value)
+  ) {
     return null
   }
   return data.value
@@ -237,16 +267,24 @@ function buildSubpaneLegends(
   })
 }
 
+export interface ChartLocateRequest {
+  timeIso: string
+  token: number
+}
+
 interface KlineChartProps {
   input: ChartInput
   layout: ChartLayout | null
   scripts?: IndicatorScript[]
   overlay?: StrategyChartOverlay | null
   focusTimeIso?: string | null
+  locateRequest?: ChartLocateRequest | null
   onOpenSettings?: (instanceId: string) => void
   onOpenEditor?: (instanceId: string) => void
   onRemove?: (instanceId: string) => void
   onMovePane?: (instanceId: string, direction: 'up' | 'down') => void
+  hideTimeAxis?: boolean
+  hidePriceLegend?: boolean
 }
 
 export function KlineChart({
@@ -255,10 +293,13 @@ export function KlineChart({
   scripts = [],
   overlay = null,
   focusTimeIso = null,
+  locateRequest = null,
   onOpenSettings,
   onOpenEditor,
   onRemove,
-  onMovePane
+  onMovePane,
+  hideTimeAxis = false,
+  hidePriceLegend = false
 }: KlineChartProps): React.JSX.Element {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -283,7 +324,9 @@ export function KlineChart({
   const [hoverBar, setHoverBar] = useState<PriceLegendBar | null>(null)
   const [hoverValues, setHoverValues] = useState<Record<string, number | null> | null>(null)
   const [subpaneTops, setSubpaneTops] = useState<Array<{ paneIndex: number; top: number }>>([])
-  const [subpaneHosts, setSubpaneHosts] = useState<Array<{ paneIndex: number; host: HTMLElement }>>([])
+  const [subpaneHosts, setSubpaneHosts] = useState<Array<{ paneIndex: number; host: HTMLElement }>>(
+    []
+  )
   const [hoveredSubpaneIndex, setHoveredSubpaneIndex] = useState<number | null>(null)
   const [hoverSource, setHoverSource] = useState(input)
   if (input !== hoverSource) {
@@ -341,7 +384,8 @@ export function KlineChart({
       },
       timeScale: {
         borderColor: '#e0e0e0',
-        rightOffset: 12
+        rightOffset: 12,
+        visible: !hideTimeAxis
       }
     })
 
@@ -530,6 +574,12 @@ export function KlineChart({
   }, [])
 
   useEffect(() => {
+    chartRef.current?.applyOptions({
+      timeScale: { visible: !hideTimeAxis }
+    })
+  }, [hideTimeAxis])
+
+  useEffect(() => {
     const chart = chartRef.current
     if (!chart) {
       return
@@ -575,6 +625,14 @@ export function KlineChart({
   }, [focusTimeIso, candleByTime])
 
   useEffect(() => {
+    const chart = chartRef.current
+    if (!chart || !locateRequest) {
+      return
+    }
+    centerOnTime(chart, locateRequest.timeIso)
+  }, [locateRequest])
+
+  useEffect(() => {
     const cleanups: Array<() => void> = []
     for (const { paneIndex, host } of subpaneHosts) {
       const onEnter = (): void => {
@@ -602,13 +660,10 @@ export function KlineChart({
       ref={wrapperRef}
       style={{ position: 'relative', width: '100%', height: '100%', minHeight: 0 }}
     >
-      <div
-        ref={containerRef}
-        style={{ width: '100%', height: '100%', minHeight: 0 }}
-      />
+      <div ref={containerRef} style={{ width: '100%', height: '100%', minHeight: 0 }} />
       <PriceLegend
-        bar={hoverBar ?? defaultBar}
-        overlays={overlays}
+        bar={hidePriceLegend ? null : (hoverBar ?? defaultBar)}
+        overlays={hidePriceLegend ? [] : overlays}
         onOpenSettings={onOpenSettings}
         onOpenEditor={onOpenEditor}
         onRemove={onRemove}

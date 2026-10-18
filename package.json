@@ -51,6 +51,7 @@
     "lightweight-charts": "^5.1.0",
     "monaco-editor": "^0.56.0",
     "msgpackr": "^1.12.1",
+    "pinyin-pro": "^3.29.5",
     "react": "^19.2.1",
     "react-dom": "^19.2.1"
   },

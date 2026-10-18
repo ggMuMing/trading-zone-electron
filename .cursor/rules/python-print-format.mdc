@@ -1,0 +1,50 @@
+---
+description: Python 控制台打印数据时对齐、精度与摘要格式必须可读
+alwaysApply: true
+---
+
+# Python 打印输出美化
+
+写或改 Python 时，凡是 `print` / 日志里展示表格、统计量、字典、序列，必须让人在终端一眼读完。不要把原始对象直接 `print(df)` / `print(dict)`。
+
+## 必须遵守
+
+- 控制台先 `sys.stdout.reconfigure(encoding="utf-8", errors="replace")`（Windows）。
+- 分段输出：标题一行，空一行，再给表格或键值；相关块之间空一行。
+- 键值对齐：同一组标签左对齐、冒号后空一格，数字右对齐。
+- 浮点精度按量级固定：价格/波动 4–6 位；比率/分位 4 位；计数用整数。不要混用默认 `float` 科学计数法。
+- 表格必须用 `tabulate`：`from tabulate import tabulate`；DataFrame / 分位表 / 对照表一律 `print(tabulate(...))`，禁止 `print(df)`、`to_string`、手写空格对齐。
+- 行数超过约 30：先打 `n=`、列名、关键统计（min/median/mean/max 或分位），再 `tabulate(head)`；全量只写文件。
+- `dict` / 嵌套结构：`json.dumps(..., ensure_ascii=False, indent=2, default=str)`。
+- 路径、区间、样本数等元信息用 `标签: 值`，不要塞进表格单元格。
+
+## 推荐写法
+
+```python
+from tabulate import tabulate
+
+print("STD20")
+print(f"  中位数: {series.median():.6f}")
+print(f"  均值:   {series.mean():.6f}")
+print("  分位数表:")
+print(
+    tabulate(
+        table.reset_index().values,
+        headers=["分位", table.name],
+        tablefmt="github",
+        floatfmt=".6f",
+    )
+)
+
+print()
+print(tabulate(frame, headers="keys", tablefmt="github", floatfmt=".6f", showindex=False))
+```
+
+## 禁止
+
+```python
+print(df)           # 截断、不对齐
+print(df.to_string())
+print(result)       # 大对象一次性倾倒
+print(stats_dict)   # 单行挤在一起
+```

@@ -16,6 +16,7 @@ import PlayArrow from '@mui/icons-material/PlayArrow'
 import PlayCircleOutline from '@mui/icons-material/PlayCircleOutline'
 import Refresh from '@mui/icons-material/Refresh'
 import Search from '@mui/icons-material/Search'
+import Today from '@mui/icons-material/Today'
 import SkipNext from '@mui/icons-material/SkipNext'
 import SkipPrevious from '@mui/icons-material/SkipPrevious'
 import Stop from '@mui/icons-material/Stop'
@@ -291,7 +292,9 @@ export function StrategyPanel({
     } else if (tab === 'sell') {
       rows = series.filter((row) => isSignalTruthy(row.sell_signal))
     } else if (tab === 'mixed') {
-      rows = series.filter((row) => isSignalTruthy(row.buy_signal) || isSignalTruthy(row.sell_signal))
+      rows = series.filter(
+        (row) => isSignalTruthy(row.buy_signal) || isSignalTruthy(row.sell_signal)
+      )
     } else if (appliedCustomStart && appliedCustomEnd) {
       rows = series.filter((row) => {
         const time = rowTime(row)
@@ -496,7 +499,12 @@ export function StrategyPanel({
           borderColor: 'divider'
         }}
       >
-        <Typography variant="subtitle2" noWrap sx={{ flex: 1, fontWeight: 700 }} title={strategyName}>
+        <Typography
+          variant="subtitle2"
+          noWrap
+          sx={{ flex: 1, fontWeight: 700 }}
+          title={strategyName}
+        >
           {strategyName}
         </Typography>
         <ChartIconButton ariaLabel="关闭策略面板" title="关闭" roomy onClick={onClose}>
@@ -668,6 +676,15 @@ export function StrategyPanel({
             slotProps={{ inputLabel: { shrink: true } }}
             sx={{ flex: 1, minWidth: 0 }}
           />
+          <ChartIconButton
+            ariaLabel="将起始时间填入结束时间"
+            title="同一天"
+            roomy
+            disabled={busy || !result || parseIsoDay(customStart) === null}
+            onClick={() => setCustomEnd(customStart)}
+          >
+            <Today sx={CHART_ICON_SX} />
+          </ChartIconButton>
           <TextField
             size="small"
             type="date"
@@ -697,7 +714,9 @@ export function StrategyPanel({
         </Box>
       ) : null}
 
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.5, flexWrap: 'wrap' }}>
+      <Box
+        sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.5, flexWrap: 'wrap' }}
+      >
         <Box ref={columnButtonRef} component="span">
           <ChartIconButton
             ariaLabel="选择列"
@@ -766,11 +785,7 @@ export function StrategyPanel({
           {tabRows.length} 行
         </Typography>
       </Box>
-      <Menu
-        anchorEl={columnMenu}
-        open={Boolean(columnMenu)}
-        onClose={() => setColumnMenu(null)}
-      >
+      <Menu anchorEl={columnMenu} open={Boolean(columnMenu)} onClose={() => setColumnMenu(null)}>
         {REQUIRED_COLUMNS.map((key) => (
           <MenuItem key={key} disabled>
             {COLUMN_LABELS[key] ?? key}（必选）
@@ -786,7 +801,9 @@ export function StrategyPanel({
                 key={key}
                 onClick={() => {
                   setExtraColumns((current) =>
-                    current.includes(key) ? current.filter((item) => item !== key) : [...current, key]
+                    current.includes(key)
+                      ? current.filter((item) => item !== key)
+                      : [...current, key]
                   )
                 }}
               >

@@ -3,12 +3,13 @@ import IconButton from '@mui/material/IconButton'
 import Stack from '@mui/material/Stack'
 import Tooltip from '@mui/material/Tooltip'
 import DashboardIcon from '@mui/icons-material/SpaceDashboard'
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet'
 import CandlestickChartIcon from '@mui/icons-material/CandlestickChart'
 import SettingsIcon from '@mui/icons-material/Settings'
 import ShowChartIcon from '@mui/icons-material/ShowChart'
 import type { ReactNode } from 'react'
 
-export type AppPage = 'dashboard' | 'settings' | 'market' | 'chart'
+export type AppPage = 'dashboard' | 'settings' | 'market' | 'chart' | 'paper'
 
 interface AppShellProps {
   page: AppPage
@@ -69,6 +70,18 @@ export function AppShell({
               aria-label="图表"
             >
               <CandlestickChartIcon />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Tooltip title={navigationLocked ? lockedTitle : '模拟盘'} placement="right">
+          <span>
+            <IconButton
+              color={page === 'paper' ? 'primary' : 'default'}
+              onClick={() => onPageChange('paper')}
+              disabled={navigationLocked}
+              aria-label="模拟盘"
+            >
+              <AccountBalanceWalletIcon />
             </IconButton>
           </span>
         </Tooltip>

@@ -15,16 +15,9 @@ import {
 } from '../../../shared/constants/chartUniverse'
 import type { Stock } from '../../../shared/types/stock'
 import { UniversePickerDialog } from './chart/UniversePickerDialog'
+import { matchesStockQuery, pinyinInitials } from './stockMatch'
 
 const ROW_HEIGHT = 60
-
-function matchesStock(stock: Stock, query: string): boolean {
-  return (
-    stock.ts_code.toLowerCase().includes(query) ||
-    stock.symbol.toLowerCase().includes(query) ||
-    stock.name.toLowerCase().includes(query)
-  )
-}
 
 interface StockPickerProps {
   stocks: Stock[]
@@ -34,7 +27,10 @@ interface StockPickerProps {
   universeId?: string
   universeCaption?: string | null
   emptyHint?: string | null
+  /** 为 true 时列表只显示名称，不显示代码。 */
+  hideCode?: boolean
   onUniverseChange?: (universeId: string) => void
+  showSearch?: boolean
 }
 
 export function StockPicker({
@@ -44,8 +40,10 @@ export function StockPicker({
   universeId = CHART_UNIVERSE_ALL,
   universeCaption,
   emptyHint,
+  hideCode = false,
   onSelect,
-  onUniverseChange
+  onUniverseChange,
+  showSearch = true
 }: StockPickerProps): React.JSX.Element {
   const universeEnabled = Boolean(onUniverseChange)
   const [keyword, setKeyword] = useState('')
@@ -77,9 +75,22 @@ export function StockPicker({
     }
   }, [universeEnabled, universeId])
 
+  const initialsByCode = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const stock of stocks) {
+      map.set(stock.ts_code, pinyinInitials(stock.name))
+    }
+    return map
+  }, [stocks])
+
   const filtered = useMemo(
-    () => (query ? stocks.filter((stock) => matchesStock(stock, query)) : stocks),
-    [stocks, query]
+    () =>
+      query
+        ? stocks.filter((stock) =>
+            matchesStockQuery(stock, query, initialsByCode.get(stock.ts_code) ?? '')
+          )
+        : stocks,
+    [stocks, query, initialsByCode]
   )
 
   const virtualizer = useVirtualizer({
@@ -102,50 +113,50 @@ export function StockPicker({
         overflow: 'hidden'
       }}
     >
-      <Box sx={{ px: universeEnabled ? 1.5 : 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
-        {universeEnabled ? (
-          <>
-            <Button
-              size="small"
-              fullWidth
-              variant="outlined"
-              endIcon={<ArrowDropDownIcon />}
-              onClick={() => setPickerOpen(true)}
-              sx={{ justifyContent: 'space-between', textTransform: 'none' }}
-            >
-              <Typography variant="body2" noWrap>
-                {resolveUniverseLabel(universeId, industryNames)}
-              </Typography>
-            </Button>
-            <UniversePickerDialog
-              open={pickerOpen}
-              universeId={universeId}
-              onClose={() => setPickerOpen(false)}
-              onSelect={(nextId) => onUniverseChange?.(nextId)}
-            />
-          </>
-        ) : (
-          <Typography variant="subtitle2">
-            股票（{filtered.length} / {stocks.length}）
-          </Typography>
-        )}
-        {universeEnabled ? (
+      {universeEnabled ? (
+        <Box sx={{ px: 1.5, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
+          <Button
+            size="small"
+            fullWidth
+            variant="outlined"
+            endIcon={<ArrowDropDownIcon />}
+            onClick={() => setPickerOpen(true)}
+            sx={{ justifyContent: 'space-between', textTransform: 'none' }}
+          >
+            <Typography variant="body2" noWrap>
+              {resolveUniverseLabel(universeId, industryNames)}
+            </Typography>
+          </Button>
+          <UniversePickerDialog
+            open={pickerOpen}
+            universeId={universeId}
+            onClose={() => setPickerOpen(false)}
+            onSelect={(nextId) => onUniverseChange?.(nextId)}
+          />
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
             {filtered.length} / {stocks.length}
             {universeCaption ? ` · 快照 ${universeCaption}` : ''}
           </Typography>
-        ) : null}
-      </Box>
-      <Box sx={{ px: 1.5, py: 1, borderBottom: 1, borderColor: 'divider' }}>
-        <TextField
-          size="small"
-          fullWidth
-          autoComplete="off"
-          placeholder="代码 / 名称"
-          value={keyword}
-          onChange={(event) => setKeyword(event.target.value)}
-        />
-      </Box>
+        </Box>
+      ) : showSearch ? (
+        <Box sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
+          <Typography variant="subtitle2">
+            股票（{filtered.length} / {stocks.length}）
+          </Typography>
+        </Box>
+      ) : null}
+      {showSearch ? (
+        <Box sx={{ px: 1.5, py: 1, borderBottom: 1, borderColor: 'divider' }}>
+          <TextField
+            size="small"
+            fullWidth
+            autoComplete="off"
+            placeholder="代码 / 名称 / 首字母"
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+          />
+        </Box>
+      ) : null}
       {filtered.length === 0 ? (
         <Box
           sx={{
@@ -190,8 +201,8 @@ export function StockPicker({
                   }}
                 >
                   <ListItemText
-                    primary={item.name || item.ts_code}
-                    secondary={item.ts_code}
+                    primary={item.name || (hideCode ? '' : item.ts_code)}
+                    secondary={hideCode ? undefined : item.ts_code}
                     primaryTypographyProps={{ variant: 'body2', noWrap: true }}
                     secondaryTypographyProps={{ variant: 'caption' }}
                   />
