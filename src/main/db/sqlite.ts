@@ -88,7 +88,41 @@ CREATE TABLE IF NOT EXISTS paper_plan (
 );
 
 CREATE INDEX IF NOT EXISTS idx_paper_plan_updated ON paper_plan(updated_at);
+
+CREATE TABLE IF NOT EXISTS paper_archive (
+  id            TEXT PRIMARY KEY NOT NULL,
+  payload       TEXT NOT NULL,
+  archived_at   TEXT NOT NULL,
+  started_on    TEXT NOT NULL,
+  ended_on      TEXT NOT NULL,
+  duration_days INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_paper_archive_archived ON paper_archive(archived_at);
 `
+
+function rebuildPaperArchiveIfNeeded(database: Database.Database): void {
+  const columns = database.pragma('table_info(paper_archive)') as Array<{ name: string }>
+  if (columns.length === 0) {
+    return
+  }
+  const names = new Set(columns.map((column) => column.name))
+  if (names.has('started_on') && names.has('ended_on') && names.has('duration_days')) {
+    return
+  }
+  database.exec(`DROP TABLE paper_archive`)
+  database.exec(`
+    CREATE TABLE paper_archive (
+      id            TEXT PRIMARY KEY NOT NULL,
+      payload       TEXT NOT NULL,
+      archived_at   TEXT NOT NULL,
+      started_on    TEXT NOT NULL,
+      ended_on      TEXT NOT NULL,
+      duration_days INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_paper_archive_archived ON paper_archive(archived_at);
+  `)
+}
 
 function addStockDelistColumns(database: Database.Database): void {
   const columns = database.pragma('table_info(stocks)') as Array<{ name: string }>
@@ -188,6 +222,7 @@ export function initDb(userDataPath: string): Database.Database {
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
   db.exec(MIGRATION_SQL)
+  rebuildPaperArchiveIfNeeded(db)
   addStockDelistColumns(db)
   dropLayoutItemBuiltinUnique(db)
   migrateLayoutItemKindRef(db)

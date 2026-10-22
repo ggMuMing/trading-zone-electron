@@ -61,7 +61,7 @@ function overlayMarkers(
     .filter((marker) => candleTimes.has(marker.timeIso))
     .map((marker) => ({
       time: marker.timeIso as Time,
-      position: 'belowBar',
+      position: marker.side === 'buy' ? 'belowBar' : 'aboveBar',
       shape: marker.side === 'buy' ? 'arrowUp' : 'arrowDown',
       color: marker.side === 'buy' ? UP_COLOR : DOWN_COLOR
     }))
@@ -452,6 +452,11 @@ export function KlineChart({
     }
     markersApi.setMarkers(overlayMarkers(overlayRef.current, initialTimes))
     highlight.setHighlight(overlayRef.current?.highlight ?? null)
+    highlight.setShades(
+      overlayRef.current?.shadeMarkers
+        ? overlayRef.current.markers.map((marker) => ({ timeIso: marker.timeIso, kind: marker.side }))
+        : []
+    )
 
     const onCrosshairMove = (param: MouseEventParams<Time>): void => {
       if (!param.time) {
@@ -614,6 +619,11 @@ export function KlineChart({
   useEffect(() => {
     markersApiRef.current?.setMarkers(overlayMarkers(overlay, candleByTime))
     highlightRef.current?.setHighlight(overlay?.highlight ?? null)
+    highlightRef.current?.setShades(
+      overlay?.shadeMarkers
+        ? overlay.markers.map((marker) => ({ timeIso: marker.timeIso, kind: marker.side }))
+        : []
+    )
   }, [overlay, candleByTime])
 
   useEffect(() => {
@@ -624,13 +634,21 @@ export function KlineChart({
     ensureTimeVisible(chart, focusTimeIso)
   }, [focusTimeIso, candleByTime])
 
+  const locatedTokenRef = useRef<number | null>(null)
   useEffect(() => {
     const chart = chartRef.current
     if (!chart || !locateRequest) {
       return
     }
+    if (locatedTokenRef.current === locateRequest.token) {
+      return
+    }
+    if (chart.timeScale().timeToIndex(locateRequest.timeIso as Time, true) === null) {
+      return
+    }
     centerOnTime(chart, locateRequest.timeIso)
-  }, [locateRequest])
+    locatedTokenRef.current = locateRequest.token
+  }, [locateRequest, candleByTime])
 
   useEffect(() => {
     const cleanups: Array<() => void> = []

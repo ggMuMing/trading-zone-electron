@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { Stock } from '../shared/types/stock'
+import type { PaperArchive, PaperArchiveDraft } from '../shared/types/paperArchive'
 import type { PaperPlan, PaperPlanDraft } from '../shared/types/paperPlan'
 import type { MarketClearResult, StrategyListResult, StrategyRunParams, StrategyRunResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
 import type { ChartInput } from '../shared/types/chart'
@@ -136,6 +137,11 @@ const api = {
     update: (params: { id: string; draft: PaperPlanDraft }): Promise<PaperPlan> =>
       ipcRenderer.invoke('paperPlan:update', params),
     remove: (params: { id: string }): Promise<void> => ipcRenderer.invoke('paperPlan:remove', params)
+  },
+  paperArchive: {
+    list: (): Promise<PaperArchive[]> => ipcRenderer.invoke('paperArchive:list'),
+    create: (params: { draft: PaperArchiveDraft }): Promise<PaperArchive> =>
+      ipcRenderer.invoke('paperArchive:create', params)
   }
 }
 

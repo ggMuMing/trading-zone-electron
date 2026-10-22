@@ -1,5 +1,6 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type { Stock } from '../shared/types/stock'
+import type { PaperArchive, PaperArchiveDraft } from '../shared/types/paperArchive'
 import type { PaperPlan, PaperPlanDraft } from '../shared/types/paperPlan'
 import type { MarketClearResult, StrategyListResult, StrategyRunParams, StrategyRunResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
 import type { ChartInput } from '../shared/types/chart'
@@ -102,6 +103,10 @@ export interface AppApi {
     create: (params: { draft: PaperPlanDraft }) => Promise<PaperPlan>
     update: (params: { id: string; draft: PaperPlanDraft }) => Promise<PaperPlan>
     remove: (params: { id: string }) => Promise<void>
+  }
+  paperArchive: {
+    list: () => Promise<PaperArchive[]>
+    create: (params: { draft: PaperArchiveDraft }) => Promise<PaperArchive>
   }
 }
 

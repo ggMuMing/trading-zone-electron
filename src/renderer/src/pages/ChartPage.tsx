@@ -143,6 +143,8 @@ function loadStrategyWidth(storageKey: string): number {
 export interface ChartPanelQuote {
   time: string
   open: number
+  high: number
+  low: number
   close: number
 }
 
@@ -159,9 +161,13 @@ export interface ChartRightPanelContext {
   cutoff: string | null
   chartFault: string | null
   symbolAlias: ReadonlyMap<string, string>
+  /** 图表复权方式。指数标的图表本身仍用不复权。 */
+  adjust: AdjustType
   showSymbols: (stocks: Stock[], presentation: ChartSessionPresentation) => void
   setCutoff: (isoDate: string | null) => void
   setReplayRunning: (running: boolean) => void
+  setTradeMarkers: (markers: StrategyChartOverlay['markers']) => void
+  locateTrade: (tsCode: string, timeIso: string) => void
 }
 
 export interface ChartPageProps {
@@ -230,6 +236,7 @@ export function ChartPage({
   const [symbolAlias, setSymbolAlias] = useState<ReadonlyMap<string, string>>(() => new Map())
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyInfo | null>(null)
   const [strategyOverlay, setStrategyOverlay] = useState<StrategyChartOverlay | null>(null)
+  const [paperMarkers, setPaperMarkers] = useState<StrategyChartOverlay['markers']>([])
   const hasRightPanel = rightPanel != null
   const [strategyWidth, setStrategyWidth] = useState(() => loadStrategyWidth(rightPanelWidthStorageKey))
   const [strategyResizing, setStrategyResizing] = useState(false)
@@ -349,6 +356,9 @@ export function ChartPage({
   const effectiveAdjust: AdjustType = selectedIsIndex ? 'none' : adjust
 
   const chartRequestRef = useRef(0)
+  const keepLocateRef = useRef(false)
+  const selectedCodeRef = useRef(selectedCode)
+  selectedCodeRef.current = selectedCode
 
   const executeScripts = useCallback(
     async (tsCode: string, adj: AdjustType, endIso?: string | null): Promise<void> => {
@@ -392,8 +402,12 @@ export function ChartPage({
   }, [])
 
   useEffect(() => {
-    setLocateRequest(null)
     setChartRaw(null)
+    if (keepLocateRef.current) {
+      keepLocateRef.current = false
+      return
+    }
+    setLocateRequest(null)
   }, [selectedCode])
 
   useEffect(() => {
@@ -707,10 +721,16 @@ export function ChartPage({
     const lastTime = timeDomain[timeDomain.length - 1]
     const point =
       (lastTime ? candle.find((item) => item.time === lastTime) : undefined) ?? candle[candle.length - 1]
-    if (!point || !Number.isFinite(point.open) || !Number.isFinite(point.close)) {
+    if (
+      !point ||
+      !Number.isFinite(point.open) ||
+      !Number.isFinite(point.high) ||
+      !Number.isFinite(point.low) ||
+      !Number.isFinite(point.close)
+    ) {
       return null
     }
-    return { time: point.time, open: point.open, close: point.close }
+    return { time: point.time, open: point.open, high: point.high, low: point.low, close: point.close }
   })()
 
   const handleJumpToDate = (isoDate: string): void => {
@@ -794,6 +814,31 @@ export function ChartPage({
     setSymbolAlias(aliases)
   }
 
+  const setTradeMarkers = useCallback((markers: StrategyChartOverlay['markers']) => {
+    setPaperMarkers((current) => {
+      if (
+        current.length === markers.length &&
+        current.every(
+          (item, index) => item.timeIso === markers[index]?.timeIso && item.side === markers[index]?.side
+        )
+      ) {
+        return current
+      }
+      return markers
+    })
+  }, [])
+
+  const locateTrade = useCallback((tsCode: string, timeIso: string) => {
+    if (!timeIso) {
+      return
+    }
+    if (selectedCodeRef.current !== tsCode) {
+      keepLocateRef.current = true
+      setSelectedCode(tsCode)
+    }
+    setLocateRequest((current) => ({ timeIso, token: (current?.token ?? 0) + 1 }))
+  }, [])
+
   const panelContext: ChartRightPanelContext = {
     stock: selected ?? null,
     bar: displayedBar,
@@ -802,15 +847,23 @@ export function ChartPage({
     cutoff: replayCutoff,
     chartFault,
     symbolAlias,
+    adjust,
     showSymbols: showSessionSymbols,
     setCutoff: setReplayCutoff,
-    setReplayRunning
+    setReplayRunning,
+    setTradeMarkers,
+    locateTrade
   }
   const selectedAlias = selected ? symbolAlias.get(selected.ts_code) : undefined
   const pickerView = pickerStocks.map((stock) => {
     const alias = symbolAlias.get(stock.ts_code)
     return alias ? { ...stock, name: alias } : stock
   })
+  const klineOverlay = paperSession
+    ? paperMarkers.length > 0
+      ? { markers: paperMarkers, highlight: null, shadeMarkers: true }
+      : null
+    : strategyOverlay
 
   return (
     <Box
@@ -1044,8 +1097,8 @@ export function ChartPage({
                       input={chartInput.value}
                       layout={layout}
                       scripts={scripts}
-                      overlay={strategyOverlay}
-                      focusTimeIso={strategyOverlay?.highlight?.timeIso ?? null}
+                      overlay={klineOverlay}
+                      focusTimeIso={paperSession ? null : (strategyOverlay?.highlight?.timeIso ?? null)}
                       locateRequest={locateRequest}
                       hideTimeAxis={hideChartTime}
                       hidePriceLegend={hideChartTime}

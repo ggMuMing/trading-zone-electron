@@ -3,6 +3,7 @@ import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Checkbox from '@mui/material/Checkbox'
 import InputAdornment from '@mui/material/InputAdornment'
+import Link from '@mui/material/Link'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
@@ -17,7 +18,7 @@ import Typography from '@mui/material/Typography'
 import DeleteOutline from '@mui/icons-material/DeleteOutline'
 import FolderOpen from '@mui/icons-material/FolderOpen'
 import Save from '@mui/icons-material/Save'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   defaultPaperPlanDraft,
   paperPlanDraftOf,
@@ -25,6 +26,10 @@ import {
   PAPER_DEFAULT_PLAN_NAME,
   PAPER_GROUP_SIZE_MAX
 } from '../../../../shared/paper/paperPlan'
+import { paperArchiveNameError, paperArchiveReturn, paperReplayDurationDays } from '../../../../shared/paper/paperArchive'
+import { isoToYyyymmdd } from '../../../../shared/constants/market'
+import { isChartUniverseIndexCode } from '../../../../shared/constants/chartUniverse'
+import type { PaperArchive } from '../../../../shared/types/paperArchive'
 import type {
   PaperPlan,
   PaperPlanDraft,
@@ -185,7 +190,16 @@ function TemplateSummary({ draft }: { draft: PaperPlanDraft }): React.JSX.Elemen
 const SHARE_LOT = 100
 
 interface PaperLot {
+  tsCode: string
+  name: string
   date: string | null
+  shares: number
+  cost: number
+}
+
+interface PaperPosition {
+  tsCode: string
+  name: string
   shares: number
   cost: number
 }
@@ -205,12 +219,45 @@ function maxBuyShares(cash: number, priceText: string): number {
   return floorLot(cash / price)
 }
 
-function sellableShares(lots: readonly PaperLot[], today: string | null): number {
-  if (!today) {
+function sellableShares(lots: readonly PaperLot[], today: string | null, tsCode: string | null): number {
+  if (!today || !tsCode) {
     return 0
   }
-  const free = lots.reduce((sum, lot) => sum + (lot.date !== null && lot.date < today ? lot.shares : 0), 0)
+  const free = lots.reduce(
+    (sum, lot) => sum + (lot.tsCode === tsCode && lot.date !== null && lot.date < today ? lot.shares : 0),
+    0
+  )
   return floorLot(free)
+}
+
+function positionsFromLots(lots: readonly PaperLot[]): PaperPosition[] {
+  const grouped = new Map<string, PaperPosition>()
+  for (const lot of lots) {
+    if (lot.shares <= 0) {
+      continue
+    }
+    const current = grouped.get(lot.tsCode)
+    if (!current) {
+      grouped.set(lot.tsCode, { tsCode: lot.tsCode, name: lot.name, shares: lot.shares, cost: lot.cost })
+      continue
+    }
+    current.shares += lot.shares
+    current.cost += lot.cost
+    if (!current.name && lot.name) {
+      current.name = lot.name
+    }
+  }
+  return [...grouped.values()]
+}
+
+function pnlColor(value: number): string | undefined {
+  if (value > 0) {
+    return 'error.main'
+  }
+  if (value < 0) {
+    return 'success.main'
+  }
+  return undefined
 }
 
 function lotShares(value: string): number | null {
@@ -239,11 +286,11 @@ function CapitalSummary({
   pnl: number
   available: number
 }): React.JSX.Element {
-  const fields = [
-    { label: '总资产', value: formatYuan(total) },
-    { label: '证券市值', value: formatYuan(marketValue) },
-    { label: '持仓盈亏', value: formatYuan(pnl) },
-    { label: '可用资金', value: formatYuan(available) }
+  const fields: Array<{ label: string; value: string; signed: number | null }> = [
+    { label: '总资产', value: formatYuan(total), signed: null },
+    { label: '证券市值', value: formatYuan(marketValue), signed: null },
+    { label: '持仓盈亏', value: formatYuan(pnl), signed: pnl },
+    { label: '可用资金', value: formatYuan(available), signed: null }
   ]
   return (
     <Box
@@ -260,7 +307,10 @@ function CapitalSummary({
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
             {field.label}
           </Typography>
-          <Typography variant="body2" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+          <Typography
+            variant="body2"
+            sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: field.signed === null ? undefined : pnlColor(field.signed) }}
+          >
             {field.value}
           </Typography>
         </Box>
@@ -271,6 +321,93 @@ function CapitalSummary({
 
 function formatOrderPrice(value: number): string {
   return Number(value.toFixed(4)).toString()
+}
+
+function barPriceRange(bar: ChartPanelQuote | null): { low: number; high: number } | null {
+  if (!bar || !Number.isFinite(bar.low) || !Number.isFinite(bar.high)) {
+    return null
+  }
+  return { low: Math.min(bar.low, bar.high), high: Math.max(bar.low, bar.high) }
+}
+
+function priceInBar(value: string, bar: ChartPanelQuote | null): boolean {
+  const price = Number(value)
+  const range = barPriceRange(bar)
+  if (!range || !Number.isFinite(price) || price <= 0) {
+    return false
+  }
+  const rounded = Number(price.toFixed(4))
+  const low = Number(range.low.toFixed(4))
+  const high = Number(range.high.toFixed(4))
+  return rounded >= low && rounded <= high
+}
+
+function PositionBoard({
+  positions,
+  priceOf,
+  labelOf
+}: {
+  positions: readonly PaperPosition[]
+  priceOf: (tsCode: string) => number | null
+  labelOf: (position: PaperPosition) => string
+}): React.JSX.Element | null {
+  if (positions.length === 0) {
+    return null
+  }
+  return (
+    <Table
+      size="small"
+      sx={{
+        mt: 1.5,
+        '& .MuiTableCell-root': {
+          px: 0.75,
+          py: 0.5,
+          fontSize: 12,
+          lineHeight: 1.4,
+          borderColor: 'divider',
+          whiteSpace: 'nowrap'
+        },
+        '& .MuiTableCell-head': { fontWeight: 700 }
+      }}
+    >
+      <TableHead>
+        <TableRow>
+          <TableCell align="left">持仓标的</TableCell>
+          <TableCell align="left">数量</TableCell>
+          <TableCell align="left">持仓成本</TableCell>
+          <TableCell align="left">当前价格</TableCell>
+          <TableCell align="left">盈亏</TableCell>
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {positions.map((position) => {
+          const price = priceOf(position.tsCode)
+          const costPrice = position.shares > 0 ? position.cost / position.shares : null
+          const pnl = price === null || costPrice === null ? null : price * position.shares - position.cost
+          return (
+            <TableRow key={position.tsCode}>
+              <TableCell>{labelOf(position)}</TableCell>
+              <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                {position.shares}
+              </TableCell>
+              <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                {costPrice === null ? '—' : formatOrderPrice(costPrice)}
+              </TableCell>
+              <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                {price === null ? '—' : formatOrderPrice(price)}
+              </TableCell>
+              <TableCell
+                align="right"
+                sx={{ fontVariantNumeric: 'tabular-nums', color: pnl === null ? 'text.secondary' : pnlColor(pnl) }}
+              >
+                {pnl === null ? '—' : formatYuan(pnl)}
+              </TableCell>
+            </TableRow>
+          )
+        })}
+      </TableBody>
+    </Table>
+  )
 }
 
 function OrderPriceField({
@@ -290,15 +427,25 @@ function OrderPriceField({
     }
     onChange(formatOrderPrice(price))
   }
+  const range = barPriceRange(bar)
+  const outOfRange = value.trim() !== '' && range !== null && !priceInBar(value, bar)
+  const rangeLabel = range ? `${formatOrderPrice(range.low)}–${formatOrderPrice(range.high)}` : null
   return (
-    <TextField
-      size="small"
-      type="number"
-      label={label}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      slotProps={{
-        htmlInput: { min: 0, step: 0.01, 'aria-label': label },
+    <Box>
+      <TextField
+        size="small"
+        type="number"
+        label={label}
+        value={value}
+        error={outOfRange}
+        onChange={(event) => onChange(event.target.value)}
+        slotProps={{
+          htmlInput: {
+            min: range?.low ?? 0,
+            max: range?.high,
+            step: 0.01,
+            'aria-label': label
+          },
         input: {
           endAdornment: (
             <InputAdornment position="end" sx={{ gap: 0.25, maxHeight: 22, ml: 0.25 }}>
@@ -329,7 +476,15 @@ function OrderPriceField({
         }
       }}
       sx={[paperFieldSx, { mx: 0, width: '100%' }]}
-    />
+      />
+      <Typography
+        variant="caption"
+        color={outOfRange ? 'error' : 'text.secondary'}
+        sx={{ display: 'block', mt: 0.75 }}
+      >
+        {rangeLabel ? `区间 ${rangeLabel}` : '—'}
+      </Typography>
+    </Box>
   )
 }
 
@@ -347,11 +502,13 @@ interface PaperTrade {
 function TradeRecords({
   trades,
   symbolAlias,
-  hideTime
+  hideTime,
+  onLocate
 }: {
   trades: readonly PaperTrade[]
   symbolAlias: ReadonlyMap<string, string>
   hideTime: boolean
+  onLocate?: (trade: PaperTrade) => void
 }): React.JSX.Element {
   return (
     <Table
@@ -394,7 +551,30 @@ function TradeRecords({
             const alias = symbolAlias.get(trade.tsCode)
             return (
             <TableRow key={trade.id}>
-              <TableCell sx={{ whiteSpace: 'nowrap' }}>{hideTime ? '—' : trade.time || '—'}</TableCell>
+              <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                {hideTime || !trade.time ? (
+                  '—'
+                ) : (
+                  <Link
+                    component="button"
+                    type="button"
+                    underline="hover"
+                    onClick={() => onLocate?.(trade)}
+                    sx={{
+                      border: 0,
+                      p: 0,
+                      background: 'none',
+                      font: 'inherit',
+                      fontSize: 'inherit',
+                      lineHeight: 'inherit',
+                      verticalAlign: 'baseline',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {trade.time}
+                  </Link>
+                )}
+              </TableCell>
               <TableCell>
                 <Box sx={{ minWidth: 0 }}>
                   <Box sx={{ whiteSpace: 'nowrap' }}>{alias ?? (trade.name || '—')}</Box>
@@ -414,6 +594,101 @@ function TradeRecords({
                 {formatYuan(trade.amount)}
               </TableCell>
             </TableRow>
+            )
+          })
+        )}
+      </TableBody>
+    </Table>
+  )
+}
+
+function formatReturn(record: PaperArchive): string {
+  const rate = paperArchiveReturn(record)
+  if (rate === null) {
+    return '—'
+  }
+  const pct = rate * 100
+  const text = pct.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return `${pct > 0 ? '+' : ''}${text}%`
+}
+
+function formatArchiveTime(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) {
+    return iso
+  }
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function ArchiveRecords({ records }: { records: readonly PaperArchive[] }): React.JSX.Element {
+  return (
+    <Table
+      size="small"
+      stickyHeader
+      sx={{
+        '& .MuiTableCell-root': {
+          px: 0.75,
+          py: 0.75,
+          fontSize: 12,
+          lineHeight: 1.4,
+          borderColor: 'divider',
+          verticalAlign: 'top',
+          whiteSpace: 'nowrap'
+        },
+        '& .MuiTableCell-head': {
+          fontWeight: 700,
+          bgcolor: 'background.paper'
+        }
+      }}
+    >
+      <TableHead>
+        <TableRow>
+          <TableCell align="left">名称</TableCell>
+          <TableCell align="left">归档时间</TableCell>
+          <TableCell align="left">模板</TableCell>
+          <TableCell align="left">开始时间</TableCell>
+          <TableCell align="left">截止时间</TableCell>
+          <TableCell align="left">持续时间</TableCell>
+          <TableCell align="left">总资金</TableCell>
+          <TableCell align="left">结算资金</TableCell>
+          <TableCell align="left">总收益率</TableCell>
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {records.length === 0 ? (
+          <TableRow>
+            <TableCell colSpan={9} align="center" sx={{ color: 'text.secondary', py: 3 }}>
+              还没有模拟记录
+            </TableCell>
+          </TableRow>
+        ) : (
+          records.map((record) => {
+            const rate = paperArchiveReturn(record)
+            return (
+              <TableRow key={record.id}>
+                <TableCell>{record.name}</TableCell>
+                <TableCell>{formatArchiveTime(record.archivedAt)}</TableCell>
+                <TableCell>{record.template.name}</TableCell>
+                <TableCell>{record.startedOn}</TableCell>
+                <TableCell>{record.endedOn}</TableCell>
+                <TableCell>{record.durationDays}天</TableCell>
+                <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {formatYuan(record.template.capital)}
+                </TableCell>
+                <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {formatYuan(record.capital.available)}
+                </TableCell>
+                <TableCell
+                  align="right"
+                  sx={{
+                    fontVariantNumeric: 'tabular-nums',
+                    color: rate === null ? 'text.secondary' : rate > 0 ? 'error.main' : rate < 0 ? 'success.main' : 'text.primary'
+                  }}
+                >
+                  {formatReturn(record)}
+                </TableCell>
+              </TableRow>
             )
           })
         )}
@@ -495,17 +770,41 @@ export function PaperTradingPanel({
   const [sessionCapital, setSessionCapital] = useState<number | null>(null)
   const [trading, setTrading] = useState(false)
   const [archiveReady, setArchiveReady] = useState(false)
+  const [archives, setArchives] = useState<PaperArchive[]>([])
+  const [archiveOpen, setArchiveOpen] = useState(false)
+  const [archiveName, setArchiveName] = useState('')
+  const [archiveError, setArchiveError] = useState<string | null>(null)
   const [breakpoint, setBreakpoint] = useState<string | null>(null)
+  const [sessionStart, setSessionStart] = useState<string | null>(null)
   const [pendingStart, setPendingStart] = useState(false)
   const [sessionSymbols, setSessionSymbols] = useState<Stock[]>([])
   const [maskSymbols, setMaskSymbols] = useState(false)
   const [hideSessionTime, setHideSessionTime] = useState(false)
   const planAnchorRef = useRef<HTMLDivElement>(null)
   const saveAnchorRef = useRef<HTMLDivElement>(null)
+  const archiveAnchorRef = useRef<HTMLButtonElement>(null)
   const sessionRef = useRef(session)
   sessionRef.current = session
   const templateLocked = trading || pendingStart || breakpoint !== null
   const formDisabled = busy || templateLocked
+
+  useEffect(() => {
+    const code = symbol?.ts_code
+    const seen = new Set<string>()
+    const markers: Array<{ timeIso: string; side: 'buy' | 'sell' }> = []
+    for (const trade of trades) {
+      if (!code || trade.tsCode !== code || !trade.time) {
+        continue
+      }
+      const key = `${trade.time}:${trade.side}`
+      if (seen.has(key)) {
+        continue
+      }
+      seen.add(key)
+      markers.push({ timeIso: trade.time, side: trade.side })
+    }
+    session.setTradeMarkers(markers)
+  }, [trades, symbol, session.setTradeMarkers])
 
   useEffect(() => {
     let cancelled = false
@@ -536,6 +835,18 @@ export function PaperTradingPanel({
       .finally(() => {
         if (!cancelled) {
           setStocksLoading(false)
+        }
+      })
+    void window.api.paperArchive
+      .list()
+      .then((listed) => {
+        if (!cancelled) {
+          setArchives(listed)
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(errorMessage(err))
         }
       })
     return () => {
@@ -675,10 +986,78 @@ export function PaperTradingPanel({
     ? paperPlanDraftOf(tradeTemplate)
     : defaultPaperPlanDraft(PAPER_DEFAULT_PLAN_NAME)
   const templateCapital = Number.isFinite(tradeDraft.capital) ? tradeDraft.capital : 0
-  const heldShares = lots.reduce((sum, lot) => sum + lot.shares, 0)
-  const costAmount = lots.reduce((sum, lot) => sum + lot.cost, 0)
   const available = sessionCapital ?? templateCapital
-  const marketValue = heldShares > 0 ? costAmount : 0
+  const positions = useMemo(() => positionsFromLots(lots), [lots])
+  const positionKey = positions.map((position) => position.tsCode).join(',')
+  const [quoteCloses, setQuoteCloses] = useState<{ cutoff: string; closes: Record<string, number> } | null>(null)
+  const liveClose =
+    symbol && session.chartCode === symbol.ts_code && bar && Number.isFinite(bar.close) ? bar.close : null
+
+  useEffect(() => {
+    const cutoff = session.cutoff
+    if (!cutoff || positions.length === 0) {
+      return
+    }
+    const codes = positions.map((position) => position.tsCode).filter((code) => code !== symbol?.ts_code)
+    if (codes.length === 0) {
+      setQuoteCloses({ cutoff, closes: {} })
+      return
+    }
+    let cancelled = false
+    const endDate = isoToYyyymmdd(cutoff)
+    void Promise.all(
+      codes.map(async (code) => {
+        const result = await window.api.market.query({
+          ts_code: code,
+          adjust: isChartUniverseIndexCode(code) ? 'none' : session.adjust,
+          end_date: endDate
+        })
+        const close = result.bars[result.bars.length - 1]?.close
+        return [code, typeof close === 'number' && Number.isFinite(close) ? close : null] as const
+      })
+    )
+      .then((rows) => {
+        if (cancelled) {
+          return
+        }
+        const closes: Record<string, number> = {}
+        for (const [code, close] of rows) {
+          if (close !== null) {
+            closes[code] = close
+          }
+        }
+        setQuoteCloses({ cutoff, closes })
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setQuoteCloses({ cutoff, closes: {} })
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [positionKey, session.cutoff, session.adjust, symbol?.ts_code])
+
+  const priceOf = (tsCode: string): number | null => {
+    if (tsCode === symbol?.ts_code && liveClose !== null) {
+      return liveClose
+    }
+    if (!session.cutoff || quoteCloses?.cutoff !== session.cutoff) {
+      return null
+    }
+    return quoteCloses.closes[tsCode] ?? null
+  }
+  let marketValue = 0
+  let pnl = 0
+  for (const position of positions) {
+    const price = priceOf(position.tsCode)
+    if (price === null) {
+      marketValue += position.cost
+      continue
+    }
+    marketValue += price * position.shares
+    pnl += price * position.shares - position.cost
+  }
 
   useEffect(() => {
     setLots([])
@@ -696,6 +1075,7 @@ export function PaperTradingPanel({
     setTrading(false)
     setArchiveReady(false)
     setBreakpoint(null)
+    setSessionStart(null)
     setPendingStart(false)
     setSessionSymbols([])
     setMaskSymbols(false)
@@ -733,6 +1113,7 @@ export function PaperTradingPanel({
     }
     session.setCutoff(iso)
     session.setReplayRunning(true)
+    setSessionStart(iso)
     setBreakpoint(iso)
     setTrading(true)
     setArchiveReady(false)
@@ -740,21 +1121,21 @@ export function PaperTradingPanel({
   }, [pendingStart, sessionSymbols, session, tradeDraft])
 
   const buyable = maxBuyShares(available, buyPrice)
-  const sellable = sellableShares(lots, bar?.time ?? null)
+  const sellable = sellableShares(lots, bar?.time ?? null, symbol?.ts_code ?? null)
   const buyShares = lotShares(buyQty)
   const sellShares = lotShares(sellQty)
+  const buyPriceOk = priceInBar(buyPrice, bar)
+  const sellPriceOk = priceInBar(sellPrice, bar)
   const canBuy =
     trading &&
     buyShares !== null &&
     buyShares <= buyable &&
-    Number(buyPrice) > 0 &&
-    Number.isFinite(Number(buyPrice))
+    buyPriceOk
   const canSell =
     trading &&
     sellShares !== null &&
     sellShares <= sellable &&
-    Number(sellPrice) > 0 &&
-    Number.isFinite(Number(sellPrice))
+    sellPriceOk
 
   const beginTrading = (): void => {
     setError(null)
@@ -794,6 +1175,65 @@ export function PaperTradingPanel({
     setPendingStart(false)
   }
 
+  const openArchive = (): void => {
+    if (!archiveReady || busy) {
+      return
+    }
+    setArchiveName('')
+    setArchiveError(null)
+    setArchiveOpen(true)
+  }
+
+  const commitArchive = async (): Promise<void> => {
+    if (!archiveReady || busy) {
+      return
+    }
+    const nameError = paperArchiveNameError(archiveName)
+    if (nameError) {
+      setArchiveError(nameError)
+      return
+    }
+    const startedOn = sessionStart
+    const endedOn = session.cutoff ?? breakpoint
+    if (!startedOn || !endedOn) {
+      setArchiveError('缺少开始或截止时间')
+      return
+    }
+    let durationDays = 0
+    try {
+      durationDays = paperReplayDurationDays(startedOn, endedOn)
+    } catch (err: unknown) {
+      setArchiveError(errorMessage(err))
+      return
+    }
+    setBusy(true)
+    setArchiveError(null)
+    try {
+      const saved = await window.api.paperArchive.create({
+        draft: {
+          name: archiveName.trim(),
+          template: tradeDraft,
+          capital: {
+            totalAssets: available + marketValue,
+            marketValue,
+            pnl,
+            available
+          },
+          startedOn,
+          endedOn,
+          durationDays,
+          trades
+        }
+      })
+      setArchives((current) => [saved, ...current.filter((item) => item.id !== saved.id)])
+      setArchiveOpen(false)
+    } catch (err: unknown) {
+      setArchiveError(errorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const resetTrading = (): void => {
     if (trading || pendingStart) {
       return
@@ -808,6 +1248,7 @@ export function PaperTradingPanel({
     setSellQty('')
     setArchiveReady(false)
     setBreakpoint(null)
+    setSessionStart(null)
     setSessionSymbols([])
     setMaskSymbols(false)
     setHideSessionTime(false)
@@ -823,11 +1264,15 @@ export function PaperTradingPanel({
     const price = Number(buyPrice)
     const cost = price * buyShares
     const date = bar?.time ?? null
+    const tsCode = symbol?.ts_code
+    if (!tsCode) {
+      return
+    }
     setSessionCapital(available - cost)
     setLots((current) => {
-      const index = current.findIndex((lot) => lot.date === date)
+      const index = current.findIndex((lot) => lot.tsCode === tsCode && lot.date === date)
       if (index < 0) {
-        return [...current, { date, shares: buyShares, cost }]
+        return [...current, { tsCode, name: symbol?.name ?? '', date, shares: buyShares, cost }]
       }
       return current.map((lot, lotIndex) =>
         lotIndex === index ? { ...lot, shares: lot.shares + buyShares, cost: lot.cost + cost } : lot
@@ -856,10 +1301,14 @@ export function PaperTradingPanel({
     }
     const price = Number(sellPrice)
     const today = bar?.time ?? null
+    const tsCode = symbol?.ts_code
+    if (!tsCode) {
+      return
+    }
     let remaining = sellShares
     const next: PaperLot[] = []
     for (const lot of lots) {
-      const eligible = today !== null && lot.date !== null && lot.date < today
+      const eligible = lot.tsCode === tsCode && today !== null && lot.date !== null && lot.date < today
       if (!eligible || remaining <= 0 || lot.shares <= 0) {
         next.push(lot)
         continue
@@ -911,6 +1360,7 @@ export function PaperTradingPanel({
           }
           setPlanMenuOpen(false)
           setSaveOpen(false)
+          setArchiveOpen(false)
           setTab(next)
         }}
         aria-label="模拟盘"
@@ -918,7 +1368,7 @@ export function PaperTradingPanel({
       >
         <SettingsTab disableRipple value="trade" label="交易" />
         <SettingsTab disableRipple value="template" label="模板" />
-        <SettingsTab disableRipple value="records" label="交易记录" />
+        <SettingsTab disableRipple value="records" label="模拟记录" />
       </SettingsTabs>
       <Menu
         anchorEl={planAnchorRef.current}
@@ -1010,6 +1460,55 @@ export function PaperTradingPanel({
             onClick={() => void commitSave()}
           >
             保存
+          </Button>
+        </Box>
+      </Popover>
+      <Popover
+        open={archiveOpen}
+        anchorEl={archiveAnchorRef.current}
+        onClose={() => {
+          if (!busy) {
+            setArchiveOpen(false)
+          }
+        }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'center' }}
+        slotProps={{ paper: { sx: { p: 1.5, width: 240 } } }}
+      >
+        <TextField
+          size="small"
+          fullWidth
+          autoFocus
+          required
+          label="名称"
+          placeholder="归档名称"
+          value={archiveName}
+          disabled={busy}
+          error={archiveError === '请填写归档名称'}
+          onChange={(event) => {
+            setArchiveName(event.target.value)
+            setArchiveError(null)
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              void commitArchive()
+            }
+          }}
+        />
+        {archiveError ? (
+          <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.75 }}>
+            {archiveError}
+          </Typography>
+        ) : null}
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+          <Button
+            size="small"
+            variant="contained"
+            disabled={busy || archiveName.trim().length === 0}
+            onClick={() => void commitArchive()}
+          >
+            归档
           </Button>
         </Box>
       </Popover>
@@ -1224,7 +1723,14 @@ export function PaperTradingPanel({
               >
                 {pendingStart ? '加载中' : trading ? '结束交易' : '开始交易'}
               </Button>
-              <Button size="small" variant="outlined" fullWidth disabled={!archiveReady}>
+              <Button
+                ref={archiveAnchorRef}
+                size="small"
+                variant="outlined"
+                fullWidth
+                disabled={!archiveReady || busy}
+                onClick={openArchive}
+              >
                 归档交易
               </Button>
               <Button
@@ -1274,8 +1780,13 @@ export function PaperTradingPanel({
             <CapitalSummary
               total={available + marketValue}
               marketValue={marketValue}
-              pnl={0}
+              pnl={pnl}
               available={available}
+            />
+            <PositionBoard
+              positions={positions}
+              priceOf={priceOf}
+              labelOf={(position) => session.symbolAlias.get(position.tsCode) ?? (position.name || position.tsCode)}
             />
           </Box>
           <Box sx={{ px: 1, py: 1, borderBottom: 1, borderColor: 'divider' }}>
@@ -1361,11 +1872,18 @@ export function PaperTradingPanel({
               trades={trades}
               symbolAlias={maskSymbols ? session.symbolAlias : new Map()}
               hideTime={hideSessionTime}
+              onLocate={(trade) => {
+                if (trade.time) {
+                  session.locateTrade(trade.tsCode, trade.time)
+                }
+              }}
             />
           </Box>
         </Box>
       ) : (
-        <Box sx={{ flex: 1, minHeight: 0 }} />
+        <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+          <ArchiveRecords records={archives} />
+        </Box>
       )}
     </Box>
   )

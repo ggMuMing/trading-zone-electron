@@ -18,9 +18,8 @@ const HIGHLIGHT_COLORS: Record<StrategyHighlightKind, string> = {
 
 class HighlightRenderer implements IPrimitivePaneRenderer {
   constructor(
-    private readonly x: number | null,
-    private readonly barSpacing: number,
-    private readonly color: string
+    private readonly bands: ReadonlyArray<{ x: number | null; color: string; span: number; shift: number }>,
+    private readonly barSpacing: number
   ) {}
 
   draw(): void {
@@ -28,28 +27,45 @@ class HighlightRenderer implements IPrimitivePaneRenderer {
   }
 
   drawBackground(target: CanvasRenderingTarget2D): void {
-    if (this.x === null) {
+    const bands = this.bands
+    const spacing = this.barSpacing
+    if (bands.length === 0) {
       return
     }
-    const xMedia = this.x
-    const spacing = this.barSpacing
-    const color = this.color
     target.useBitmapCoordinateSpace((scope) => {
       const ctx = scope.context
-      const x = xMedia * scope.horizontalPixelRatio
-      const width = Math.max(1, spacing * scope.horizontalPixelRatio)
-      ctx.fillStyle = color
-      ctx.fillRect(x - width / 2, 0, width, scope.bitmapSize.height)
+      const ratio = scope.horizontalPixelRatio
+      for (const band of bands) {
+        if (band.x === null) {
+          continue
+        }
+        const center = (band.x + band.shift * spacing) * ratio
+        const width = Math.max(1, spacing * band.span * ratio)
+        ctx.fillStyle = band.color
+        ctx.fillRect(center - width / 2, 0, width, scope.bitmapSize.height)
+      }
     })
   }
+}
+
+interface HighlightBand {
+  timeIso: string
+  kind: StrategyHighlightKind
+}
+
+interface DrawnBand {
+  x: number | null
+  color: string
+  span: number
+  shift: number
 }
 
 export class ReplayHighlightPrimitive implements ISeriesPrimitive<Time> {
   private chart: IChartApiBase<Time> | null = null
   private requestUpdate: (() => void) | null = null
-  private timeIso: string | null = null
-  private kind: StrategyHighlightKind = 'neutral'
-  private x: number | null = null
+  private highlight: HighlightBand | null = null
+  private shades: HighlightBand[] = []
+  private drawn: DrawnBand[] = []
   private barSpacing = 6
   private readonly views: IPrimitivePaneView[]
 
@@ -61,10 +77,10 @@ export class ReplayHighlightPrimitive implements ISeriesPrimitive<Time> {
           return 'bottom'
         },
         renderer(): IPrimitivePaneRenderer | null {
-          if (!owner.timeIso) {
+          if (owner.drawn.length === 0) {
             return null
           }
-          return new HighlightRenderer(owner.x, owner.barSpacing, HIGHLIGHT_COLORS[owner.kind])
+          return new HighlightRenderer(owner.drawn, owner.barSpacing)
         }
       }
     ]
@@ -80,22 +96,50 @@ export class ReplayHighlightPrimitive implements ISeriesPrimitive<Time> {
     this.requestUpdate = null
   }
 
-  setHighlight(next: { timeIso: string; kind: StrategyHighlightKind } | null): void {
-    this.timeIso = next?.timeIso ?? null
-    this.kind = next?.kind ?? 'neutral'
+  setHighlight(next: HighlightBand | null): void {
+    this.highlight = next
+    this.requestUpdate?.()
+  }
+
+  setShades(next: readonly HighlightBand[]): void {
+    this.shades = [...next]
     this.requestUpdate?.()
   }
 
   updateAllViews(): void {
     const chart = this.chart
-    const timeIso = this.timeIso
-    if (!chart || !timeIso) {
-      this.x = null
+    if (!chart) {
+      this.drawn = []
       return
     }
     const timeScale = chart.timeScale()
-    this.x = timeScale.timeToCoordinate(timeIso as Time)
     this.barSpacing = timeScale.options().barSpacing
+    const grouped = new Map<string, StrategyHighlightKind[]>()
+    for (const band of [...this.shades, ...(this.highlight ? [this.highlight] : [])]) {
+      const kinds = grouped.get(band.timeIso) ?? []
+      if (!kinds.includes(band.kind)) {
+        kinds.push(band.kind)
+        grouped.set(band.timeIso, kinds)
+      }
+    }
+    const drawn: DrawnBand[] = []
+    for (const [timeIso, kinds] of grouped) {
+      const x = timeScale.timeToCoordinate(timeIso as Time)
+      if (kinds.length <= 1) {
+        drawn.push({ x, color: HIGHLIGHT_COLORS[kinds[0] ?? 'neutral'], span: 1, shift: 0 })
+        continue
+      }
+      kinds.forEach((kind, index) => {
+        const span = 1 / kinds.length
+        drawn.push({
+          x,
+          color: HIGHLIGHT_COLORS[kind],
+          span,
+          shift: (index + 0.5) * span - 0.5
+        })
+      })
+    }
+    this.drawn = drawn
   }
 
   paneViews(): readonly IPrimitivePaneView[] {

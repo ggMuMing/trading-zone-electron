@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { getTushareToken, hasTushareToken, setTushareToken } from '../config/appConfig'
+import { paperArchiveRepository } from '../db/paperArchiveRepository'
 import { paperPlanRepository } from '../db/paperPlanRepository'
 import { stocksRepository } from '../db/stocksRepository'
 import { applicationService } from '../services/applicationService'
@@ -7,6 +8,7 @@ import { pythonBridge } from '../bridge/pythonBridge'
 import type { AdjustType, MarketQueryParams } from '../../shared/types/market'
 import type { LayoutItemParams, ScriptParams } from '../../shared/types/chartLayout'
 import type { ScriptTryParams } from '../../shared/types/indicatorScript'
+import { readPaperArchiveDraft } from '../../shared/paper/paperArchive'
 import { readPaperPlanDraft } from '../../shared/paper/paperPlan'
 import type { StrategyRunParams } from '../../shared/types/pythonProtocol'
 import { pipelineStepMeta, type PipelineStepId } from '../../shared/constants/pipeline'
@@ -436,5 +438,17 @@ export function registerHandlers(): void {
       throw new Error('id must be a non-empty string')
     }
     paperPlanRepository.remove(id.trim())
+  })
+
+  ipcMain.handle('paperArchive:list', () => {
+    return paperArchiveRepository.list()
+  })
+
+  ipcMain.handle('paperArchive:create', (_event, params: unknown) => {
+    if (!params || typeof params !== 'object') {
+      throw new Error('paperArchive:create requires params object')
+    }
+    const draft = (params as Record<string, unknown>).draft
+    return paperArchiveRepository.create(readPaperArchiveDraft(draft))
   })
 }
