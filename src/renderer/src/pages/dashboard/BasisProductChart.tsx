@@ -6,11 +6,14 @@ import {
   createChart,
   createSeriesMarkers,
   type AutoscaleInfo,
+  type IChartApi,
+  type ISeriesApi,
   type MouseEventParams,
   type SeriesMarker,
   type Time
 } from 'lightweight-charts'
 import type { DashboardBasisPoint } from '../../../../shared/types/dashboard'
+import { lwcChromeOptions, useChartChrome } from '../../theme/chartChrome'
 import { LWC_FONT_STACK } from '../../theme/lwcFont'
 import {
   DASHBOARD_PANE_BOTTOM_STRETCH,
@@ -18,7 +21,7 @@ import {
   applyLastYearVisibleRange
 } from './chartView'
 import { DOWN_COLOR, UP_COLOR, yyyymmddToChartTime } from './format'
-import { ChartPlaceholder, STAT_CLOSE_COLOR, STAT_VALUE_COLOR } from './StatCharts'
+import { ChartPlaceholder, STAT_CLOSE_COLOR } from './StatCharts'
 
 const MAX_MARKERS = 20
 
@@ -118,6 +121,7 @@ function BasisSwatch(): React.JSX.Element {
 }
 
 function BasisPaneLegend({ point }: { point: DashboardBasisPoint }): React.JSX.Element {
+  const chrome = useChartChrome()
   const basis = basisOf(point)
   const basisColor = basis >= 0 ? UP_COLOR : DOWN_COLOR
   return (
@@ -133,12 +137,12 @@ function BasisPaneLegend({ point }: { point: DashboardBasisPoint }): React.JSX.E
         flexWrap: 'wrap',
         gap: '4px 12px',
         fontSize: 12,
-        color: '#555',
+        color: chrome.text,
         fontFamily: LWC_FONT_STACK
       }}
     >
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-        <LineSwatch color={STAT_VALUE_COLOR} />
+        <LineSwatch color={chrome.seriesBlue} />
         期指价格
         <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatPrice(point.fut_close)}</span>
       </span>
@@ -163,7 +167,12 @@ interface BasisProductChartProps {
 }
 
 export function BasisProductChart({ series }: BasisProductChartProps): React.JSX.Element {
+  const chrome = useChartChrome()
+  const chromeRef = useRef(chrome)
+  chromeRef.current = chrome
   const containerRef = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<IChartApi | null>(null)
+  const futSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
   const hoverDateRef = useRef<string | null>(null)
   const [activePoint, setActivePoint] = useState<DashboardBasisPoint | null>(null)
 
@@ -180,21 +189,14 @@ export function BasisProductChart({ series }: BasisProductChartProps): React.JSX
     const byTime = new Map(
       series.map((point) => [yyyymmddToChartTime(point.trade_date), point] as const)
     )
+    const initialChrome = chromeRef.current
     const chart = createChart(el, {
       width: el.clientWidth,
       height: el.clientHeight,
-      layout: {
-        background: { color: '#ffffff' },
-        textColor: '#666666',
-        fontFamily: LWC_FONT_STACK
-      },
-      grid: {
-        vertLines: { color: '#f3f3f3' },
-        horzLines: { color: '#f3f3f3' }
-      },
-      rightPriceScale: { borderVisible: false, visible: false },
-      leftPriceScale: { borderVisible: false, visible: true },
-      timeScale: { borderVisible: false, rightOffset: 4 }
+      ...lwcChromeOptions(initialChrome),
+      rightPriceScale: { borderColor: initialChrome.scaleBorder, borderVisible: false, visible: false },
+      leftPriceScale: { borderColor: initialChrome.scaleBorder, borderVisible: false, visible: true },
+      timeScale: { borderColor: initialChrome.scaleBorder, borderVisible: false, rightOffset: 4 }
     })
     chart.addPane(false)
     const panes = chart.panes()
@@ -204,7 +206,7 @@ export function BasisProductChart({ series }: BasisProductChartProps): React.JSX
     const futSeries = chart.addSeries(
       LineSeries,
       {
-        color: STAT_VALUE_COLOR,
+        color: initialChrome.seriesBlue,
         lineWidth: 2,
         priceScaleId: 'left',
         lastValueVisible: false,
@@ -302,6 +304,8 @@ export function BasisProductChart({ series }: BasisProductChartProps): React.JSX
     }
     chart.subscribeCrosshairMove(onCrosshairMove)
 
+    chartRef.current = chart
+    futSeriesRef.current = futSeries
     const observer = new ResizeObserver(() => {
       chart.applyOptions({ width: el.clientWidth, height: el.clientHeight })
     })
@@ -311,8 +315,15 @@ export function BasisProductChart({ series }: BasisProductChartProps): React.JSX
       chart.unsubscribeCrosshairMove(onCrosshairMove)
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(refreshMarkers)
       chart.remove()
+      chartRef.current = null
+      futSeriesRef.current = null
     }
   }, [series])
+
+  useEffect(() => {
+    chartRef.current?.applyOptions(lwcChromeOptions(chrome))
+    futSeriesRef.current?.applyOptions({ color: chrome.seriesBlue })
+  }, [chrome])
 
   if (series.length === 0) {
     return <ChartPlaceholder text="暂无曲线" />

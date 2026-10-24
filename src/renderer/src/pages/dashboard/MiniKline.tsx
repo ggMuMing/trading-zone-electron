@@ -8,15 +8,18 @@ import {
   type Time
 } from 'lightweight-charts'
 import type { DashboardBar } from '../../../../shared/types/dashboard'
-import { LWC_FONT_STACK } from '../../theme/lwcFont'
+import { lwcChromeOptions, useChartChrome } from '../../theme/chartChrome'
 import { applyLastYearVisibleRange } from './chartView'
-import { DOWN_COLOR, UP_COLOR, yyyymmddToChartTime } from './format'
+import { DOWN_COLOR, UP_COLOR, VOLUME_COLOR, yyyymmddToChartTime } from './format'
 
 interface MiniKlineProps {
   bars: DashboardBar[]
 }
 
 export function MiniKline({ bars }: MiniKlineProps): React.JSX.Element {
+  const chrome = useChartChrome()
+  const chromeRef = useRef(chrome)
+  chromeRef.current = chrome
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -27,20 +30,12 @@ export function MiniKline({ bars }: MiniKlineProps): React.JSX.Element {
     if (!el) {
       return
     }
+    const initialChrome = chromeRef.current
     const chart = createChart(el, {
       width: el.clientWidth,
       height: el.clientHeight,
-      layout: {
-        background: { color: '#ffffff' },
-        textColor: '#333333',
-        fontFamily: LWC_FONT_STACK
-      },
-      grid: {
-        vertLines: { color: '#eeeeee' },
-        horzLines: { color: '#eeeeee' }
-      },
-      rightPriceScale: { borderColor: '#e0e0e0' },
-      timeScale: { borderColor: '#e0e0e0', rightOffset: 8 }
+      ...lwcChromeOptions(initialChrome),
+      timeScale: { borderColor: initialChrome.scaleBorder, rightOffset: 8 }
     })
     const candle = chart.addSeries(CandlestickSeries, {
       upColor: UP_COLOR,
@@ -51,7 +46,7 @@ export function MiniKline({ bars }: MiniKlineProps): React.JSX.Element {
     })
     candle.priceScale().applyOptions({ scaleMargins: { top: 0.08, bottom: 0.28 } })
     const volume = chart.addSeries(HistogramSeries, {
-      color: '#d27b2d',
+      color: VOLUME_COLOR,
       priceFormat: { type: 'volume' },
       priceScaleId: 'volume'
     })
@@ -74,6 +69,10 @@ export function MiniKline({ bars }: MiniKlineProps): React.JSX.Element {
       volumeRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    chartRef.current?.applyOptions(lwcChromeOptions(chrome))
+  }, [chrome])
 
   useEffect(() => {
     if (!candleRef.current || !volumeRef.current || !chartRef.current) {
@@ -112,7 +111,7 @@ export function MiniKline({ bars }: MiniKlineProps): React.JSX.Element {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#888',
+            color: chrome.text,
             fontSize: 13
           }}
         >

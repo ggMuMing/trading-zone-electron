@@ -26,7 +26,8 @@ import {
   legendScriptTitle,
   subplotLegendTitle
 } from '../../../../shared/chart/legendLabel'
-import { LWC_FONT_STACK } from '../../theme/lwcFont'
+import { lwcChromeOptions, useChartChrome } from '../../theme/chartChrome'
+import { DOWN_COLOR, UP_COLOR, VOLUME_COLOR } from '../dashboard/format'
 import { PaneCornerActions } from './PaneCornerActions'
 import { PriceLegend, type PriceLegendBar, type PriceLegendOverlayGroup } from './PriceLegend'
 import { SubpaneLegend, type SubpaneLegendPane } from './SubpaneLegend'
@@ -46,9 +47,6 @@ import {
   syncPrimitiveSeries,
   type PrimitiveSeries
 } from './syncPrimitiveSeries'
-
-const UP_COLOR = '#ef5350'
-const DOWN_COLOR = '#26a69a'
 
 function overlayMarkers(
   overlay: StrategyChartOverlay | null | undefined,
@@ -317,6 +315,9 @@ export function KlineChart({
   const overlayRef = useRef(overlay)
   const markersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
   const highlightRef = useRef<ReplayHighlightPrimitive | null>(null)
+  const chrome = useChartChrome()
+  const chromeRef = useRef(chrome)
+  chromeRef.current = chrome
   inputRef.current = input
   layoutRef.current = layout
   overlayRef.current = overlay
@@ -367,23 +368,13 @@ export function KlineChart({
       return
     }
 
+    const initialChrome = chromeRef.current
     const chart = createChart(el, {
       width: el.clientWidth,
       height: el.clientHeight,
-      layout: {
-        background: { color: '#ffffff' },
-        textColor: '#333333',
-        fontFamily: LWC_FONT_STACK
-      },
-      grid: {
-        vertLines: { color: '#eeeeee' },
-        horzLines: { color: '#eeeeee' }
-      },
-      rightPriceScale: {
-        borderColor: '#e0e0e0'
-      },
+      ...lwcChromeOptions(initialChrome),
       timeScale: {
-        borderColor: '#e0e0e0',
+        borderColor: initialChrome.scaleBorder,
         rightOffset: 12,
         visible: !hideTimeAxis
       }
@@ -404,7 +395,7 @@ export function KlineChart({
     })
 
     const volume = chart.addSeries(HistogramSeries, {
-      color: '#d27b2d',
+      color: VOLUME_COLOR,
       priceFormat: { type: 'volume' },
       priceScaleId: 'volume'
     })
@@ -433,6 +424,7 @@ export function KlineChart({
 
     const markersApi = createSeriesMarkers(candle, [])
     const highlight = new ReplayHighlightPrimitive()
+    highlight.setNeutralColor(initialChrome.highlightNeutral)
     candle.attachPrimitive(highlight)
     markersApiRef.current = markersApi
     highlightRef.current = highlight
@@ -577,6 +569,11 @@ export function KlineChart({
       primitivesRef.current = []
     }
   }, [])
+
+  useEffect(() => {
+    chartRef.current?.applyOptions(lwcChromeOptions(chrome))
+    highlightRef.current?.setNeutralColor(chrome.highlightNeutral)
+  }, [chrome])
 
   useEffect(() => {
     chartRef.current?.applyOptions({

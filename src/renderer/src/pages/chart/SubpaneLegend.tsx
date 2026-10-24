@@ -1,3 +1,4 @@
+import { useChartChrome } from '../../theme/chartChrome'
 import { APP_FONT_STACK } from '../../theme/lwcFont'
 import { LegendNameHoverBox } from './LegendNameHoverBox'
 
@@ -41,6 +42,7 @@ export function SubpaneLegend({
   onOpenEditor,
   onRemove
 }: SubpaneLegendProps): React.JSX.Element | null {
+  const chrome = useChartChrome()
   if (panes.length === 0) {
     return null
   }
@@ -64,8 +66,8 @@ export function SubpaneLegend({
             fontSize: 15,
             lineHeight: '20px',
             fontFamily: APP_FONT_STACK,
-            color: '#333333',
-            backgroundColor: 'rgba(255, 255, 255, 0.85)'
+            color: chrome.text,
+            backgroundColor: chrome.legendBg
           }}
         >
           <LegendNameHoverBox

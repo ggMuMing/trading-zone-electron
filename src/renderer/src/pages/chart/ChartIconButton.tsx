@@ -1,5 +1,6 @@
 import Box from '@mui/material/Box'
 import type { ReactNode } from 'react'
+import { CHART_ICON_HOVER, useChartChrome } from '../../theme/chartChrome'
 
 export const CHART_ICON_SX = { fontSize: 16 }
 
@@ -21,6 +22,7 @@ export function ChartIconButton({
   roomy?: boolean
 }): React.JSX.Element {
   const hint = title ?? ariaLabel
+  const chrome = useChartChrome()
   return (
     <Box
       component="span"
@@ -51,7 +53,7 @@ export function ChartIconButton({
         alignItems: 'center',
         justifyContent: 'center',
         pointerEvents: 'auto',
-        color: 'rgba(0, 0, 0, 0.45)',
+        color: chrome.icon,
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.35 : 1,
         borderRadius: '3px',
@@ -61,8 +63,8 @@ export function ChartIconButton({
           ? {
               width: 22,
               height: 22,
-              bgcolor: 'rgba(255, 255, 255, 0.92)',
-              border: '1px solid rgba(0, 0, 0, 0.22)'
+              bgcolor: chrome.iconBg,
+              border: `1px solid ${chrome.iconBorder}`
             }
           : roomy
             ? {
@@ -73,10 +75,10 @@ export function ChartIconButton({
         '&:hover': disabled
           ? undefined
           : {
-              color: '#ed6c02',
-              bgcolor: 'rgba(0, 0, 0, 0.06)',
+              color: CHART_ICON_HOVER,
+              bgcolor: chrome.iconHoverBg,
               boxShadow: 'none',
-              ...(boxed ? { borderColor: '#ed6c02' } : {})
+              ...(boxed ? { borderColor: CHART_ICON_HOVER } : {})
             }
       }}
     >

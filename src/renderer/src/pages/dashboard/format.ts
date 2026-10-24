@@ -1,5 +1,6 @@
 export const UP_COLOR = '#ef5350'
 export const DOWN_COLOR = '#26a69a'
+export const VOLUME_COLOR = '#d27b2d'
 
 export function yyyymmddToChartTime(value: string): string {
   if (value.length !== 8) {

@@ -15,11 +15,12 @@ import type {
   DashboardBreadth,
   DashboardStatBlock
 } from '../../../../shared/types/dashboard'
+import { useChartChrome } from '../../theme/chartChrome'
 import { BasisGrid } from './BasisGrid'
 import { BreadthHistogram } from './BreadthHistogram'
 import { BreadthHistoryChart } from './BreadthHistoryChart'
 import { formatSignedYi, formatYi, signedColor } from './format'
-import { AlignedStatChart, STAT_CLOSE_COLOR, STAT_VALUE_COLOR } from './StatCharts'
+import { AlignedStatChart, STAT_CLOSE_COLOR } from './StatCharts'
 
 interface StatsPanelProps {
   margin: DashboardStatBlock
@@ -40,6 +41,7 @@ export function StatsPanel({
   onBreadthUniverseChange,
   breadthRefreshing = false
 }: StatsPanelProps): React.JSX.Element {
+  const seriesBlue = useChartChrome().seriesBlue
   return (
     <Box
       sx={{
@@ -58,7 +60,7 @@ export function StatsPanel({
           unit="亿元"
           block={margin}
           legends={[
-            { color: STAT_VALUE_COLOR, label: '两融余额' },
+            { color: seriesBlue, label: '两融余额' },
             { color: STAT_CLOSE_COLOR, label: '上证收盘' }
           ]}
           showClose
@@ -69,7 +71,7 @@ export function StatsPanel({
           title="沪深京成交额"
           unit="亿元"
           block={turnover}
-          legends={[{ color: STAT_VALUE_COLOR, label: '成交额' }]}
+          legends={[{ color: seriesBlue, label: '成交额' }]}
         />
       </Box>
       <Box sx={{ flex: 2, minHeight: 480, display: 'flex', flexDirection: 'column' }}>

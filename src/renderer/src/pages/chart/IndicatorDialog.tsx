@@ -231,8 +231,8 @@ export function IndicatorDialog({
                       }
                       sx={{
                         pr: 6,
-                        bgcolor: selected ? 'rgba(0, 0, 0, 0.08)' : undefined,
-                        '&:hover': { bgcolor: selected ? 'rgba(0, 0, 0, 0.10)' : 'rgba(0, 0, 0, 0.04)' }
+                        bgcolor: selected ? 'action.selected' : undefined,
+                        '&:hover': { bgcolor: selected ? 'action.selected' : 'action.hover' }
                       }}
                     >
                       <ListItemText primary={strategy.name} secondary={strategy.id} sx={{ px: 1.5, py: 0.5 }} />
@@ -285,7 +285,7 @@ export function IndicatorDialog({
                   }
                   sx={{
                     pr: 12,
-                    '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.04)' }
+                    '&:hover': { bgcolor: 'action.hover' }
                   }}
                 >
                   <ListItemText

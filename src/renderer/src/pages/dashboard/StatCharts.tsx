@@ -3,10 +3,12 @@ import {
   HistogramSeries,
   LineSeries,
   createChart,
+  type IChartApi,
   type ISeriesApi,
   type Time
 } from 'lightweight-charts'
 import type { DashboardSeriesPoint } from '../../../../shared/types/dashboard'
+import { lwcChromeOptions, useChartChrome } from '../../theme/chartChrome'
 import { LWC_FONT_STACK } from '../../theme/lwcFont'
 import {
   DASHBOARD_PANE_BOTTOM_STRETCH,
@@ -15,7 +17,6 @@ import {
 } from './chartView'
 import { DOWN_COLOR, UP_COLOR, yyyymmddToChartTime } from './format'
 
-export const STAT_VALUE_COLOR = '#1976d2'
 export const STAT_CLOSE_COLOR = '#ef6c00'
 
 export interface StatLegendItem {
@@ -34,28 +35,26 @@ export function AlignedStatChart({
   showClose = false,
   legends
 }: AlignedStatChartProps): React.JSX.Element {
+  const chrome = useChartChrome()
+  const chromeRef = useRef(chrome)
+  chromeRef.current = chrome
   const containerRef = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<IChartApi | null>(null)
+  const valueSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
 
   useEffect(() => {
     const el = containerRef.current
     if (!el) {
       return
     }
+    const initialChrome = chromeRef.current
     const chart = createChart(el, {
       width: el.clientWidth,
       height: el.clientHeight,
-      layout: {
-        background: { color: '#ffffff' },
-        textColor: '#666666',
-        fontFamily: LWC_FONT_STACK
-      },
-      grid: {
-        vertLines: { color: '#f3f3f3' },
-        horzLines: { color: '#f3f3f3' }
-      },
-      rightPriceScale: { borderVisible: false, visible: showClose },
-      leftPriceScale: { borderVisible: false, visible: true },
-      timeScale: { borderVisible: false, rightOffset: 4 }
+      ...lwcChromeOptions(initialChrome),
+      rightPriceScale: { borderColor: initialChrome.scaleBorder, borderVisible: false, visible: showClose },
+      leftPriceScale: { borderColor: initialChrome.scaleBorder, borderVisible: false, visible: true },
+      timeScale: { borderColor: initialChrome.scaleBorder, borderVisible: false, rightOffset: 4 }
     })
     chart.addPane(false)
     const panes = chart.panes()
@@ -65,7 +64,7 @@ export function AlignedStatChart({
     const valueSeries = chart.addSeries(
       LineSeries,
       {
-        color: STAT_VALUE_COLOR,
+        color: initialChrome.seriesBlue,
         lineWidth: 2,
         priceScaleId: 'left',
         lastValueVisible: false,
@@ -127,6 +126,8 @@ export function AlignedStatChart({
       chart,
       series.map((point) => point.trade_date)
     )
+    chartRef.current = chart
+    valueSeriesRef.current = valueSeries
     const observer = new ResizeObserver(() => {
       chart.applyOptions({ width: el.clientWidth, height: el.clientHeight })
     })
@@ -134,8 +135,15 @@ export function AlignedStatChart({
     return () => {
       observer.disconnect()
       chart.remove()
+      chartRef.current = null
+      valueSeriesRef.current = null
     }
   }, [series, showClose])
+
+  useEffect(() => {
+    chartRef.current?.applyOptions(lwcChromeOptions(chrome))
+    valueSeriesRef.current?.applyOptions({ color: chrome.seriesBlue })
+  }, [chrome])
 
   if (series.length === 0) {
     return <ChartPlaceholder text="暂无曲线" />
@@ -150,6 +158,7 @@ export function AlignedStatChart({
 }
 
 export function StatLegend({ legends }: { legends: StatLegendItem[] }): React.JSX.Element {
+  const chrome = useChartChrome()
   return (
     <div
       style={{
@@ -163,7 +172,7 @@ export function StatLegend({ legends }: { legends: StatLegendItem[] }): React.JS
         flexWrap: 'wrap',
         gap: '4px 12px',
         fontSize: 12,
-        color: '#555',
+        color: chrome.text,
         fontFamily: LWC_FONT_STACK
       }}
     >
@@ -185,6 +194,7 @@ export function StatLegend({ legends }: { legends: StatLegendItem[] }): React.JS
 }
 
 export function ChartPlaceholder({ text }: { text: string }): React.JSX.Element {
+  const chrome = useChartChrome()
   return (
     <div
       style={{
@@ -192,7 +202,7 @@ export function ChartPlaceholder({ text }: { text: string }): React.JSX.Element 
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        color: '#888',
+        color: chrome.text,
         fontSize: 12
       }}
     >

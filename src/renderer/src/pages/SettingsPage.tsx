@@ -13,6 +13,8 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import IconButton from '@mui/material/IconButton'
 import TextField from '@mui/material/TextField'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Typography from '@mui/material/Typography'
 import ExpandLess from '@mui/icons-material/ExpandLess'
 import ExpandMore from '@mui/icons-material/ExpandMore'
@@ -32,6 +34,7 @@ import type {
   PipelineStepState,
   PipelineStepStatus
 } from '../../../shared/types/pipeline'
+import { useColorMode, type ColorMode } from '../theme/colorMode'
 
 const BOARD_LABELS: Array<{ key: keyof Omit<BoardStats, 'total'>; label: string }> = [
   { key: 'sse_main', label: '上证主板' },
@@ -108,6 +111,7 @@ export function SettingsPage({
   onSyncingChange,
   onClearingChange
 }: SettingsPageProps): React.JSX.Element {
+  const { mode, setMode } = useColorMode()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -307,6 +311,25 @@ export function SettingsPage({
             {error}
           </Alert>
         ) : null}
+
+        <Paper elevation={0} sx={{ p: 2, border: 1, borderColor: 'divider' }}>
+          <Typography variant="subtitle2" gutterBottom>
+            外观
+          </Typography>
+          <ToggleButtonGroup
+            exclusive
+            size="small"
+            value={mode}
+            onChange={(_event, next: ColorMode | null) => {
+              if (next) {
+                setMode(next)
+              }
+            }}
+          >
+            <ToggleButton value="light">浅色</ToggleButton>
+            <ToggleButton value="dark">深色</ToggleButton>
+          </ToggleButtonGroup>
+        </Paper>
 
         <Paper elevation={0} sx={{ p: 2, border: 1, borderColor: 'divider' }}>
           <Typography variant="subtitle2" gutterBottom>

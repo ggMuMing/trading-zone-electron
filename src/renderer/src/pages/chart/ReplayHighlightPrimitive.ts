@@ -8,12 +8,21 @@ import type {
   SeriesAttachedParameter,
   Time
 } from 'lightweight-charts'
+import { CHART_CHROME } from '../../theme/chartChrome'
+import { DOWN_COLOR, UP_COLOR } from '../dashboard/format'
 import type { StrategyHighlightKind } from './strategyOverlay'
 
-const HIGHLIGHT_COLORS: Record<StrategyHighlightKind, string> = {
-  buy: 'rgba(239,83,80,0.18)',
-  sell: 'rgba(38,166,154,0.18)',
-  neutral: 'rgba(0,0,0,0.08)'
+const HIGHLIGHT_COLORS: Record<Exclude<StrategyHighlightKind, 'neutral'>, string> = {
+  buy: fade(UP_COLOR, 0.18),
+  sell: fade(DOWN_COLOR, 0.18)
+}
+
+function fade(hex: string, alpha: number): string {
+  const n = hex.replace('#', '')
+  const r = Number.parseInt(n.slice(0, 2), 16)
+  const g = Number.parseInt(n.slice(2, 4), 16)
+  const b = Number.parseInt(n.slice(4, 6), 16)
+  return `rgba(${r},${g},${b},${alpha})`
 }
 
 class HighlightRenderer implements IPrimitivePaneRenderer {
@@ -67,6 +76,7 @@ export class ReplayHighlightPrimitive implements ISeriesPrimitive<Time> {
   private shades: HighlightBand[] = []
   private drawn: DrawnBand[] = []
   private barSpacing = 6
+  private neutralColor = CHART_CHROME.light.highlightNeutral
   private readonly views: IPrimitivePaneView[]
 
   constructor() {
@@ -106,6 +116,21 @@ export class ReplayHighlightPrimitive implements ISeriesPrimitive<Time> {
     this.requestUpdate?.()
   }
 
+  setNeutralColor(next: string): void {
+    if (this.neutralColor === next) {
+      return
+    }
+    this.neutralColor = next
+    this.requestUpdate?.()
+  }
+
+  private bandColor(kind: StrategyHighlightKind): string {
+    if (kind === 'neutral') {
+      return this.neutralColor
+    }
+    return HIGHLIGHT_COLORS[kind]
+  }
+
   updateAllViews(): void {
     const chart = this.chart
     if (!chart) {
@@ -126,14 +151,14 @@ export class ReplayHighlightPrimitive implements ISeriesPrimitive<Time> {
     for (const [timeIso, kinds] of grouped) {
       const x = timeScale.timeToCoordinate(timeIso as Time)
       if (kinds.length <= 1) {
-        drawn.push({ x, color: HIGHLIGHT_COLORS[kinds[0] ?? 'neutral'], span: 1, shift: 0 })
+        drawn.push({ x, color: this.bandColor(kinds[0] ?? 'neutral'), span: 1, shift: 0 })
         continue
       }
       kinds.forEach((kind, index) => {
         const span = 1 / kinds.length
         drawn.push({
           x,
-          color: HIGHLIGHT_COLORS[kind],
+          color: this.bandColor(kind),
           span,
           shift: (index + 0.5) * span - 0.5
         })

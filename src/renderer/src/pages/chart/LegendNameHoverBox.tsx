@@ -1,8 +1,8 @@
 import { useState } from 'react'
+import { useChartChrome } from '../../theme/chartChrome'
 import { APP_FONT_STACK } from '../../theme/lwcFont'
 import { LegendActionButtons } from './LegendActionButtons'
 
-const LABEL_COLOR = 'rgba(0, 0, 0, 0.55)'
 const BOX_PAD_X = 6
 const BOX_PAD_Y = 2
 
@@ -19,6 +19,7 @@ export function LegendNameHoverBox({
   onOpenEditor,
   onRemove
 }: LegendNameHoverBoxProps): React.JSX.Element {
+  const chrome = useChartChrome()
   const [hovered, setHovered] = useState(false)
 
   return (
@@ -39,7 +40,7 @@ export function LegendNameHoverBox({
         style={{
           position: 'relative',
           zIndex: 5,
-          color: LABEL_COLOR
+          color: chrome.legendLabel
         }}
       >
         {name}
@@ -57,8 +58,8 @@ export function LegendNameHoverBox({
             paddingLeft: BOX_PAD_X,
             paddingRight: 0,
             borderRadius: 3,
-            backgroundColor: 'rgba(255, 255, 255, 0.96)',
-            boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.16)',
+            backgroundColor: chrome.legendHoverBg,
+            boxShadow: `0 0 0 1px ${chrome.legendHoverBorder}`,
             pointerEvents: 'auto'
           }}
         >

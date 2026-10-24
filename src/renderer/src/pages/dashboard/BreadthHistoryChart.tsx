@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
-import { LineSeries, LineStyle, createChart, type Time } from 'lightweight-charts'
+import { LineSeries, LineStyle, createChart, type IChartApi, type Time } from 'lightweight-charts'
 import type { DashboardBreadthPoint } from '../../../../shared/types/dashboard'
-import { LWC_FONT_STACK } from '../../theme/lwcFont'
+import { lwcChromeOptions, useChartChrome } from '../../theme/chartChrome'
 import { applyLastYearVisibleRange } from './chartView'
 import { DOWN_COLOR, UP_COLOR, yyyymmddToChartTime } from './format'
 import { STAT_CLOSE_COLOR, StatLegend } from './StatCharts'
@@ -34,28 +34,25 @@ interface BreadthHistoryChartProps {
 }
 
 export function BreadthHistoryChart({ series }: BreadthHistoryChartProps): React.JSX.Element {
+  const chrome = useChartChrome()
+  const chromeRef = useRef(chrome)
+  chromeRef.current = chrome
   const containerRef = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<IChartApi | null>(null)
 
   useEffect(() => {
     const el = containerRef.current
     if (!el || series.length === 0) {
       return
     }
+    const initialChrome = chromeRef.current
     const chart = createChart(el, {
       width: el.clientWidth,
       height: el.clientHeight,
-      layout: {
-        background: { color: '#ffffff' },
-        textColor: '#666666',
-        fontFamily: LWC_FONT_STACK
-      },
-      grid: {
-        vertLines: { color: '#f3f3f3' },
-        horzLines: { color: '#f3f3f3' }
-      },
-      rightPriceScale: { borderVisible: false, visible: false },
-      leftPriceScale: { borderVisible: false, visible: true },
-      timeScale: { borderVisible: false, rightOffset: 4 }
+      ...lwcChromeOptions(initialChrome),
+      rightPriceScale: { borderColor: initialChrome.scaleBorder, borderVisible: false, visible: false },
+      leftPriceScale: { borderColor: initialChrome.scaleBorder, borderVisible: false, visible: true },
+      timeScale: { borderColor: initialChrome.scaleBorder, borderVisible: false, rightOffset: 4 }
     })
 
     const limitUp = chart.addSeries(LineSeries, {
@@ -99,6 +96,7 @@ export function BreadthHistoryChart({ series }: BreadthHistoryChartProps): React
       series.map((point) => point.trade_date)
     )
 
+    chartRef.current = chart
     const observer = new ResizeObserver(() => {
       chart.applyOptions({ width: el.clientWidth, height: el.clientHeight })
     })
@@ -106,8 +104,13 @@ export function BreadthHistoryChart({ series }: BreadthHistoryChartProps): React
     return () => {
       observer.disconnect()
       chart.remove()
+      chartRef.current = null
     }
   }, [series])
+
+  useEffect(() => {
+    chartRef.current?.applyOptions(lwcChromeOptions(chrome))
+  }, [chrome])
 
   if (series.length === 0) {
     return (
@@ -117,7 +120,7 @@ export function BreadthHistoryChart({ series }: BreadthHistoryChartProps): React
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          color: '#888',
+          color: chrome.text,
           fontSize: 12
         }}
       >

@@ -3,7 +3,9 @@ import Box from '@mui/material/Box'
 import Popover from '@mui/material/Popover'
 import Slider from '@mui/material/Slider'
 import Typography from '@mui/material/Typography'
+import { useTheme } from '@mui/material/styles'
 import { useMemo, useRef, useState } from 'react'
+import { CHART_ICON_HOVER } from '../../theme/chartChrome'
 import type { LineWidth } from '../../../../shared/types/chartLayout'
 
 const LINE_WIDTHS: LineWidth[] = [1, 2, 3, 4]
@@ -139,6 +141,7 @@ export function StylePalette({
   showWidth?: boolean
   onChange: (next: { color: string; lineWidth?: LineWidth }) => void
 }): React.JSX.Element {
+  const theme = useTheme()
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const hex = useMemo(() => normalizeHex(color), [color])
@@ -165,11 +168,11 @@ export function StylePalette({
           minWidth: 36,
           height: 28,
           px: 0.5,
-          border: '1px solid rgba(0, 0, 0, 0.22)',
+          border: `1px solid ${theme.palette.divider}`,
           borderRadius: '4px',
-          bgcolor: '#fff',
+          bgcolor: theme.palette.background.paper,
           cursor: 'pointer',
-          '&:hover': { borderColor: '#ed6c02' }
+          '&:hover': { borderColor: CHART_ICON_HOVER }
         }}
       >
         <Box
@@ -177,7 +180,7 @@ export function StylePalette({
             width: 18,
             height: 18,
             borderRadius: '3px',
-            border: '1px solid rgba(0, 0, 0, 0.2)',
+            border: `1px solid ${theme.palette.divider}`,
             backgroundImage: CHECKER,
             backgroundSize: '8px 8px',
             backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0'
@@ -185,7 +188,7 @@ export function StylePalette({
         >
           <Box sx={{ width: 1, height: 1, borderRadius: '2px', bgcolor: previewColor(color) }} />
         </Box>
-        {showWidth ? <LineWidthMark width={width} color="#333" /> : null}
+        {showWidth ? <LineWidthMark width={width} color={theme.palette.text.primary} /> : null}
       </Box>
       <Popover
         open={open}

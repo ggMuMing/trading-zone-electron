@@ -5,6 +5,7 @@ import type { SxProps, Theme } from '@mui/material/styles'
 import type { editor as MonacoEditor } from 'monaco-editor'
 import type * as Monaco from 'monaco-editor'
 import { useEffect, useRef } from 'react'
+import { useColorMode } from '../../../theme/colorMode'
 
 const MARKER_OWNER = 'script-try'
 
@@ -27,6 +28,7 @@ export function ScriptSourceEditor({
   readOnly?: boolean
   sx?: SxProps<Theme>
 }): React.JSX.Element {
+  const { mode } = useColorMode()
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
   const monacoRef = useRef<typeof Monaco | null>(null)
 
@@ -61,7 +63,7 @@ export function ScriptSourceEditor({
       <Editor
         height="100%"
         language="python"
-        theme="vs"
+        theme={mode === 'dark' ? 'vs-dark' : 'vs'}
         value={value}
         onChange={(next) => onChange(next ?? '')}
         onMount={handleMount}
