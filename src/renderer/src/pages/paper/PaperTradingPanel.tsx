@@ -26,7 +26,12 @@ import {
   PAPER_DEFAULT_PLAN_NAME,
   PAPER_GROUP_SIZE_MAX
 } from '../../../../shared/paper/paperPlan'
-import { paperArchiveNameError, paperArchiveReturn, paperReplayDurationDays } from '../../../../shared/paper/paperArchive'
+import {
+  paperArchiveNameError,
+  paperArchiveReturn,
+  paperArchiveSymbols,
+  paperReplayDurationDays
+} from '../../../../shared/paper/paperArchive'
 import { isoToYyyymmdd } from '../../../../shared/constants/market'
 import { isChartUniverseIndexCode } from '../../../../shared/constants/chartUniverse'
 import type { PaperArchive } from '../../../../shared/types/paperArchive'
@@ -54,6 +59,16 @@ const choiceLabelSx = {
 
 const tradeFieldSx = [paperFieldSx, { display: 'flex', mt: 1.5, mb: 0.5 }] as const
 const orderFieldSx = [paperFieldSx, { mx: 0, width: '100%', mt: 1.5 }] as const
+const textLinkSx = {
+  border: 0,
+  p: 0,
+  background: 'none',
+  font: 'inherit',
+  fontSize: 'inherit',
+  lineHeight: 'inherit',
+  verticalAlign: 'baseline',
+  cursor: 'pointer'
+} as const
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -560,16 +575,7 @@ function TradeRecords({
                       type="button"
                       underline="hover"
                       onClick={() => onLocate?.(trade)}
-                      sx={{
-                        border: 0,
-                        p: 0,
-                        background: 'none',
-                        font: 'inherit',
-                        fontSize: 'inherit',
-                        lineHeight: 'inherit',
-                        verticalAlign: 'baseline',
-                        cursor: 'pointer'
-                      }}
+                      sx={textLinkSx}
                     >
                       {trade.time}
                     </Link>
@@ -621,7 +627,17 @@ function formatArchiveTime(iso: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-function ArchiveRecords({ records }: { records: readonly PaperArchive[] }): React.JSX.Element {
+function ArchiveRecords({
+  records,
+  selectedId,
+  canOpen,
+  onOpen
+}: {
+  records: readonly PaperArchive[]
+  selectedId: string | null
+  canOpen: boolean
+  onOpen: (record: PaperArchive) => void
+}): React.JSX.Element {
   return (
     <Table
       size="small"
@@ -665,9 +681,18 @@ function ArchiveRecords({ records }: { records: readonly PaperArchive[] }): Reac
         ) : (
           records.map((record) => {
             const rate = paperArchiveReturn(record)
+            const selected = record.id === selectedId
             return (
-              <TableRow key={record.id}>
-                <TableCell>{record.name}</TableCell>
+              <TableRow key={record.id} sx={selected ? { bgcolor: 'action.selected' } : undefined}>
+                <TableCell>
+                  {canOpen ? (
+                    <Link component="button" type="button" underline="hover" onClick={() => onOpen(record)} sx={textLinkSx}>
+                      {record.name}
+                    </Link>
+                  ) : (
+                    record.name
+                  )}
+                </TableCell>
                 <TableCell>{formatArchiveTime(record.archivedAt)}</TableCell>
                 <TableCell>{record.template.name}</TableCell>
                 <TableCell>{record.startedOn}</TableCell>
@@ -771,6 +796,7 @@ export function PaperTradingPanel({
   const [trading, setTrading] = useState(false)
   const [archiveReady, setArchiveReady] = useState(false)
   const [archives, setArchives] = useState<PaperArchive[]>([])
+  const [viewingArchiveId, setViewingArchiveId] = useState<string | null>(null)
   const [archiveOpen, setArchiveOpen] = useState(false)
   const [archiveName, setArchiveName] = useState('')
   const [archiveError, setArchiveError] = useState<string | null>(null)
@@ -788,11 +814,14 @@ export function PaperTradingPanel({
   const templateLocked = trading || pendingStart || breakpoint !== null
   const formDisabled = busy || templateLocked
 
+  const viewingArchive = archives.find((record) => record.id === viewingArchiveId) ?? null
+
   useEffect(() => {
     const code = symbol?.ts_code
+    const source = viewingArchive?.trades ?? trades
     const seen = new Set<string>()
     const markers: Array<{ timeIso: string; side: 'buy' | 'sell' }> = []
-    for (const trade of trades) {
+    for (const trade of source) {
       if (!code || trade.tsCode !== code || !trade.time) {
         continue
       }
@@ -804,7 +833,7 @@ export function PaperTradingPanel({
       markers.push({ timeIso: trade.time, side: trade.side })
     }
     session.setTradeMarkers(markers)
-  }, [trades, symbol, session.setTradeMarkers])
+  }, [viewingArchive, trades, symbol, session.setTradeMarkers])
 
   useEffect(() => {
     let cancelled = false
@@ -1080,6 +1109,7 @@ export function PaperTradingPanel({
     setSessionSymbols([])
     setMaskSymbols(false)
     setHideSessionTime(false)
+    setViewingArchiveId(null)
     sessionRef.current.setReplayRunning(false)
     sessionRef.current.setCutoff(null)
     sessionRef.current.showSymbols([], { maskSymbol: false, hideTime: false })
@@ -1140,6 +1170,7 @@ export function PaperTradingPanel({
   const beginTrading = (): void => {
     setError(null)
     if (breakpoint) {
+      setViewingArchiveId(null)
       session.setCutoff(breakpoint)
       session.setReplayRunning(true)
       setTrading(true)
@@ -1156,6 +1187,9 @@ export function PaperTradingPanel({
       setError(stocksLoading ? '标的列表还在加载' : '没有足够的标的可以开始')
       return
     }
+    setViewingArchiveId(null)
+    session.setReplayRunning(false)
+    session.setCutoff(null)
     const maskSymbol = tradeDraft.symbolSource === 'random' && tradeDraft.hideSymbol
     const hideTime = tradeDraft.startMode === 'random' && tradeDraft.hideStartTime
     setMaskSymbols(maskSymbol)
@@ -1222,6 +1256,7 @@ export function PaperTradingPanel({
           startedOn,
           endedOn,
           durationDays,
+          symbols: sessionSymbols.map((item) => ({ tsCode: item.ts_code, name: item.name })),
           trades
         }
       })
@@ -1252,9 +1287,25 @@ export function PaperTradingPanel({
     setSessionSymbols([])
     setMaskSymbols(false)
     setHideSessionTime(false)
+    setViewingArchiveId(null)
     session.setReplayRunning(false)
     session.setCutoff(null)
     session.showSymbols([], { maskSymbol: false, hideTime: false })
+  }
+
+  const viewArchive = (record: PaperArchive): void => {
+    if (trading || pendingStart || breakpoint !== null || viewingArchiveId === record.id) {
+      return
+    }
+    const picked = paperArchiveSymbols(record).map(
+      (ref) => stocks.find((item) => item.ts_code === ref.tsCode) ?? stockFromRef(ref)
+    )
+    const maskSymbol = record.template.symbolSource === 'random' && record.template.hideSymbol
+    const hideTime = record.template.startMode === 'random' && record.template.hideStartTime
+    setViewingArchiveId(record.id)
+    session.showSymbols(picked, { maskSymbol, hideTime })
+    session.setCutoff(record.endedOn)
+    session.setReplayRunning(false)
   }
 
   const submitBuy = (): void => {
@@ -1881,8 +1932,42 @@ export function PaperTradingPanel({
           </Box>
         </Box>
       ) : (
-        <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-          <ArchiveRecords records={archives} />
+        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+            <ArchiveRecords
+              records={archives}
+              selectedId={viewingArchiveId}
+              canOpen={!trading && !pendingStart && breakpoint === null}
+              onOpen={viewArchive}
+            />
+          </Box>
+          <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', borderTop: 1, borderColor: 'divider' }}>
+            <Box sx={{ px: 1, pt: 1 }}>
+              <SectionTitle>交易记录</SectionTitle>
+            </Box>
+            {viewingArchive ? (
+              <TradeRecords
+                trades={viewingArchive.trades}
+                symbolAlias={
+                  viewingArchive.template.symbolSource === 'random' && viewingArchive.template.hideSymbol
+                    ? session.symbolAlias
+                    : new Map()
+                }
+                hideTime={
+                  viewingArchive.template.startMode === 'random' && viewingArchive.template.hideStartTime
+                }
+                onLocate={(trade) => {
+                  if (trade.time) {
+                    session.locateTrade(trade.tsCode, trade.time)
+                  }
+                }}
+              />
+            ) : (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
+                选择一条模拟记录
+              </Typography>
+            )}
+          </Box>
         </Box>
       )}
     </Box>

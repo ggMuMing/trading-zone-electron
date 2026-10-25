@@ -1,4 +1,4 @@
-import type { PaperPlanDraft } from './paperPlan'
+import type { PaperPlanDraft, PaperSymbolRef } from './paperPlan'
 
 /** 归档时的资金快照。结算资金是可用资金，总资产含证券市值。 */
 export interface PaperArchiveCapital {
@@ -30,6 +30,8 @@ export interface PaperArchiveDraft {
   endedOn: string
   /** 截止日减开始日的日历天数。 */
   durationDays: number
+  /** 归档瞬间左侧标的。旧记录没有该字段时为空数组。 */
+  symbols: PaperSymbolRef[]
   trades: PaperArchiveTrade[]
 }
 

@@ -1,3 +1,4 @@
+import type { PaperSymbolRef } from '../types/paperPlan'
 import { PAPER_PLAN_NAME_MAX, readPaperPlanDraft } from './paperPlan'
 import type { PaperArchive, PaperArchiveCapital, PaperArchiveDraft, PaperArchiveTrade } from '../types/paperArchive'
 
@@ -31,8 +32,29 @@ export function readPaperArchiveDraft(value: unknown): PaperArchiveDraft {
     startedOn: readIsoDate(raw.startedOn, '开始时间无效'),
     endedOn: readIsoDate(raw.endedOn, '截止时间无效'),
     durationDays: readDuration(raw.startedOn, raw.endedOn, raw.durationDays),
+    symbols: readSymbols(raw.symbols),
     trades: readTrades(raw.trades)
   }
+}
+
+/** 查看归档时还原左侧标的。有归档列表用列表；否则指定标的用模板，随机标的用成交里首次出现的代码。 */
+export function paperArchiveSymbols(record: Pick<PaperArchive, 'symbols' | 'template' | 'trades'>): PaperSymbolRef[] {
+  if (record.symbols.length > 0) {
+    return record.symbols
+  }
+  if (record.template.symbolSource === 'specified') {
+    return record.template.symbols
+  }
+  const seen = new Set<string>()
+  const refs: PaperSymbolRef[] = []
+  for (const trade of record.trades) {
+    if (!trade.tsCode || seen.has(trade.tsCode)) {
+      continue
+    }
+    seen.add(trade.tsCode)
+    refs.push({ tsCode: trade.tsCode, name: trade.name })
+  }
+  return refs
 }
 
 export function paperArchiveReturn(record: Pick<PaperArchive, 'template' | 'capital'>): number | null {
@@ -83,6 +105,25 @@ function readCapital(value: unknown): PaperArchiveCapital {
     throw new Error('资金数据无效')
   }
   return { totalAssets, marketValue, pnl, available }
+}
+
+function readSymbols(value: unknown): PaperSymbolRef[] {
+  if (value === undefined) {
+    return []
+  }
+  if (!Array.isArray(value)) {
+    throw new Error('标的列表无效')
+  }
+  return value.map((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error('标的列表无效')
+    }
+    const raw = item as Record<string, unknown>
+    if (typeof raw.tsCode !== 'string' || raw.tsCode.trim().length === 0 || typeof raw.name !== 'string') {
+      throw new Error('标的列表无效')
+    }
+    return { tsCode: raw.tsCode.trim(), name: raw.name }
+  })
 }
 
 function readTrades(value: unknown): PaperArchiveTrade[] {
