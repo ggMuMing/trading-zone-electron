@@ -17,6 +17,7 @@ from worker.indicators.model import (
     PlotStyleField,
 )
 from worker.plot.builders import PlotFragment, histogram, line, overlay
+from worker.plot.models import ScaleRange
 
 NumberLike = float | int | None
 DEFAULT_LINE_COLOR = "#2962FF"
@@ -96,6 +97,7 @@ class ExecContext:
     overlay: bool
     styles: dict[str, dict[str, Any]]
     plots: list[PlotDecl] = field(default_factory=list)
+    scale: ScaleRange | None = None
 
 
 _ctx: ContextVar[ExecContext | None] = ContextVar("indicator_exec", default=None)
@@ -268,6 +270,33 @@ def _color(value: Any, *, fallback: str | None) -> str | None:
     return value
 
 
+def _finite_bound(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    if number != number or number in (float("inf"), float("-inf")):
+        return None
+    return number
+
+
+def yrange(minimum: float, maximum: float) -> None:
+    """Pin a subplot price scale to [minimum, maximum]. Main-pane overlays cannot call this."""
+    ctx = _ctx.get()
+    if ctx is None:
+        raise RuntimeError("yrange() 只能在 compute() 里调用")
+    if ctx.overlay:
+        raise ValueError("yrange() 只能用于副图指标，overlay 必须为 False")
+    if ctx.scale is not None:
+        raise ValueError("yrange() 只能调用一次")
+    low = _finite_bound(minimum)
+    high = _finite_bound(maximum)
+    if low is None or high is None:
+        raise ValueError("yrange() 的上下界必须是有限数字")
+    if low >= high:
+        raise ValueError("yrange() 的下界必须小于上界")
+    ctx.scale = ScaleRange(min=low, max=high)
+
+
 def plot(
     series: Sequence[NumberLike],
     title: str,
@@ -363,7 +392,13 @@ def fragment_from_context(ctx: ExecContext) -> PlotFragment:
                 pane=pane,
             )
         )
-    return overlay(*parts)
+    fragment = overlay(*parts)
+    if ctx.scale is None:
+        return fragment
+    return PlotFragment(
+        primitives=[item.model_copy(update={"scale": ctx.scale}) for item in fragment.primitives],
+        series=dict(fragment.series),
+    )
 
 
 def _enter(ctx: ExecContext) -> Token[ExecContext | None]:

@@ -91,23 +91,23 @@ export function PriceLegend({
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
         <span>{bar.date}</span>
         <span style={{ color: chrome.legendLabel }}>
-          O<span style={{ color: ocColor }}>{formatNumber(bar.open)}</span>
+          开<span style={{ color: ocColor }}>{formatNumber(bar.open)}</span>
         </span>
         <span style={{ color: chrome.legendLabel }}>
-          H<span style={{ color: ocColor }}>{formatNumber(bar.high)}</span>
+          高<span style={{ color: ocColor }}>{formatNumber(bar.high)}</span>
         </span>
         <span style={{ color: chrome.legendLabel }}>
-          L<span style={{ color: ocColor }}>{formatNumber(bar.low)}</span>
+          低<span style={{ color: ocColor }}>{formatNumber(bar.low)}</span>
         </span>
         <span style={{ color: chrome.legendLabel }}>
-          C<span style={{ color: ocColor }}>{formatNumber(bar.close)}</span>
+          收<span style={{ color: ocColor }}>{formatNumber(bar.close)}</span>
         </span>
         <span style={{ color: ocColor }}>
           {`${sign}${formatNumber(diff)} (${sign}${formatNumber(pct)}%)`}
         </span>
-        <span style={{ color: chrome.legendLabel }}>VOL: {formatInt(bar.vol)}</span>
+        <span style={{ color: chrome.legendLabel }}>成交量: {formatInt(bar.vol)}</span>
         <span style={{ color: chrome.legendLabel }}>
-          AMT: {formatNumber((bar.amount ?? 0) / 100000)}亿
+          成交额: {formatNumber((bar.amount ?? 0) / 100000)}亿
         </span>
       </div>
       {overlays.length > 0 ? (

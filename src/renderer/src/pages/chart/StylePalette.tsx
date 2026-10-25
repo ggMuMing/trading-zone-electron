@@ -134,12 +134,17 @@ export function StylePalette({
   color,
   lineWidth,
   showWidth = false,
-  onChange
+  onChange,
+  anchorEl: anchorElProp,
+  onClose
 }: {
   color: string
   lineWidth?: LineWidth
   showWidth?: boolean
   onChange: (next: { color: string; lineWidth?: LineWidth }) => void
+  /** 由外部按钮打开时传入。不传则使用组件自带的色块按钮。 */
+  anchorEl?: HTMLElement | null
+  onClose?: () => void
 }): React.JSX.Element {
   const theme = useTheme()
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
@@ -147,7 +152,9 @@ export function StylePalette({
   const hex = useMemo(() => normalizeHex(color), [color])
   const opacity = useMemo(() => parseOpacity(color), [color])
   const width = lineWidth === 2 || lineWidth === 3 || lineWidth === 4 ? lineWidth : 1
-  const open = Boolean(anchor)
+  const controlled = onClose !== undefined
+  const anchorEl = controlled ? (anchorElProp ?? null) : anchor
+  const open = Boolean(anchorEl)
 
   const commitColor = (nextHex: string, nextOpacity = opacity): void => {
     onChange({ color: withOpacity(nextHex, nextOpacity), lineWidth: showWidth ? width : undefined })
@@ -155,6 +162,7 @@ export function StylePalette({
 
   return (
     <>
+      {controlled ? null : (
       <Box
         component="button"
         type="button"
@@ -190,12 +198,13 @@ export function StylePalette({
         </Box>
         {showWidth ? <LineWidthMark width={width} color={theme.palette.text.primary} /> : null}
       </Box>
+      )}
       <Popover
         open={open}
-        anchorEl={anchor}
-        onClose={() => setAnchor(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        anchorEl={anchorEl}
+        onClose={() => (controlled ? onClose() : setAnchor(null))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: controlled ? 'left' : 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: controlled ? 'left' : 'right' }}
         slotProps={{
           paper: {
             sx: {

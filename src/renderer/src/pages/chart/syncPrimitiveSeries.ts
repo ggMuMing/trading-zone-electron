@@ -6,13 +6,17 @@ import {
   type Time
 } from 'lightweight-charts'
 import { instanceIdOf, localNameOf } from '../../../../shared/chart/legendLabel'
-import type { PlotPrimitive, ValuePoint } from '../../../../shared/types/chart'
+import type { PlotPrimitive, ScaleRange, ValuePoint } from '../../../../shared/types/chart'
 import type { ChartLayout } from '../../../../shared/types/chartLayout'
 
 export const DEFAULT_LINE_COLOR = '#2962FF'
 export const DEFAULT_HISTOGRAM_COLOR = '#26a69a'
 export const MAIN_PANE_STRETCH_FACTOR = 3
 export const SUB_PANE_STRETCH_FACTOR = 1
+
+/** lightweight-charts default subpane margins. A fixed yrange uses 0 so the axis stays inside the interval. */
+const DEFAULT_SUBPANE_MARGINS = { top: 0.2, bottom: 0.1 }
+const FIXED_SCALE_MARGINS = { top: 0, bottom: 0 }
 
 export type PrimitiveSeries = ISeriesApi<'Line'> | ISeriesApi<'Histogram'>
 
@@ -206,6 +210,52 @@ export function addPrimitiveSeries(
   )
 }
 
+function sameScale(left: ScaleRange | undefined, right: ScaleRange | undefined): boolean {
+  if (left === undefined || right === undefined) {
+    return left === undefined && right === undefined
+  }
+  return left.min === right.min && left.max === right.max
+}
+
+/** Pin subplot axes declared with yrange(); other subplots keep the default autoscale margins. */
+function applyPaneScales(seriesById: Map<string, PrimitiveSeries>, primitives: PlotPrimitive[]): void {
+  const grouped = new Map<string, PlotPrimitive[]>()
+  for (const primitive of primitives) {
+    if (primitive.pane === 'main') {
+      continue
+    }
+    const list = grouped.get(primitive.pane) ?? []
+    list.push(primitive)
+    grouped.set(primitive.pane, list)
+  }
+
+  for (const items of grouped.values()) {
+    const scale = items[0]?.scale
+    const anchor = seriesById.get(items[0].id)
+    if (anchor && items.every((item) => sameScale(item.scale, scale))) {
+      anchor.priceScale().applyOptions(
+        scale
+          ? { autoScale: true, scaleMargins: FIXED_SCALE_MARGINS }
+          : { scaleMargins: DEFAULT_SUBPANE_MARGINS }
+      )
+    }
+    for (const item of items) {
+      const series = seriesById.get(item.id)
+      if (!series) {
+        continue
+      }
+      const itemScale = item.scale
+      series.applyOptions({
+        autoscaleInfoProvider: itemScale
+          ? () => ({
+              priceRange: { minValue: itemScale.min, maxValue: itemScale.max }
+            })
+          : (original) => original()
+      })
+    }
+  }
+}
+
 function removeEmptySubPanes(chart: IChartApi): void {
   for (let i = chart.panes().length - 1; i >= 1; i -= 1) {
     const pane = chart.panes()[i]
@@ -278,6 +328,7 @@ export function syncPrimitiveSeries({
 
   removeEmptySubPanes(chart)
   alignSubpaneOrder(chart, subpanes, seriesById, nextPrimitives)
+  applyPaneScales(seriesById, nextPrimitives)
 }
 
 export function computeSubpaneTops(

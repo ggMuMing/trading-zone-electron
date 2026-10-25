@@ -5,6 +5,7 @@ import type { PaperArchive, PaperArchiveDraft } from '../shared/types/paperArchi
 import type { PaperPlan, PaperPlanDraft } from '../shared/types/paperPlan'
 import type { MarketClearResult, StrategyListResult, StrategyRunParams, StrategyRunResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
 import type { ChartInput } from '../shared/types/chart'
+import type { ChartDrawing } from '../shared/types/chartDrawing'
 import type { ChartLayout, LayoutItemParams, LayoutReorderDirection } from '../shared/types/chartLayout'
 import type { IndicatorScript, ScriptTryParams, ScriptTryResult } from '../shared/types/indicatorScript'
 import type {
@@ -91,6 +92,12 @@ const api = {
   chart: {
     build: (params: MarketQueryParams): Promise<ChartInput | null> =>
       ipcRenderer.invoke('chart:build', params)
+  },
+  chartDrawing: {
+    list: (params: { tsCode: string }): Promise<ChartDrawing[]> =>
+      ipcRenderer.invoke('chartDrawing:list', params),
+    save: (params: { tsCode: string; drawings: ChartDrawing[] }): Promise<ChartDrawing[]> =>
+      ipcRenderer.invoke('chartDrawing:save', params)
   },
   chartLayout: {
     get: (): Promise<ChartLayout> => ipcRenderer.invoke('chartLayout:get'),

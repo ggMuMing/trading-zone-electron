@@ -88,6 +88,15 @@
             "color": { "type": "string", "minLength": 1 },
             "lineWidth": { "type": "integer", "minimum": 1, "maximum": 4 }
           }
+        },
+        "scale": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["min", "max"],
+          "properties": {
+            "min": { "type": "number" },
+            "max": { "type": "number" }
+          }
         }
       }
     }

@@ -362,6 +362,90 @@ def main() -> int:
     ma_try = try_source(MA_SOURCE, ma_params, ohlcv)
     assert ma_try.get("ok") is True, ma_try
     print("try_source example MA: ok")
+
+    wr_source = (_ROOT / "worker" / "indicators" / "examples" / "wr.py").read_text(encoding="utf-8")
+    wr_fragment = run_script(wr_source, ohlcv, {})
+    assert [item.id for item in wr_fragment.primitives] == ["WR"], wr_fragment
+    wr_scale = wr_fragment.primitives[0].scale
+    assert wr_scale is not None and wr_scale.min == -100 and wr_scale.max == 0, wr_fragment
+    assert wr_fragment.primitives[0].pane == "sub"
+    assert wr_fragment.series["WR"], "WR series must contain values"
+    assert all(-100 <= point.value <= 0 for point in wr_fragment.series["WR"])
+    wr_chart = to_chart_input(bars, [("wr", wr_fragment)])
+    composed = wr_chart.primitives[0]
+    assert composed.id == "wr:WR" and composed.pane == "wr"
+    assert composed.scale is not None and composed.scale.min == -100 and composed.scale.max == 0
+    print("run_script WR yrange: ok")
+
+    expect_error(
+        "yrange on overlay",
+        lambda: run_script(
+            "class Bad(Indicator):\n"
+            "    key = 'bad'\n"
+            "    title = 'Bad'\n"
+            "    overlay = True\n"
+            "    def compute(self, ohlcv):\n"
+            "        yrange(0, 1)\n"
+            "        plot(ohlcv.close, 'C')\n"
+            "indicator = Bad\n",
+            ohlcv,
+            {},
+        ),
+    )
+    expect_error(
+        "yrange twice",
+        lambda: run_script(
+            "class Bad(Indicator):\n"
+            "    key = 'bad'\n"
+            "    title = 'Bad'\n"
+            "    overlay = False\n"
+            "    def compute(self, ohlcv):\n"
+            "        yrange(-100, 0)\n"
+            "        yrange(-80, 0)\n"
+            "        plot(ohlcv.close, 'C')\n"
+            "indicator = Bad\n",
+            ohlcv,
+            {},
+        ),
+    )
+    expect_error(
+        "yrange inverted",
+        lambda: run_script(
+            "class Bad(Indicator):\n"
+            "    key = 'bad'\n"
+            "    title = 'Bad'\n"
+            "    overlay = False\n"
+            "    def compute(self, ohlcv):\n"
+            "        yrange(0, -100)\n"
+            "        plot(ohlcv.close, 'C')\n"
+            "indicator = Bad\n",
+            ohlcv,
+            {},
+        ),
+    )
+
+    ranged = wr_chart.model_dump(exclude_none=True)
+    ranged["primitives"][0]["pane"] = "main"
+    try:
+        validate_chart_input(ranged)
+        print("FAIL: expected main scale rejection")
+        return 1
+    except ChartInputValidationError as exc:
+        assert any("pane main cannot set a scale" in issue["message"] for issue in exc.issues)
+        print("validate rejects main scale: ok")
+
+    conflict = wr_chart.model_dump(exclude_none=True)
+    conflict["primitives"].append(
+        {"id": "other", "pane": "wr", "kind": "line", "scale": {"min": 0, "max": 100}}
+    )
+    conflict["series"]["other"] = [{"time": wr_chart.timeDomain[0], "value": 1.0}]
+    try:
+        validate_chart_input(conflict)
+        print("FAIL: expected conflicting scale rejection")
+        return 1
+    except ChartInputValidationError as exc:
+        assert any("must match other series" in issue["message"] for issue in exc.issues)
+        print("validate rejects conflicting pane scale: ok")
     return 0
 
 

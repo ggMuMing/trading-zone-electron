@@ -17,6 +17,13 @@ class PlotPrimitiveStyle(BaseModel):
     lineWidth: int | None = Field(default=None, ge=1, le=4)
 
 
+class ScaleRange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    min: float
+    max: float
+
+
 class PlotPrimitive(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -24,6 +31,7 @@ class PlotPrimitive(BaseModel):
     pane: str = Field(min_length=1)
     kind: PlotKind
     style: PlotPrimitiveStyle | None = None
+    scale: ScaleRange | None = None
 
 
 class CandlePoint(BaseModel):

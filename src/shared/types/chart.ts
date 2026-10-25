@@ -14,11 +14,18 @@ export interface PlotPrimitiveStyle {
   lineWidth?: number
 }
 
+/** Fixed subplot price range. Absent means the pane autoscales to visible data. */
+export interface ScaleRange {
+  min: number
+  max: number
+}
+
 export interface PlotPrimitive {
   id: string
   pane: string
   kind: PlotKind
   style?: PlotPrimitiveStyle
+  scale?: ScaleRange
 }
 
 export interface CandlePoint {

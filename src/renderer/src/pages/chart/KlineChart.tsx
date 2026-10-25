@@ -2,9 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   CandlestickSeries,
+  CrosshairMode,
   HistogramSeries,
   createChart,
   createSeriesMarkers,
+  type DeepPartial,
+  type ChartOptions,
   type IChartApi,
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
@@ -19,6 +22,12 @@ import type {
   VolumePoint
 } from '../../../../shared/types/chart'
 import type { ChartLayout } from '../../../../shared/types/chartLayout'
+import {
+  DEFAULT_DRAWING_STROKE,
+  type ChartDrawing,
+  type DrawingStroke,
+  type DrawingTool
+} from '../../../../shared/types/chartDrawing'
 import type { IndicatorScript } from '../../../../shared/types/indicatorScript'
 import {
   instanceIdOf,
@@ -26,12 +35,14 @@ import {
   legendScriptTitle,
   subplotLegendTitle
 } from '../../../../shared/chart/legendLabel'
-import { lwcChromeOptions, useChartChrome } from '../../theme/chartChrome'
+import { lwcChromeOptions, useChartChrome, type ChartChrome } from '../../theme/chartChrome'
 import { DOWN_COLOR, UP_COLOR, VOLUME_COLOR } from '../dashboard/format'
 import { PaneCornerActions } from './PaneCornerActions'
 import { PriceLegend, type PriceLegendBar, type PriceLegendOverlayGroup } from './PriceLegend'
 import { SubpaneLegend, type SubpaneLegendPane } from './SubpaneLegend'
 import { ReplayHighlightPrimitive } from './ReplayHighlightPrimitive'
+import { DrawingPrimitive } from './drawings/DrawingPrimitive'
+import { useDrawingInteraction } from './drawings/useDrawingInteraction'
 import type { StrategyChartOverlay } from './strategyOverlay'
 import {
   DEFAULT_HISTOGRAM_COLOR,
@@ -63,6 +74,29 @@ function overlayMarkers(
       shape: marker.side === 'buy' ? 'arrowUp' : 'arrowDown',
       color: marker.side === 'buy' ? UP_COLOR : DOWN_COLOR
     }))
+}
+
+const DRAWING_CURSOR_STYLE_ID = 'tz-drawing-cursor-style'
+
+function ensureDrawingCursorStyle(): void {
+  if (document.getElementById(DRAWING_CURSOR_STYLE_ID)) {
+    return
+  }
+  const style = document.createElement('style')
+  style.id = DRAWING_CURSOR_STYLE_ID
+  style.textContent = '.tz-drawing-cursor, .tz-drawing-cursor * { cursor: crosshair !important; }'
+  document.head.appendChild(style)
+}
+
+function klineChromeOptions(chrome: ChartChrome): DeepPartial<ChartOptions> {
+  return {
+    ...lwcChromeOptions(chrome),
+    crosshair: {
+      mode: CrosshairMode.Normal,
+      vertLine: { color: chrome.crosshair, labelBackgroundColor: chrome.crosshairLabel },
+      horzLine: { color: chrome.crosshair, labelBackgroundColor: chrome.crosshairLabel }
+    }
+  }
 }
 
 function centerOnTime(chart: IChartApi, timeIso: string): void {
@@ -283,6 +317,15 @@ interface KlineChartProps {
   onMovePane?: (instanceId: string, direction: 'up' | 'down') => void
   hideTimeAxis?: boolean
   hidePriceLegend?: boolean
+  tsCode?: string | null
+  drawings?: ChartDrawing[]
+  drawingStroke?: DrawingStroke
+  drawingTool?: DrawingTool | null
+  selectedDrawingId?: string | null
+  drawingSnap?: boolean
+  onDrawingsChange?: (next: ChartDrawing[]) => void
+  onDrawingToolChange?: (tool: DrawingTool | null) => void
+  onSelectedDrawingChange?: (id: string | null) => void
 }
 
 export function KlineChart({
@@ -297,7 +340,16 @@ export function KlineChart({
   onRemove,
   onMovePane,
   hideTimeAxis = false,
-  hidePriceLegend = false
+  hidePriceLegend = false,
+  tsCode = null,
+  drawings = [],
+  drawingStroke = DEFAULT_DRAWING_STROKE,
+  drawingTool = null,
+  selectedDrawingId = null,
+  drawingSnap = true,
+  onDrawingsChange,
+  onDrawingToolChange,
+  onSelectedDrawingChange
 }: KlineChartProps): React.JSX.Element {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -315,6 +367,7 @@ export function KlineChart({
   const overlayRef = useRef(overlay)
   const markersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
   const highlightRef = useRef<ReplayHighlightPrimitive | null>(null)
+  const drawingPrimitiveRef = useRef<DrawingPrimitive | null>(null)
   const chrome = useChartChrome()
   const chromeRef = useRef(chrome)
   chromeRef.current = chrome
@@ -372,7 +425,7 @@ export function KlineChart({
     const chart = createChart(el, {
       width: el.clientWidth,
       height: el.clientHeight,
-      ...lwcChromeOptions(initialChrome),
+      ...klineChromeOptions(initialChrome),
       timeScale: {
         borderColor: initialChrome.scaleBorder,
         rightOffset: 12,
@@ -425,9 +478,12 @@ export function KlineChart({
     const markersApi = createSeriesMarkers(candle, [])
     const highlight = new ReplayHighlightPrimitive()
     highlight.setNeutralColor(initialChrome.highlightNeutral)
+    const drawingPrimitive = new DrawingPrimitive()
     candle.attachPrimitive(highlight)
+    candle.attachPrimitive(drawingPrimitive)
     markersApiRef.current = markersApi
     highlightRef.current = highlight
+    drawingPrimitiveRef.current = drawingPrimitive
 
     candle.setData(toCandleData(initial.candle))
     volume.setData(toVolumeData(initial.volume))
@@ -558,6 +614,7 @@ export function KlineChart({
       rebindPaneLayoutObserverRef.current = null
       chart.unsubscribeCrosshairMove(onCrosshairMove)
       candle.detachPrimitive(highlight)
+      candle.detachPrimitive(drawingPrimitive)
       markersApi.detach()
       chart.remove()
       chartRef.current = null
@@ -565,13 +622,35 @@ export function KlineChart({
       volumeRef.current = null
       markersApiRef.current = null
       highlightRef.current = null
+      drawingPrimitiveRef.current = null
       primitiveSeriesRef.current = new Map()
       primitivesRef.current = []
     }
   }, [])
 
+  useDrawingInteraction({
+    chartRef,
+    candleRef,
+    containerRef,
+    candlesRef: candleByTimeRef,
+    primitiveRef: drawingPrimitiveRef,
+    tsCode,
+    drawings,
+    stroke: drawingStroke,
+    tool: drawingTool,
+    selectedId: selectedDrawingId,
+    snapEnabled: drawingSnap,
+    onDrawingsChange: onDrawingsChange ?? (() => undefined),
+    onToolChange: onDrawingToolChange ?? (() => undefined),
+    onSelectedChange: onSelectedDrawingChange ?? (() => undefined)
+  })
+
   useEffect(() => {
-    chartRef.current?.applyOptions(lwcChromeOptions(chrome))
+    ensureDrawingCursorStyle()
+  }, [])
+
+  useEffect(() => {
+    chartRef.current?.applyOptions(klineChromeOptions(chrome))
     highlightRef.current?.setNeutralColor(chrome.highlightNeutral)
   }, [chrome])
 
@@ -675,7 +754,11 @@ export function KlineChart({
       ref={wrapperRef}
       style={{ position: 'relative', width: '100%', height: '100%', minHeight: 0 }}
     >
-      <div ref={containerRef} style={{ width: '100%', height: '100%', minHeight: 0 }} />
+      <div
+        ref={containerRef}
+        className={drawingTool ? 'tz-drawing-cursor' : undefined}
+        style={{ width: '100%', height: '100%', minHeight: 0 }}
+      />
       <PriceLegend
         bar={hidePriceLegend ? null : (hoverBar ?? defaultBar)}
         overlays={hidePriceLegend ? [] : overlays}

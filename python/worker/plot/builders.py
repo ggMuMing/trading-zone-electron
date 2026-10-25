@@ -26,15 +26,7 @@ class PlotFragment:
 
     def with_pane(self, pane: str) -> PlotFragment:
         return PlotFragment(
-            primitives=[
-                PlotPrimitive(
-                    id=item.id,
-                    pane=pane,
-                    kind=item.kind,
-                    style=item.style,
-                )
-                for item in self.primitives
-            ],
+            primitives=[item.model_copy(update={"pane": pane}) for item in self.primitives],
             series=dict(self.series),
         )
 

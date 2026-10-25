@@ -17,6 +17,7 @@ import type {
 } from '../../shared/types/market'
 import { parseIndicatorManifest, assertParams, normalizeParams, defaultScriptParams, isLegacyIndicatorSource } from '../../shared/chart/indicatorScript'
 import type { ChartInput } from '../../shared/types/chart'
+import { parseChartDrawings, type ChartDrawing } from '../../shared/types/chartDrawing'
 import type {
   ChartLayout,
   ChartLayoutItem,
@@ -66,6 +67,7 @@ import type {
 } from '../../shared/types/pipeline'
 import { pythonBridge, readExampleMaSource } from '../bridge/pythonBridge'
 import { getTushareToken } from '../config/appConfig'
+import { chartDrawingRepository } from '../db/chartDrawingRepository'
 import { chartLayoutRepository } from '../db/chartLayoutRepository'
 import { indicatorScriptRepository } from '../db/indicatorScriptRepository'
 import { marketPoolRepository } from '../db/marketPoolRepository'
@@ -576,6 +578,14 @@ export const applicationService = {
     return withNormalizedScriptParams(
       chartLayoutRepository.swapSortOrder(item.id, subplotItems[neighborIndex].id)
     )
+  },
+
+  listChartDrawings(tsCode: string): ChartDrawing[] {
+    return chartDrawingRepository.list(tsCode)
+  },
+
+  saveChartDrawings(tsCode: string, raw: unknown): ChartDrawing[] {
+    return chartDrawingRepository.save(tsCode, parseChartDrawings(raw))
   },
 
   async listIndicatorScripts(): Promise<IndicatorScript[]> {

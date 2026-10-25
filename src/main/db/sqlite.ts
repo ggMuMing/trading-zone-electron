@@ -99,6 +99,16 @@ CREATE TABLE IF NOT EXISTS paper_archive (
 );
 
 CREATE INDEX IF NOT EXISTS idx_paper_archive_archived ON paper_archive(archived_at);
+
+CREATE TABLE IF NOT EXISTS chart_drawing (
+  ts_code TEXT NOT NULL,
+  id      TEXT NOT NULL,
+  kind    TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  PRIMARY KEY (ts_code, id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chart_drawing_code ON chart_drawing(ts_code);
 `
 
 function rebuildPaperArchiveIfNeeded(database: Database.Database): void {

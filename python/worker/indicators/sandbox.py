@@ -18,7 +18,7 @@ if str(PYTHON_ROOT) not in sys.path:
 
 from worker.indicators.base import ema, sma
 from worker.indicators.model import Indicator, IndicatorManifest, Ohlcv
-from worker.indicators.runtime import dummy_ohlcv, execute_indicator, input, plot
+from worker.indicators.runtime import dummy_ohlcv, execute_indicator, input, plot, yrange
 from worker.plot import PlotFragment
 from worker.plot.models import CandlePoint, PlotPrimitive, ValuePoint, VolumePoint
 
@@ -128,6 +128,7 @@ def load_indicator_class(source: str) -> type[Indicator]:
         "Ohlcv": Ohlcv,
         "input": input,
         "plot": plot,
+        "yrange": yrange,
         "sma": sma,
         "ema": ema,
         "ClassVar": ClassVar,

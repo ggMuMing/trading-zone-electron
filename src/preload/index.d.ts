@@ -4,6 +4,7 @@ import type { PaperArchive, PaperArchiveDraft } from '../shared/types/paperArchi
 import type { PaperPlan, PaperPlanDraft } from '../shared/types/paperPlan'
 import type { MarketClearResult, StrategyListResult, StrategyRunParams, StrategyRunResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
 import type { ChartInput } from '../shared/types/chart'
+import type { ChartDrawing } from '../shared/types/chartDrawing'
 import type { ChartLayout, LayoutItemParams, LayoutReorderDirection } from '../shared/types/chartLayout'
 import type { IndicatorScript, ScriptTryParams, ScriptTryResult } from '../shared/types/indicatorScript'
 import type {
@@ -70,6 +71,10 @@ export interface AppApi {
   }
   chart: {
     build: (params: MarketQueryParams) => Promise<ChartInput | null>
+  }
+  chartDrawing: {
+    list: (params: { tsCode: string }) => Promise<ChartDrawing[]>
+    save: (params: { tsCode: string; drawings: ChartDrawing[] }) => Promise<ChartDrawing[]>
   }
   chartLayout: {
     get: () => Promise<ChartLayout>

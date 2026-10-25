@@ -6,6 +6,7 @@ import {
   type PlotKind,
   type PlotPrimitive,
   type PlotPrimitiveStyle,
+  type ScaleRange,
   type ValuePoint,
   type VolumePoint
 } from '../types/chart'
@@ -187,12 +188,38 @@ function readValuePoint(raw: unknown, path: string, issues: ChartInputIssue[]): 
   return point
 }
 
+function readScale(raw: unknown, path: string, issues: ChartInputIssue[]): ScaleRange | undefined {
+  if (raw === undefined) {
+    return undefined
+  }
+  if (!isRecord(raw)) {
+    push(issues, path, 'scale must be an object')
+    return undefined
+  }
+  const extra = Object.keys(raw).filter((key) => key !== 'min' && key !== 'max')
+  if (extra.length > 0) {
+    push(issues, path, `unexpected keys: ${extra.join(', ')}`)
+  }
+  if (!isFiniteNumber(raw.min) || !isFiniteNumber(raw.max) || raw.min >= raw.max) {
+    push(issues, path, 'min must be a finite number less than max')
+    return undefined
+  }
+  return { min: raw.min, max: raw.max }
+}
+
+function sameScale(left: ScaleRange | undefined, right: ScaleRange | undefined): boolean {
+  if (left === undefined || right === undefined) {
+    return left === undefined && right === undefined
+  }
+  return left.min === right.min && left.max === right.max
+}
+
 function readPrimitive(raw: unknown, path: string, issues: ChartInputIssue[]): PlotPrimitive | null {
   if (!isRecord(raw)) {
     push(issues, path, 'must be an object')
     return null
   }
-  const extra = Object.keys(raw).filter((key) => !['id', 'pane', 'kind', 'style'].includes(key))
+  const extra = Object.keys(raw).filter((key) => !['id', 'pane', 'kind', 'style', 'scale'].includes(key))
   if (extra.length > 0) {
     push(issues, path, `unexpected keys: ${extra.join(', ')}`)
   }
@@ -206,6 +233,7 @@ function readPrimitive(raw: unknown, path: string, issues: ChartInputIssue[]): P
     push(issues, `${path}.kind`, 'must be line or histogram')
   }
   const style = readStyle(raw.style, `${path}.style`, issues)
+  const scale = readScale(raw.scale, `${path}.scale`, issues)
   if (typeof raw.id !== 'string' || raw.id.length === 0 || typeof raw.pane !== 'string' || raw.pane.length === 0) {
     return null
   }
@@ -222,6 +250,9 @@ function readPrimitive(raw: unknown, path: string, issues: ChartInputIssue[]): P
   }
   if (style && Object.keys(style).length > 0) {
     primitive.style = style
+  }
+  if (scale) {
+    primitive.scale = scale
   }
   return primitive
 }
@@ -311,6 +342,7 @@ export function validateChartInput(input: unknown): ChartInputValidation {
 
   const primitives: PlotPrimitive[] = []
   const ids = new Set<string>()
+  const paneScales = new Map<string, ScaleRange | undefined>()
   for (let i = 0; i < input.primitives.length; i += 1) {
     const primitive = readPrimitive(input.primitives[i], `primitives[${i}]`, issues)
     if (!primitive) {
@@ -320,6 +352,14 @@ export function validateChartInput(input: unknown): ChartInputValidation {
       push(issues, `primitives[${i}].id`, `duplicate id ${primitive.id}`)
     }
     ids.add(primitive.id)
+    if (!paneScales.has(primitive.pane)) {
+      if (primitive.pane === 'main' && primitive.scale) {
+        push(issues, `primitives[${i}].scale`, 'pane main cannot set a scale')
+      }
+      paneScales.set(primitive.pane, primitive.scale)
+    } else if (!sameScale(paneScales.get(primitive.pane), primitive.scale)) {
+      push(issues, `primitives[${i}].scale`, `must match other series on pane ${primitive.pane}`)
+    }
     primitives.push(primitive)
   }
 

@@ -90,6 +90,17 @@ function parseStrategyRunParams(params: unknown): StrategyRunParams {
   }
 }
 
+function readDrawingTsCode(params: unknown): string {
+  if (!params || typeof params !== 'object') {
+    throw new Error('chartDrawing requires params object')
+  }
+  const tsCode = (params as Record<string, unknown>).tsCode
+  if (typeof tsCode !== 'string' || !tsCode.trim()) {
+    throw new Error('tsCode must be a non-empty string')
+  }
+  return tsCode.trim()
+}
+
 export function registerHandlers(): void {
   ipcMain.on('ping', () => console.log('pong'))
 
@@ -225,6 +236,18 @@ export function registerHandlers(): void {
 
   ipcMain.handle('chart:build', async (_event, params: unknown) => {
     return applicationService.buildChartInput(parseMarketQueryParams(params, 'chart:build'))
+  })
+
+  ipcMain.handle('chartDrawing:list', (_event, params: unknown) => {
+    return applicationService.listChartDrawings(readDrawingTsCode(params))
+  })
+
+  ipcMain.handle('chartDrawing:save', (_event, params: unknown) => {
+    if (!params || typeof params !== 'object') {
+      throw new Error('chartDrawing:save requires params object')
+    }
+    const body = params as Record<string, unknown>
+    return applicationService.saveChartDrawings(readDrawingTsCode(params), body.drawings)
   })
 
   ipcMain.handle('chartLayout:get', () => {

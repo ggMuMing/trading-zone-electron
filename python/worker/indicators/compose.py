@@ -8,7 +8,6 @@ from typing import Any
 from worker.indicators.model import Ohlcv
 from worker.indicators.sandbox import run_script
 from worker.plot import ChartInput, PlotFragment, output
-from worker.plot.models import PlotPrimitive
 
 logger = logging.getLogger(__name__)
 
@@ -16,11 +15,11 @@ logger = logging.getLogger(__name__)
 def _prefix_fragment(fragment: PlotFragment, instance_id: str) -> PlotFragment:
     prefix = f"{instance_id}:"
     primitives = [
-        PlotPrimitive(
-            id=prefix + primitive.id,
-            pane=primitive.pane if primitive.pane == "main" else instance_id,
-            kind=primitive.kind,
-            style=primitive.style,
+        primitive.model_copy(
+            update={
+                "id": prefix + primitive.id,
+                "pane": primitive.pane if primitive.pane == "main" else instance_id,
+            }
         )
         for primitive in fragment.primitives
     ]

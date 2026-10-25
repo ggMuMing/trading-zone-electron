@@ -11,6 +11,7 @@ from worker.plot.models import (
     ChartInput,
     PlotPrimitive,
     PlotPrimitiveStyle,
+    ScaleRange,
     ValuePoint,
     VolumePoint,
 )
@@ -123,6 +124,7 @@ def validate_chart_input(raw: Any) -> ChartInput:
 
     primitives: list[PlotPrimitive] = []
     ids: set[str] = set()
+    pane_scales: dict[str, ScaleRange | None] = {}
     for i, item in enumerate(primitives_raw):
         primitive = _read_primitive(item, f"primitives[{i}]", issues)
         if primitive is None:
@@ -130,6 +132,12 @@ def validate_chart_input(raw: Any) -> ChartInput:
         if primitive.id in ids:
             _push(issues, f"primitives[{i}].id", f"duplicate id {primitive.id}")
         ids.add(primitive.id)
+        if primitive.pane not in pane_scales:
+            if primitive.pane == "main" and primitive.scale is not None:
+                _push(issues, f"primitives[{i}].scale", "pane main cannot set a scale")
+            pane_scales[primitive.pane] = primitive.scale
+        elif not _same_scale(pane_scales[primitive.pane], primitive.scale):
+            _push(issues, f"primitives[{i}].scale", f"must match other series on pane {primitive.pane}")
         primitives.append(primitive)
 
     for key in series_raw:
@@ -270,11 +278,34 @@ def _read_value_point(raw: Any, path: str, issues: list[dict[str, str]]) -> Valu
     return ValuePoint.model_validate(payload)
 
 
+def _same_scale(left: ScaleRange | None, right: ScaleRange | None) -> bool:
+    if left is None or right is None:
+        return left is None and right is None
+    return left.min == right.min and left.max == right.max
+
+
+def _read_scale(raw: Any, path: str, issues: list[dict[str, str]]) -> ScaleRange | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        _push(issues, path, "scale must be an object")
+        return None
+    extra = [key for key in raw if key not in ("min", "max")]
+    if extra:
+        _push(issues, path, f"unexpected keys: {', '.join(extra)}")
+    low = raw.get("min")
+    high = raw.get("max")
+    if not _is_finite_number(low) or not _is_finite_number(high) or float(low) >= float(high):
+        _push(issues, path, "min must be a finite number less than max")
+        return None
+    return ScaleRange(min=float(low), max=float(high))
+
+
 def _read_primitive(raw: Any, path: str, issues: list[dict[str, str]]) -> PlotPrimitive | None:
     if not isinstance(raw, dict):
         _push(issues, path, "must be an object")
         return None
-    extra = [key for key in raw if key not in ("id", "pane", "kind", "style")]
+    extra = [key for key in raw if key not in ("id", "pane", "kind", "style", "scale")]
     if extra:
         _push(issues, path, f"unexpected keys: {', '.join(extra)}")
     if not isinstance(raw.get("id"), str) or len(raw["id"]) == 0:
@@ -285,6 +316,7 @@ def _read_primitive(raw: Any, path: str, issues: list[dict[str, str]]) -> PlotPr
     if kind not in ("line", "histogram"):
         _push(issues, f"{path}.kind", "must be line or histogram")
     style = _read_style(raw.get("style"), f"{path}.style", issues)
+    scale = _read_scale(raw.get("scale"), f"{path}.scale", issues)
     if not (
         isinstance(raw.get("id"), str)
         and raw["id"]
@@ -298,4 +330,6 @@ def _read_primitive(raw: Any, path: str, issues: list[dict[str, str]]) -> PlotPr
     payload: dict[str, Any] = {"id": raw["id"], "pane": raw["pane"], "kind": kind}
     if style is not None and (style.color is not None or style.lineWidth is not None):
         payload["style"] = style.model_dump(exclude_none=True)
+    if scale is not None:
+        payload["scale"] = scale.model_dump()
     return PlotPrimitive.model_validate(payload)

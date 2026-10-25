@@ -134,7 +134,7 @@ export function ChartToolbar({
       direction="row"
       spacing={0}
       alignItems="center"
-      sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider', minHeight: 44 }}
+      sx={{ pl: 1, pr: 2, py: 1, borderBottom: 1, borderColor: 'divider', minHeight: 44 }}
     >
       <Typography variant="subtitle2" noWrap sx={{ minWidth: 0, maxWidth: 280, pr: 1 }}>
         {symbolLabel}

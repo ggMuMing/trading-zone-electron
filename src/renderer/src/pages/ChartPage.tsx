@@ -27,6 +27,15 @@ import {
   yyyymmddToIso
 } from '../../../shared/constants/market'
 import type { ChartInput, ChartPeriod } from '../../../shared/types/chart'
+import {
+  DEFAULT_DRAWING_STROKE,
+  drawingStrokeOf,
+  parseDrawingStroke,
+  withDrawingStroke,
+  type ChartDrawing,
+  type DrawingStroke,
+  type DrawingTool
+} from '../../../shared/types/chartDrawing'
 import type {
   ChartLayout,
   ChartLayoutItem,
@@ -46,6 +55,7 @@ import type {
 import type { Stock } from '../../../shared/types/stock'
 import type { StrategyInfo } from '../../../shared/types/pythonProtocol'
 import { ChartToolbar } from './chart/ChartToolbar'
+import { DrawingToolbar } from './chart/DrawingToolbar'
 import { nearestTradingDate } from './chart/locateDate'
 import { IndustryBreadcrumb } from './chart/IndustryBreadcrumb'
 import { IndicatorDialog } from './chart/IndicatorDialog'
@@ -61,6 +71,8 @@ import { StockPicker } from './StockPicker'
 const PICKER_WIDTH_STORAGE_KEY = 'trading-zone.chart.stockPickerWidth'
 const STRATEGY_WIDTH_STORAGE_KEY = 'trading-zone.chart.strategyPanelWidth'
 const UNIVERSE_STORAGE_KEY = 'trading-zone.chart.universeId'
+const DRAWING_STROKE_STORAGE_KEY = 'trading-zone.chart.drawingStroke'
+const DRAWING_SNAP_STORAGE_KEY = 'trading-zone.chart.drawingSnap'
 const PICKER_WIDTH_MIN = 180
 const PICKER_WIDTH_MAX = 320
 const PICKER_WIDTH_DEFAULT = 220
@@ -86,6 +98,46 @@ function loadUniverseId(): string {
     return raw?.trim() || CHART_UNIVERSE_ALL
   } catch {
     return CHART_UNIVERSE_ALL
+  }
+}
+
+function loadDrawingStroke(): DrawingStroke {
+  try {
+    const raw = localStorage.getItem(DRAWING_STROKE_STORAGE_KEY)
+    if (!raw) {
+      return DEFAULT_DRAWING_STROKE
+    }
+    return parseDrawingStroke(JSON.parse(raw) as unknown)
+  } catch {
+    return DEFAULT_DRAWING_STROKE
+  }
+}
+
+function saveDrawingStroke(stroke: DrawingStroke): void {
+  try {
+    localStorage.setItem(DRAWING_STROKE_STORAGE_KEY, JSON.stringify(stroke))
+  } catch {
+    // 浏览器拒绝写入时，本次会话仍使用内存里的画笔。
+  }
+}
+
+function loadDrawingSnap(): boolean {
+  try {
+    const raw = localStorage.getItem(DRAWING_SNAP_STORAGE_KEY)
+    if (raw === '0') {
+      return false
+    }
+    return true
+  } catch {
+    return true
+  }
+}
+
+function saveDrawingSnap(enabled: boolean): void {
+  try {
+    localStorage.setItem(DRAWING_SNAP_STORAGE_KEY, enabled ? '1' : '0')
+  } catch {
+    // 浏览器拒绝写入时，本次会话仍使用内存里的开关。
   }
 }
 
@@ -214,6 +266,11 @@ export function ChartPage({
   const [selectedCode, setSelectedCode] = useState<string | null>(
     () => fixedPickerStocks?.[0]?.ts_code ?? null
   )
+  const [drawings, setDrawings] = useState<ChartDrawing[]>([])
+  const [drawingTool, setDrawingTool] = useState<DrawingTool | null>(null)
+  const [drawingPen, setDrawingPen] = useState(loadDrawingStroke)
+  const [drawingSnap, setDrawingSnap] = useState(loadDrawingSnap)
+  const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null)
   const [adjust, setAdjust] = useState<AdjustType>('qfq')
   const [period, setPeriod] = useState<ChartPeriod>('day')
   const [chartRaw, setChartRaw] = useState<ChartInput | null>(null)
@@ -353,12 +410,117 @@ export function ChartPage({
   queryEndRef.current = queryEnd
 
   const selectedIsIndex = selectedCode ? isChartUniverseIndexCode(selectedCode) : false
+  const selectedDrawing = drawings.find((item) => item.id === selectedDrawingId) ?? null
+  const toolbarStroke = selectedDrawing ? drawingStrokeOf(selectedDrawing) : drawingPen
   const effectiveAdjust: AdjustType = selectedIsIndex ? 'none' : adjust
 
   const chartRequestRef = useRef(0)
   const keepLocateRef = useRef(false)
   const selectedCodeRef = useRef(selectedCode)
   selectedCodeRef.current = selectedCode
+  const drawingsRef = useRef(drawings)
+  drawingsRef.current = drawings
+  const drawingLoadToken = useRef(0)
+
+  useEffect(() => {
+    const token = drawingLoadToken.current + 1
+    drawingLoadToken.current = token
+    setDrawingTool(null)
+    setSelectedDrawingId(null)
+    if (!selectedCode) {
+      setDrawings([])
+      return
+    }
+    const tsCode = selectedCode
+    void window.api.chartDrawing
+      .list({ tsCode })
+      .then((rows) => {
+        if (drawingLoadToken.current === token) {
+          setDrawings(rows)
+        }
+      })
+      .catch(() => {
+        if (drawingLoadToken.current === token) {
+          setDrawings([])
+        }
+      })
+  }, [selectedCode])
+
+  const commitDrawings = useCallback((next: ChartDrawing[]) => {
+    const tsCode = selectedCodeRef.current
+    if (!tsCode) {
+      return
+    }
+    const token = drawingLoadToken.current + 1
+    drawingLoadToken.current = token
+    setDrawings(next)
+    void window.api.chartDrawing
+      .save({ tsCode, drawings: next })
+      .then((saved) => {
+        if (drawingLoadToken.current === token && selectedCodeRef.current === tsCode) {
+          setDrawings(saved)
+        }
+      })
+      .catch(() => {
+        if (drawingLoadToken.current !== token || selectedCodeRef.current !== tsCode) {
+          return
+        }
+        void window.api.chartDrawing.list({ tsCode }).then((rows) => {
+          if (drawingLoadToken.current === token && selectedCodeRef.current === tsCode) {
+            setDrawings(rows)
+          }
+        })
+      })
+  }, [])
+
+  const changeDrawingStroke = useCallback(
+    (next: DrawingStroke): void => {
+      const id = selectedDrawingId
+      if (id && drawingsRef.current.some((item) => item.id === id)) {
+        commitDrawings(drawingsRef.current.map((item) => (item.id === id ? withDrawingStroke(item, next) : item)))
+        return
+      }
+      setDrawingPen(next)
+      saveDrawingStroke(next)
+    },
+    [commitDrawings, selectedDrawingId]
+  )
+
+  const deleteSelectedDrawing = useCallback(() => {
+    const id = selectedDrawingId
+    if (!id) {
+      return
+    }
+    setSelectedDrawingId(null)
+    commitDrawings(drawingsRef.current.filter((drawing) => drawing.id !== id))
+  }, [commitDrawings, selectedDrawingId])
+
+  const deleteAllDrawings = useCallback(() => {
+    if (drawingsRef.current.length === 0) {
+      return
+    }
+    setSelectedDrawingId(null)
+    commitDrawings([])
+  }, [commitDrawings])
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Delete' || !selectedDrawingId) {
+        return
+      }
+      const target = event.target
+      if (
+        target instanceof HTMLElement &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      ) {
+        return
+      }
+      event.preventDefault()
+      deleteSelectedDrawing()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [deleteSelectedDrawing, selectedDrawingId])
 
   const executeScripts = useCallback(
     async (tsCode: string, adj: AdjustType, endIso?: string | null): Promise<void> => {
@@ -1035,6 +1197,22 @@ export function ChartPage({
                 ) : null
               }
             />
+            <DrawingToolbar
+              drawingTool={drawingTool}
+              onDrawingToolChange={setDrawingTool}
+              drawingStroke={toolbarStroke}
+              onDrawingStrokeChange={changeDrawingStroke}
+              drawingDisabled={!selectedCode}
+              canDeleteDrawing={selectedDrawingId !== null}
+              onDeleteDrawing={deleteSelectedDrawing}
+              canDeleteAllDrawings={drawings.length > 0}
+              onDeleteAllDrawings={deleteAllDrawings}
+              snapEnabled={drawingSnap}
+              onSnapEnabledChange={(enabled) => {
+                setDrawingSnap(enabled)
+                saveDrawingSnap(enabled)
+              }}
+            />
 
             <Box sx={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
               {!selectedCode ? (
@@ -1106,6 +1284,15 @@ export function ChartPage({
                       onOpenEditor={openLayoutEditor}
                       onRemove={(id) => void handleRemoveIndicator(id)}
                       onMovePane={(id, direction) => void handleMovePane(id, direction)}
+                      tsCode={selectedCode}
+                      drawings={drawings}
+                      drawingStroke={toolbarStroke}
+                      drawingTool={drawingTool}
+                      selectedDrawingId={selectedDrawingId}
+                      drawingSnap={drawingSnap}
+                      onDrawingsChange={commitDrawings}
+                      onDrawingToolChange={setDrawingTool}
+                      onSelectedDrawingChange={setSelectedDrawingId}
                     />
                   ) : null}
                 </Box>
