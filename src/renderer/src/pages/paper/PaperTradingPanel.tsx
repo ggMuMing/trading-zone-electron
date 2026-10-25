@@ -133,11 +133,11 @@ function TemplateSummary({ draft }: { draft: PaperPlanDraft }): React.JSX.Elemen
         <>
           <FieldText>指定</FieldText>{' '}
           {draft.symbols.length === 0 ? <FieldText>未选择</FieldText> : draft.symbols.map((symbol, index) => (
-                <Box component="span" key={symbol.tsCode}>
-                  {index > 0 ? '、' : null}
-                  {symbol.name ? `${symbol.name} ${symbol.tsCode}` : symbol.tsCode}
-                </Box>
-              ))}
+            <Box component="span" key={symbol.tsCode}>
+              {index > 0 ? '、' : null}
+              {symbol.name ? `${symbol.name} ${symbol.tsCode}` : symbol.tsCode}
+            </Box>
+          ))}
         </>
       )}
     </>
@@ -446,36 +446,36 @@ function OrderPriceField({
             step: 0.01,
             'aria-label': label
           },
-        input: {
-          endAdornment: (
-            <InputAdornment position="end" sx={{ gap: 0.25, maxHeight: 22, ml: 0.25 }}>
-              <Button
-                size="small"
-                title="开盘价"
-                aria-label={`${label}设为开盘价`}
-                disabled={!bar}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => apply(bar?.open)}
-                sx={{ minWidth: 22, width: 22, height: 22, p: 0, fontSize: 13, lineHeight: 1 }}
-              >
-                开
-              </Button>
-              <Button
-                size="small"
-                title="收盘价"
-                aria-label={`${label}设为收盘价`}
-                disabled={!bar}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => apply(bar?.close)}
-                sx={{ minWidth: 22, width: 22, height: 22, p: 0, fontSize: 13, lineHeight: 1 }}
-              >
-                收
-              </Button>
-            </InputAdornment>
-          )
-        }
-      }}
-      sx={[paperFieldSx, { mx: 0, width: '100%' }]}
+          input: {
+            endAdornment: (
+              <InputAdornment position="end" sx={{ gap: 0.25, maxHeight: 22, ml: 0.25 }}>
+                <Button
+                  size="small"
+                  title="开盘价"
+                  aria-label={`${label}设为开盘价`}
+                  disabled={!bar}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => apply(bar?.open)}
+                  sx={{ minWidth: 22, width: 22, height: 22, p: 0, fontSize: 13, lineHeight: 1 }}
+                >
+                  开
+                </Button>
+                <Button
+                  size="small"
+                  title="收盘价"
+                  aria-label={`${label}设为收盘价`}
+                  disabled={!bar}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => apply(bar?.close)}
+                  sx={{ minWidth: 22, width: 22, height: 22, p: 0, fontSize: 13, lineHeight: 1 }}
+                >
+                  收
+                </Button>
+              </InputAdornment>
+            )
+          }
+        }}
+        sx={[paperFieldSx, { mx: 0, width: '100%' }]}
       />
       <Typography
         variant="caption"
@@ -550,50 +550,50 @@ function TradeRecords({
           trades.map((trade) => {
             const alias = symbolAlias.get(trade.tsCode)
             return (
-            <TableRow key={trade.id}>
-              <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                {hideTime || !trade.time ? (
-                  '—'
-                ) : (
-                  <Link
-                    component="button"
-                    type="button"
-                    underline="hover"
-                    onClick={() => onLocate?.(trade)}
-                    sx={{
-                      border: 0,
-                      p: 0,
-                      background: 'none',
-                      font: 'inherit',
-                      fontSize: 'inherit',
-                      lineHeight: 'inherit',
-                      verticalAlign: 'baseline',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {trade.time}
-                  </Link>
-                )}
-              </TableCell>
-              <TableCell>
-                <Box sx={{ minWidth: 0 }}>
-                  <Box sx={{ whiteSpace: 'nowrap' }}>{alias ?? (trade.name || '—')}</Box>
-                  {alias ? null : (
-                    <Box sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}>{trade.tsCode || '—'}</Box>
+              <TableRow key={trade.id}>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                  {hideTime || !trade.time ? (
+                    '—'
+                  ) : (
+                    <Link
+                      component="button"
+                      type="button"
+                      underline="hover"
+                      onClick={() => onLocate?.(trade)}
+                      sx={{
+                        border: 0,
+                        p: 0,
+                        background: 'none',
+                        font: 'inherit',
+                        fontSize: 'inherit',
+                        lineHeight: 'inherit',
+                        verticalAlign: 'baseline',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {trade.time}
+                    </Link>
                   )}
-                </Box>
-              </TableCell>
-              <TableCell sx={{ color: trade.side === 'buy' ? 'error.main' : 'success.main', fontWeight: 700 }}>
-                {trade.side === 'buy' ? '买入' : '卖出'}
-              </TableCell>
-              <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-                <Box>{formatOrderPrice(trade.price)}</Box>
-                <Box>{trade.shares}</Box>
-              </TableCell>
-              <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-                {formatYuan(trade.amount)}
-              </TableCell>
-            </TableRow>
+                </TableCell>
+                <TableCell>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Box sx={{ whiteSpace: 'nowrap' }}>{alias ?? (trade.name || '—')}</Box>
+                    {alias ? null : (
+                      <Box sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}>{trade.tsCode || '—'}</Box>
+                    )}
+                  </Box>
+                </TableCell>
+                <TableCell sx={{ color: trade.side === 'buy' ? 'error.main' : 'success.main', fontWeight: 700 }}>
+                  {trade.side === 'buy' ? '买入' : '卖出'}
+                </TableCell>
+                <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                  <Box>{formatOrderPrice(trade.price)}</Box>
+                  <Box>{trade.shares}</Box>
+                </TableCell>
+                <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                  {formatYuan(trade.amount)}
+                </TableCell>
+              </TableRow>
             )
           })
         )}
@@ -1520,7 +1520,7 @@ export function PaperTradingPanel({
       ) : null}
 
       {tab === 'template' ? (
-      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
           <Box sx={{ px: 1, py: 1, borderBottom: 1, borderColor: 'divider' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.75 }}>
               <Typography variant="body2" sx={{ flex: 1, minWidth: 0, fontWeight: 700 }}>
@@ -1701,7 +1701,7 @@ export function PaperTradingPanel({
               sx={tradeFieldSx}
             />
           </Box>
-      </Box>
+        </Box>
       ) : tab === 'trade' ? (
         <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
           <Box sx={{ px: 1, py: 1, borderBottom: 1, borderColor: 'divider' }}>

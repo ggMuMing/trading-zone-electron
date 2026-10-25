@@ -817,11 +817,11 @@ export function ChartPage({
 
   const tryQuery: MarketQueryParams | null = selectedCode
     ? {
-        ts_code: selectedCode,
-        adjust: effectiveAdjust,
-        start_date: MARKET_SYNC_EARLIEST,
-        end_date: replayCutoff ? isoToYyyymmdd(replayCutoff) : queryEnd
-      }
+      ts_code: selectedCode,
+      adjust: effectiveAdjust,
+      start_date: MARKET_SYNC_EARLIEST,
+      end_date: replayCutoff ? isoToYyyymmdd(replayCutoff) : queryEnd
+    }
     : null
 
   useEffect(() => {
@@ -914,8 +914,8 @@ export function ChartPage({
     !querying &&
     Boolean(
       chartTimes &&
-        chartTimes.length > 0 &&
-        (replayFixedStart == null || chartTimes.some((time) => time >= replayFixedStart))
+      chartTimes.length > 0 &&
+      (replayFixedStart == null || chartTimes.some((time) => time >= replayFixedStart))
     )
 
   const handleReplayStart = (request: ReplayStartRequest): void => {

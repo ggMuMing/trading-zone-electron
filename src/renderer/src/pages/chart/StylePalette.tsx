@@ -163,41 +163,41 @@ export function StylePalette({
   return (
     <>
       {controlled ? null : (
-      <Box
-        component="button"
-        type="button"
-        title="颜色与线宽"
-        aria-label="颜色与线宽"
-        onClick={(event) => setAnchor(event.currentTarget)}
-        sx={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 0.75,
-          minWidth: 36,
-          height: 28,
-          px: 0.5,
-          border: `1px solid ${theme.palette.divider}`,
-          borderRadius: '4px',
-          bgcolor: theme.palette.background.paper,
-          cursor: 'pointer',
-          '&:hover': { borderColor: CHART_ICON_HOVER }
-        }}
-      >
         <Box
+          component="button"
+          type="button"
+          title="颜色与线宽"
+          aria-label="颜色与线宽"
+          onClick={(event) => setAnchor(event.currentTarget)}
           sx={{
-            width: 18,
-            height: 18,
-            borderRadius: '3px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 0.75,
+            minWidth: 36,
+            height: 28,
+            px: 0.5,
             border: `1px solid ${theme.palette.divider}`,
-            backgroundImage: CHECKER,
-            backgroundSize: '8px 8px',
-            backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0'
+            borderRadius: '4px',
+            bgcolor: theme.palette.background.paper,
+            cursor: 'pointer',
+            '&:hover': { borderColor: CHART_ICON_HOVER }
           }}
         >
-          <Box sx={{ width: 1, height: 1, borderRadius: '2px', bgcolor: previewColor(color) }} />
+          <Box
+            sx={{
+              width: 18,
+              height: 18,
+              borderRadius: '3px',
+              border: `1px solid ${theme.palette.divider}`,
+              backgroundImage: CHECKER,
+              backgroundSize: '8px 8px',
+              backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0'
+            }}
+          >
+            <Box sx={{ width: 1, height: 1, borderRadius: '2px', bgcolor: previewColor(color) }} />
+          </Box>
+          {showWidth ? <LineWidthMark width={width} color={theme.palette.text.primary} /> : null}
         </Box>
-        {showWidth ? <LineWidthMark width={width} color={theme.palette.text.primary} /> : null}
-      </Box>
       )}
       <Popover
         open={open}

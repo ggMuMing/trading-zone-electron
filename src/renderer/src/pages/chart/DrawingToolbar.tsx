@@ -21,11 +21,10 @@ import {
   type DrawingTool
 } from '../../../../shared/types/chartDrawing'
 import { CHART_ICON_HOVER } from '../../theme/chartChrome'
-import { APP_FONT_STACK } from '../../theme/lwcFont'
 import { StylePalette } from './StylePalette'
 
-/** 与主图图例文字同号。 */
-const DRAWING_TOOL_FONT = 15
+/** 与主工具栏 `size="small"` 按钮图标同号。 */
+const TOOLBAR_ICON_FONT = 18
 
 interface ToolOption {
   tool: DrawingTool
@@ -78,14 +77,10 @@ const buttonSx = {
   py: 0,
   minWidth: 0,
   minHeight: 0,
-  fontSize: DRAWING_TOOL_FONT,
-  lineHeight: '20px',
-  fontFamily: APP_FONT_STACK,
   textTransform: 'none',
   '& .MuiButton-startIcon': {
     ml: 0,
-    mr: 0.5,
-    '& > svg': { fontSize: DRAWING_TOOL_FONT }
+    mr: 0.5
   }
 } as const
 
@@ -103,8 +98,6 @@ function menuItemSx(selected: boolean): Record<string, unknown> {
     py: 0.5,
     minHeight: 28,
     gap: 0.5,
-    fontSize: DRAWING_TOOL_FONT,
-    fontFamily: APP_FONT_STACK,
     ...(selected ? selectedSx : {})
   }
 }
@@ -146,7 +139,7 @@ function DropArrow({
         '&:hover': disabled ? undefined : { color: CHART_ICON_HOVER }
       }}
     >
-      <ArrowDropDownIcon sx={{ fontSize: DRAWING_TOOL_FONT }} />
+      <ArrowDropDownIcon sx={{ fontSize: TOOLBAR_ICON_FONT }} />
     </Box>
   )
 }
@@ -400,7 +393,7 @@ function ToolMenuButton({
             '&:hover': disabled ? undefined : { color: CHART_ICON_HOVER }
           }}
         >
-          <ArrowDropDownIcon sx={{ fontSize: DRAWING_TOOL_FONT }} />
+          <ArrowDropDownIcon sx={{ fontSize: TOOLBAR_ICON_FONT }} />
         </Box>
       </Box>
       <Menu
@@ -420,12 +413,10 @@ function ToolMenuButton({
               px: 1,
               py: 0.5,
               minHeight: 28,
-              gap: 0.5,
-              fontSize: DRAWING_TOOL_FONT,
-              fontFamily: APP_FONT_STACK
+              gap: 0.5
             }}
           >
-            <item.Icon sx={{ fontSize: DRAWING_TOOL_FONT }} />
+            <item.Icon sx={{ fontSize: TOOLBAR_ICON_FONT }} />
             {item.label}
           </MenuItem>
         ))}
