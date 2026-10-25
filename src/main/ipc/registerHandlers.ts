@@ -146,13 +146,18 @@ export function registerHandlers(): void {
     if (!params || typeof params !== 'object') {
       throw new Error('market:runStep requires params object')
     }
-    const stepId = (params as Record<string, unknown>).step_id
+    const raw = params as Record<string, unknown>
+    const stepId = raw.step_id
     if (typeof stepId !== 'string' || !pipelineStepMeta(stepId)) {
       throw new Error('step_id must be a known pipeline step')
     }
-    return applicationService.runPipelineStep(stepId as PipelineStepId, (progress) => {
-      event.sender.send('market:syncProgress', progress)
-    })
+    return applicationService.runPipelineStep(
+      stepId as PipelineStepId,
+      (progress) => {
+        event.sender.send('market:syncProgress', progress)
+      },
+      { force: raw.force === true }
+    )
   })
 
   ipcMain.handle('market:syncStatus', () => {

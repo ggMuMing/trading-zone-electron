@@ -48,7 +48,7 @@ export function StatsPanel({
         height: '100%',
         minHeight: 0,
         overflow: 'auto',
-        pr: 0.5,
+        pr: 2,
         display: 'flex',
         flexDirection: 'column',
         gap: 4

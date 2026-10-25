@@ -50,7 +50,7 @@ export interface AppApi {
     refreshCalendar: () => Promise<PipelineStatusResult>
     pipelineStatus: () => Promise<PipelineStatusResult>
     runPipeline: () => Promise<PipelineRunResult>
-    runStep: (params: { step_id: PipelineStepId }) => Promise<PipelineRunResult>
+    runStep: (params: { step_id: PipelineStepId; force?: boolean }) => Promise<PipelineRunResult>
     clear: () => Promise<MarketClearResult>
     syncIndexWeights: () => Promise<IndexWeightSyncResult>
     indexConstituents: (params: { index_code: string }) => Promise<IndexConstituentsResult>

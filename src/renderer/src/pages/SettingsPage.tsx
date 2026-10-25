@@ -197,7 +197,10 @@ export function SettingsPage({
     }
   }
 
-  const runAndReload = async (run: () => Promise<{ errors: Array<{ message: string }> }>) => {
+  const runAndReload = async (
+    run: () => Promise<{ errors: Array<{ message: string }> }>,
+    successMessage = '数据已更新到最近一个已收盘开市日'
+  ) => {
     onSyncingChange(true)
     setError(null)
     setMessage(null)
@@ -207,7 +210,7 @@ export function SettingsPage({
       if (result.errors.length > 0) {
         setError(result.errors.map((item) => item.message).join('；'))
       } else {
-        setMessage('数据已更新到最近一个已收盘开市日')
+        setMessage(successMessage)
       }
       await loadAll(false)
     } catch (err: unknown) {
@@ -221,8 +224,12 @@ export function SettingsPage({
     void runAndReload(() => window.api.market.runPipeline())
   }
 
-  const handleRunStep = (stepId: PipelineStepId): void => {
-    void runAndReload(() => window.api.market.runStep({ step_id: stepId }))
+  const handleRunStep = (stepId: PipelineStepId, force = false): void => {
+    void runAndReload(
+      () =>
+        window.api.market.runStep(force ? { step_id: stepId, force: true } : { step_id: stepId }),
+      force ? '两融历史数据已手动更新' : '数据已更新到最近一个已收盘开市日'
+    )
   }
 
   const handleClear = async (): Promise<void> => {
@@ -421,6 +428,8 @@ export function SettingsPage({
                   : true
                 const showInlineRun = !meta.required && stepStatus !== 'fresh'
                 const canRunSubStep = showInlineRun && histUnlocked
+                /** 沪深两融公布时间不同，深市常要次日开盘才有，状态芯片单独强制再拉。 */
+                const canManualMargin = meta.id === 'margin' && stepStatus !== 'running'
                 const lockTitle = meta.parent
                   ? histUnlocked
                     ? undefined
@@ -504,14 +513,20 @@ export function SettingsPage({
                             ? STEP_STATUS_COLORS.not_started
                             : STEP_STATUS_COLORS[stepStatus]
                         }
-                        clickable={canRunSubStep && !busy && hasToken}
+                        clickable={(canRunSubStep || canManualMargin) && !busy && hasToken}
                         disabled={busy || !hasToken || (showInlineRun && !canRunSubStep)}
                         onClick={
-                          canRunSubStep && !busy && hasToken
-                            ? () => handleRunStep(meta.id)
-                            : undefined
+                          canManualMargin && !busy && hasToken
+                            ? () => handleRunStep(meta.id, true)
+                            : canRunSubStep && !busy && hasToken
+                              ? () => handleRunStep(meta.id)
+                              : undefined
                         }
-                        title={lockTitle}
+                        title={
+                          canManualMargin
+                            ? '点击手动更新。上证与深证不是同时公布，深市通常次日开盘后才有'
+                            : lockTitle
+                        }
                       />
                     </TableCell>
                   </TableRow>

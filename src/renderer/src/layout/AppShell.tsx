@@ -6,7 +6,7 @@ import DashboardIcon from '@mui/icons-material/SpaceDashboard'
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet'
 import CandlestickChartIcon from '@mui/icons-material/CandlestickChart'
 import SettingsIcon from '@mui/icons-material/Settings'
-import ShowChartIcon from '@mui/icons-material/ShowChart'
+import TableChartIcon from '@mui/icons-material/TableChart'
 import type { ReactNode } from 'react'
 
 export type AppPage = 'dashboard' | 'settings' | 'market' | 'chart' | 'paper'
@@ -39,7 +39,7 @@ export function AppShell({
     >
       <Stack
         sx={{
-          width: 56,
+          width: 46,
           height: '100%',
           flexShrink: 0,
           borderRight: 1,
@@ -85,15 +85,15 @@ export function AppShell({
             </IconButton>
           </span>
         </Tooltip>
-        <Tooltip title={navigationLocked ? lockedTitle : '行情'} placement="right">
+        <Tooltip title={navigationLocked ? lockedTitle : '数据'} placement="right">
           <span>
             <IconButton
               color={page === 'market' ? 'primary' : 'default'}
               onClick={() => onPageChange('market')}
               disabled={navigationLocked}
-              aria-label="行情"
+              aria-label="数据"
             >
-              <ShowChartIcon />
+              <TableChartIcon />
             </IconButton>
           </span>
         </Tooltip>

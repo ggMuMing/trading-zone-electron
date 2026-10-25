@@ -247,10 +247,14 @@ export const applicationService = {
     return runSteps(required, onProgress)
   },
 
-  /** 历史子步（4.1…）的行内按钮：上一段未初始化时不放行。 */
+  /**
+   * 行内单步。历史子步（4.1…）上一段未初始化时不放行。
+   * `force` 只对两融生效：沪深公布时间不同，状态已是「最新」时仍要能手动再拉一次。
+   */
   async runPipelineStep(
     stepId: PipelineStepId,
-    onProgress?: SyncProgressHandler
+    onProgress?: SyncProgressHandler,
+    options?: { force?: boolean }
   ): Promise<PipelineRunResult> {
     const meta = pipelineStepMeta(stepId)
     if (!meta) {
@@ -268,7 +272,8 @@ export const applicationService = {
         throw new Error(`请先完成步骤 ${hist[index - 1]?.ordinal ?? '4.x'}，再补本段历史`)
       }
     }
-    return runSteps([stepId], onProgress)
+    const force = options?.force === true && stepId === 'margin'
+    return runSteps([stepId], onProgress, force ? { force: true } : undefined)
   },
 
   /** 旧的自选窗口路径：仅保留给历史验收脚本，不再挂在主路径 IPC 上。 */
@@ -814,7 +819,8 @@ function emitProgress(
 
 async function runSteps(
   stepIds: PipelineStepId[],
-  onProgress?: SyncProgressHandler
+  onProgress?: SyncProgressHandler,
+  options?: { force?: boolean }
 ): Promise<PipelineRunResult> {
   if (marketSyncing) {
     throw new Error('行情同步正在进行中')
@@ -832,7 +838,7 @@ async function runSteps(
       const stepId = stepIds[index]
       const meta = pipelineStepMeta(stepId)
       const label = meta ? `步骤 ${meta.ordinal} ${meta.title}` : stepId
-      if (freshIds.has(stepId)) {
+      if (freshIds.has(stepId) && !options?.force) {
         outcomes.push({ step_id: stepId, ran: false, message: '已最新，跳过', error: null })
         continue
       }

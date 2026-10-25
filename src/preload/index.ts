@@ -55,8 +55,10 @@ const api = {
     pipelineStatus: (): Promise<PipelineStatusResult> =>
       ipcRenderer.invoke('market:pipelineStatus'),
     runPipeline: (): Promise<PipelineRunResult> => ipcRenderer.invoke('market:runPipeline'),
-    runStep: (params: { step_id: PipelineStepId }): Promise<PipelineRunResult> =>
-      ipcRenderer.invoke('market:runStep', params),
+    runStep: (params: {
+      step_id: PipelineStepId
+      force?: boolean
+    }): Promise<PipelineRunResult> => ipcRenderer.invoke('market:runStep', params),
     clear: (): Promise<MarketClearResult> => ipcRenderer.invoke('market:clear'),
     syncIndexWeights: (): Promise<IndexWeightSyncResult> =>
       ipcRenderer.invoke('market:syncIndexWeights'),

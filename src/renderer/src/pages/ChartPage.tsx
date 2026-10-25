@@ -7,24 +7,13 @@ import { DEFAULT_SCRIPT_TITLE } from '../../../shared/chart/indicatorScript'
 import { validateChartInput } from '../../../shared/chart/validateChartInput'
 import {
   CHART_UNIVERSE_ALL,
-  CHART_UNIVERSE_DELISTED,
-  CHART_UNIVERSE_INDEX_BROAD,
-  CHART_UNIVERSE_INDEX_MARKET,
   industryUniverseId,
-  isChartUniverseIndexCode,
-  parseConstituentsIndexCode,
-  parseIndustryIndexCode
+  isChartUniverseIndexCode
 } from '../../../shared/constants/chartUniverse'
-import {
-  DASHBOARD_BROAD_INDICES,
-  DASHBOARD_MARKET_INDICES,
-  type DashboardIndexMeta
-} from '../../../shared/constants/dashboard'
 import {
   MARKET_SYNC_EARLIEST,
   isoToYyyymmdd,
-  todayYyyymmdd,
-  yyyymmddToIso
+  todayYyyymmdd
 } from '../../../shared/constants/market'
 import type { ChartInput, ChartPeriod } from '../../../shared/types/chart'
 import {
@@ -66,6 +55,7 @@ import { sliceChartInput } from './chart/sliceChartInput'
 import { ScriptEditorPanel, type ScriptDraft } from './chart/scriptEditor/ScriptEditorPanel'
 import { StrategyPanel } from './chart/StrategyPanel'
 import type { StrategyChartOverlay } from './chart/strategyOverlay'
+import { resolveUniverseStocks, universeListEmptyHint } from './resolveUniverseStocks'
 import { StockPicker } from './StockPicker'
 
 const PICKER_WIDTH_STORAGE_KEY = 'trading-zone.chart.stockPickerWidth'
@@ -138,21 +128,6 @@ function saveDrawingSnap(enabled: boolean): void {
     localStorage.setItem(DRAWING_SNAP_STORAGE_KEY, enabled ? '1' : '0')
   } catch {
     // 浏览器拒绝写入时，本次会话仍使用内存里的开关。
-  }
-}
-
-function indexMetaToStock(meta: DashboardIndexMeta): Stock {
-  return {
-    ts_code: meta.ts_code,
-    symbol: meta.ts_code.split('.')[0] ?? meta.ts_code,
-    name: meta.name,
-    area: null,
-    industry: null,
-    market: null,
-    list_date: null,
-    list_status: 'L',
-    delist_date: null,
-    synced_at: ''
   }
 }
 
@@ -303,66 +278,28 @@ export function ChartPage({
   strategyWidthRef.current = strategyWidth
   const chartRowRef = useRef<HTMLDivElement>(null)
 
-  const resolvePickerStocks = useCallback(
-    async (nextUniverseId: string, listed: Stock[]): Promise<Stock[]> => {
-      if (nextUniverseId === CHART_UNIVERSE_ALL) {
-        setUniverseCaption(null)
-        return listed
-      }
-      if (nextUniverseId === CHART_UNIVERSE_DELISTED) {
-        const delisted = await window.api.stocks.listDelisted()
-        setUniverseCaption(`退市 ${delisted.length} 只`)
-        return delisted
-      }
-      if (nextUniverseId === CHART_UNIVERSE_INDEX_MARKET) {
-        setUniverseCaption(null)
-        return DASHBOARD_MARKET_INDICES.map(indexMetaToStock)
-      }
-      if (nextUniverseId === CHART_UNIVERSE_INDEX_BROAD) {
-        setUniverseCaption(null)
-        return DASHBOARD_BROAD_INDICES.map(indexMetaToStock)
-      }
-      const industryCode = parseIndustryIndexCode(nextUniverseId)
-      if (industryCode) {
-        const result = await window.api.industry.members({ index_code: industryCode })
-        setUniverseCaption(null)
-        const codeSet = new Set(result.con_codes)
-        return listed.filter((stock) => codeSet.has(stock.ts_code))
-      }
-      const indexCode = parseConstituentsIndexCode(nextUniverseId)
-      if (!indexCode) {
-        setUniverseCaption(null)
-        return listed
-      }
-      const result = await window.api.market.indexConstituents({ index_code: indexCode })
-      setUniverseCaption(result.as_of ? yyyymmddToIso(result.as_of) : null)
-      const codeSet = new Set(result.con_codes)
-      return listed.filter((stock) => codeSet.has(stock.ts_code))
-    },
-    []
-  )
-
   const applyUniverse = useCallback(
     async (nextUniverseId: string, listed: Stock[], selectFirst: boolean): Promise<void> => {
       setUniverseLoading(true)
       try {
-        const nextPickerStocks = await resolvePickerStocks(nextUniverseId, listed)
-        setPickerStocks(nextPickerStocks)
+        const resolved = await resolveUniverseStocks(nextUniverseId, listed)
+        setUniverseCaption(resolved.caption)
+        setPickerStocks(resolved.stocks)
         if (selectFirst) {
-          setSelectedCode(nextPickerStocks[0]?.ts_code ?? null)
+          setSelectedCode(resolved.stocks[0]?.ts_code ?? null)
         } else {
           setSelectedCode((prev) => {
-            if (prev && nextPickerStocks.some((stock) => stock.ts_code === prev)) {
+            if (prev && resolved.stocks.some((stock) => stock.ts_code === prev)) {
               return prev
             }
-            return nextPickerStocks[0]?.ts_code ?? null
+            return resolved.stocks[0]?.ts_code ?? null
           })
         }
       } finally {
         setUniverseLoading(false)
       }
     },
-    [resolvePickerStocks]
+    []
   )
 
   const loadStocksAndCoverage = async (): Promise<void> => {
@@ -837,20 +774,8 @@ export function ChartPage({
   }, [indicatorOpen])
 
   const isAllEmpty = allStocks.length === 0
-  const constituentsEmpty =
-    parseConstituentsIndexCode(universeId) !== null && pickerStocks.length === 0 && !universeLoading
-  const industryEmpty =
-    parseIndustryIndexCode(universeId) !== null && pickerStocks.length === 0 && !universeLoading
   const selected = pickerStocks.find((stock) => stock.ts_code === selectedCode)
-  const delistedEmpty =
-    universeId === CHART_UNIVERSE_DELISTED && pickerStocks.length === 0 && !universeLoading
-  const constituentsEmptyHint = constituentsEmpty
-    ? '尚无成分股数据，请到配置页更新成分股'
-    : industryEmpty
-      ? '尚无行业数据，请到配置页更新行业分类'
-      : delistedEmpty
-        ? '尚无退市股票，请到配置页更新数据'
-        : null
+  const constituentsEmptyHint = universeListEmptyHint(universeId, pickerStocks, universeLoading)
   const fullChartInput = useMemo(() => {
     if (!chartRaw) {
       return null

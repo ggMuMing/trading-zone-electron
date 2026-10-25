@@ -1,4 +1,5 @@
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material'
+import GlobalStyles from '@mui/material/GlobalStyles'
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import { APP_FONT_STACK } from './lwcFont'
 
@@ -45,6 +46,29 @@ interface ColorModeContextValue {
 
 const ColorModeContext = createContext<ColorModeContextValue | null>(null)
 
+const DARK_SCROLLBAR_STYLES = {
+  '*': {
+    scrollbarColor: '#3a3f46 #121417'
+  },
+  '*::-webkit-scrollbar': {
+    width: '12px',
+    height: '12px'
+  },
+  '*::-webkit-scrollbar-track': {
+    backgroundColor: '#121417'
+  },
+  '*::-webkit-scrollbar-thumb': {
+    backgroundColor: '#3a3f46',
+    borderRadius: '8px'
+  },
+  '*::-webkit-scrollbar-thumb:hover': {
+    backgroundColor: '#6b7078'
+  },
+  '*::-webkit-scrollbar-corner': {
+    backgroundColor: '#121417'
+  }
+}
+
 export function ColorModeProvider({ children }: { children: ReactNode }): React.JSX.Element {
   const [mode, setModeState] = useState<ColorMode>(readMode)
   const setMode = useCallback((next: ColorMode) => {
@@ -61,6 +85,7 @@ export function ColorModeProvider({ children }: { children: ReactNode }): React.
     <ColorModeContext.Provider value={value}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
+        {mode === 'dark' ? <GlobalStyles styles={DARK_SCROLLBAR_STYLES} /> : null}
         {children}
       </ThemeProvider>
     </ColorModeContext.Provider>

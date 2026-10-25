@@ -19,12 +19,14 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Typography from '@mui/material/Typography'
 import ViewColumnIcon from '@mui/icons-material/ViewColumn'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { CHART_UNIVERSE_ALL, isChartUniverseIndexCode } from '../../../shared/constants/chartUniverse'
 import {
   MARKET_SYNC_EARLIEST,
   todayYyyymmdd
 } from '../../../shared/constants/market'
 import type { AdjustType, MarketCoverageResult, OhlcvBar } from '../../../shared/types/market'
 import type { Stock } from '../../../shared/types/stock'
+import { resolveUniverseStocks, universeListEmptyHint } from './resolveUniverseStocks'
 import { StockPicker } from './StockPicker'
 
 type BarColumnId =
@@ -71,12 +73,22 @@ const BAR_COLUMNS: BarColumn[] = [
 
 const OPTIONAL_COLUMN_STORAGE_KEY = 'trading-zone.market.optionalColumns'
 const PICKER_WIDTH_STORAGE_KEY = 'trading-zone.market.stockPickerWidth'
+const UNIVERSE_STORAGE_KEY = 'trading-zone.market.universeId'
 const PICKER_WIDTH_MIN = 180
 const PICKER_WIDTH_MAX = 320
 const PICKER_WIDTH_DEFAULT = 220
 
 function clampPickerWidth(value: number): number {
   return Math.min(PICKER_WIDTH_MAX, Math.max(PICKER_WIDTH_MIN, Math.round(value)))
+}
+
+function loadUniverseId(): string {
+  try {
+    const raw = localStorage.getItem(UNIVERSE_STORAGE_KEY)
+    return raw?.trim() || CHART_UNIVERSE_ALL
+  } catch {
+    return CHART_UNIVERSE_ALL
+  }
 }
 
 function loadPickerWidth(): number {
@@ -160,7 +172,11 @@ export function MarketPage(): React.JSX.Element {
   const [loading, setLoading] = useState(true)
   const [querying, setQuerying] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [stocks, setStocks] = useState<Stock[]>([])
+  const [universeId, setUniverseId] = useState(loadUniverseId)
+  const [universeCaption, setUniverseCaption] = useState<string | null>(null)
+  const [universeLoading, setUniverseLoading] = useState(false)
+  const [allStocks, setAllStocks] = useState<Stock[]>([])
+  const [pickerStocks, setPickerStocks] = useState<Stock[]>([])
   const [coverage, setCoverage] = useState<MarketCoverageResult | null>(null)
   const [selectedCode, setSelectedCode] = useState<string | null>(null)
   const [adjust, setAdjust] = useState<AdjustType>('none')
@@ -187,19 +203,48 @@ export function MarketPage(): React.JSX.Element {
     [bars, sortBy, sortDir]
   )
 
+  const applyUniverse = useCallback(
+    async (nextUniverseId: string, listed: Stock[], selectFirst: boolean): Promise<void> => {
+      setUniverseLoading(true)
+      try {
+        const resolved = await resolveUniverseStocks(nextUniverseId, listed)
+        setUniverseCaption(resolved.caption)
+        setPickerStocks(resolved.stocks)
+        if (selectFirst) {
+          setSelectedCode(resolved.stocks[0]?.ts_code ?? null)
+        } else {
+          setSelectedCode((prev) => {
+            if (prev && resolved.stocks.some((stock) => stock.ts_code === prev)) {
+              return prev
+            }
+            return resolved.stocks[0]?.ts_code ?? null
+          })
+        }
+      } finally {
+        setUniverseLoading(false)
+      }
+    },
+    []
+  )
+
   const loadStocksAndCoverage = async (): Promise<void> => {
     const [listed, cov] = await Promise.all([
       window.api.stocks.list(),
       window.api.market.coverage()
     ])
-    setStocks(listed)
+    setAllStocks(listed)
     setCoverage(cov)
-    setSelectedCode((prev) => {
-      if (prev && listed.some((stock) => stock.ts_code === prev)) {
-        return prev
-      }
-      return listed[0]?.ts_code ?? null
-    })
+    await applyUniverse(universeId, listed, false)
+  }
+
+  const handleUniverseChange = (nextUniverseId: string): void => {
+    setUniverseId(nextUniverseId)
+    try {
+      localStorage.setItem(UNIVERSE_STORAGE_KEY, nextUniverseId)
+    } catch {
+      // 浏览器拒绝写入时，本次会话仍使用内存里的分类。
+    }
+    void applyUniverse(nextUniverseId, allStocks, true)
   }
 
   const refreshAll = async (): Promise<void> => {
@@ -242,17 +287,21 @@ export function MarketPage(): React.JSX.Element {
     void refreshAll()
   }, [])
 
+  const selectedIsIndex = selectedCode ? isChartUniverseIndexCode(selectedCode) : false
+  const effectiveAdjust: AdjustType = selectedIsIndex ? 'none' : adjust
+
   useEffect(() => {
     if (selectedCode) {
-      void loadBars(selectedCode, adjust, queryEnd)
+      void loadBars(selectedCode, effectiveAdjust, queryEnd)
     } else {
       setBars([])
     }
-  }, [selectedCode, adjust, queryEnd, loadBars])
+  }, [selectedCode, effectiveAdjust, queryEnd, loadBars])
 
-  const isEmpty = stocks.length === 0
+  const isAllEmpty = allStocks.length === 0
   const pageRows = sortedBars.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-  const selected = stocks.find((stock) => stock.ts_code === selectedCode)
+  const selected = pickerStocks.find((stock) => stock.ts_code === selectedCode)
+  const listEmptyHint = universeListEmptyHint(universeId, pickerStocks, universeLoading || loading)
 
   const handleSort = (columnId: BarColumnId): void => {
     if (sortBy === columnId) {
@@ -327,29 +376,33 @@ export function MarketPage(): React.JSX.Element {
         </Box>
       ) : null}
 
-      {isEmpty && !loading ? (
+      {isAllEmpty && universeId === CHART_UNIVERSE_ALL && !loading ? (
         <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', px: 3 }}>
           <Paper elevation={0} sx={{ p: 4, maxWidth: 480, border: 1, borderColor: 'divider', textAlign: 'center' }}>
             <Typography variant="h6" gutterBottom>
-              尚未同步股票列表
+              尚未同步数据
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              请先到配置页更新数据。成功后本页可浏览全部股票并查看日线。
+              请先到配置页更新数据。成功后本页可按分类浏览并查看日线。
             </Typography>
           </Paper>
         </Box>
       ) : (
-        <Box sx={{ flex: 1, display: 'flex', minHeight: 0, px: 2, py: 2, gap: 0.5 }}>
+        <Box sx={{ flex: 1, display: 'flex', minHeight: 0, gap: 0.5, padding: 0 }}>
           <StockPicker
-            stocks={stocks}
+            stocks={pickerStocks}
             selectedCode={selectedCode}
             width={pickerWidth}
+            universeId={universeId}
+            universeCaption={universeCaption}
+            emptyHint={listEmptyHint}
             onSelect={setSelectedCode}
+            onUniverseChange={handleUniverseChange}
           />
           <Box
             role="separator"
             aria-orientation="vertical"
-            aria-label="调整股票列表宽度"
+            aria-label="调整列表宽度"
             aria-valuemin={PICKER_WIDTH_MIN}
             aria-valuemax={PICKER_WIDTH_MAX}
             aria-valuenow={pickerWidth}
@@ -402,7 +455,7 @@ export function MarketPage(): React.JSX.Element {
               <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
                 {selected
                   ? `${selected.name ?? selected.ts_code}（${selected.ts_code}）日线`
-                  : '请选择股票'}
+                  : '请选择'}
               </Typography>
               <Button
                 size="small"
@@ -436,13 +489,13 @@ export function MarketPage(): React.JSX.Element {
               <ToggleButtonGroup
                 size="small"
                 exclusive
-                value={adjust}
+                value={effectiveAdjust}
                 onChange={(_e, value: AdjustType | null) => {
                   if (value) {
                     setAdjust(value)
                   }
                 }}
-                disabled={!selectedCode || querying}
+                disabled={!selectedCode || querying || selectedIsIndex}
               >
                 <ToggleButton value="none">未复权</ToggleButton>
                 <ToggleButton value="qfq">前复权</ToggleButton>
@@ -471,7 +524,7 @@ export function MarketPage(): React.JSX.Element {
                   {!selectedCode ? (
                     <TableRow>
                       <TableCell colSpan={visibleColumns.length} align="center" sx={{ py: 6, color: 'text.secondary' }}>
-                        请从左侧选择股票
+                        请从左侧选择
                       </TableCell>
                     </TableRow>
                   ) : pageRows.length === 0 ? (
