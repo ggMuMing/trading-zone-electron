@@ -30,6 +30,9 @@ interface DraftSession {
 const DRAG_START_DISTANCE = 5
 /** 光标离某根 K 线开高低收的屏幕距离不超过这个值时，落点吸过去。 */
 const OHLC_SNAP_PX = 8
+/** 两次点击间隔和位移都落在这里面，才当成双击改价。pointerdown 会 preventDefault，浏览器的 dblclick 发不出来。 */
+const DOUBLE_CLICK_MS = 500
+const DOUBLE_CLICK_PX = 6
 
 export interface DrawingInteractionArgs {
   chartRef: RefObject<IChartApi | null>
@@ -46,6 +49,14 @@ export interface DrawingInteractionArgs {
   onDrawingsChange: (next: ChartDrawing[]) => void
   onToolChange: (tool: DrawingTool | null) => void
   onSelectedChange: (id: string | null) => void
+  onEditHorizontalPrice?: (id: string) => void
+}
+
+interface ClickMark {
+  id: string
+  time: number
+  x: number
+  y: number
 }
 
 function barTimeAt(chart: IChartApi, x: number): string | null {
@@ -153,6 +164,19 @@ function applyDrag(chart: IChartApi, drag: DragSession, point: DrawingPoint): Ch
 
 function replaceDrawing(drawings: readonly ChartDrawing[], next: ChartDrawing): ChartDrawing[] {
   return drawings.map((drawing) => (drawing.id === next.id ? next : drawing))
+}
+
+function isHorizontalDrawing(drawing: ChartDrawing): boolean {
+  return drawing.kind === 'hline' || drawing.kind === 'hsegment'
+}
+
+function isDoubleClick(last: ClickMark | null, id: string, event: PointerEvent): boolean {
+  if (!last || last.id !== id || event.timeStamp - last.time > DOUBLE_CLICK_MS) {
+    return false
+  }
+  const dx = event.clientX - last.x
+  const dy = event.clientY - last.y
+  return dx * dx + dy * dy <= DOUBLE_CLICK_PX * DOUBLE_CLICK_PX
 }
 
 function priceAt(series: ISeriesApi<'Candlestick'>, y: number): number | null {
@@ -397,7 +421,8 @@ export function useDrawingInteraction({
   snapEnabled,
   onDrawingsChange,
   onToolChange,
-  onSelectedChange
+  onSelectedChange,
+  onEditHorizontalPrice
 }: DrawingInteractionArgs): void {
   const drawingsRef = useRef(drawings)
   const strokeRef = useRef(stroke)
@@ -407,7 +432,9 @@ export function useDrawingInteraction({
   const onDrawingsChangeRef = useRef(onDrawingsChange)
   const onToolChangeRef = useRef(onToolChange)
   const onSelectedChangeRef = useRef(onSelectedChange)
+  const onEditHorizontalPriceRef = useRef(onEditHorizontalPrice)
   const hoverRef = useRef<string | null>(null)
+  const lastClickRef = useRef<ClickMark | null>(null)
   const dragRef = useRef<DragSession | null>(null)
   const draftRef = useRef<DraftSession | null>(null)
   const guideRef = useRef<DrawingPoint | null>(null)
@@ -424,6 +451,7 @@ export function useDrawingInteraction({
   onDrawingsChangeRef.current = onDrawingsChange
   onToolChangeRef.current = onToolChange
   onSelectedChangeRef.current = onSelectedChange
+  onEditHorizontalPriceRef.current = onEditHorizontalPrice
 
   const syncScene = (): void => {
     if (!toolRef.current) {
@@ -444,6 +472,7 @@ export function useDrawingInteraction({
     dragDrawingsRef.current = null
     draftRef.current = null
     guideRef.current = null
+    lastClickRef.current = null
     syncSceneRef.current()
   }, [tsCode])
 
@@ -641,6 +670,7 @@ export function useDrawingInteraction({
         return
       }
       if (toolRef.current) {
+        lastClickRef.current = null
         const point = readPointerPoint(chart, series, container, candlesAt(), event, snapEnabledRef.current)
         if (!point) {
           return
@@ -651,11 +681,13 @@ export function useDrawingInteraction({
       }
       const hit = hoverRef.current ? parseDrawingHit(hoverRef.current) : null
       if (!hit || (hit.handle !== 'line' && hit.handle !== 'a' && hit.handle !== 'b' && hit.handle !== 'body')) {
+        lastClickRef.current = null
         emptyPressRef.current = { x: event.clientX, y: event.clientY }
         return
       }
       const drawing = drawingsRef.current.find((item) => item.id === hit.id)
       if (!drawing || (hit.handle === 'body' && drawing.kind === 'hline')) {
+        lastClickRef.current = null
         emptyPressRef.current = { x: event.clientX, y: event.clientY }
         return
       }
@@ -670,6 +702,27 @@ export function useDrawingInteraction({
       if (hit.handle === 'body' && !point) {
         emptyPressRef.current = { x: event.clientX, y: event.clientY }
         return
+      }
+      if (isHorizontalDrawing(drawing) && isDoubleClick(lastClickRef.current, hit.id, event)) {
+        lastClickRef.current = null
+        suppressClickRef.current = true
+        selectedIdRef.current = hit.id
+        syncSceneRef.current()
+        onSelectedChangeRef.current(hit.id)
+        onEditHorizontalPriceRef.current?.(hit.id)
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+      if (isHorizontalDrawing(drawing)) {
+        lastClickRef.current = {
+          id: hit.id,
+          time: event.timeStamp,
+          x: event.clientX,
+          y: event.clientY
+        }
+      } else {
+        lastClickRef.current = null
       }
       let originDrawing = drawing
       if (drawing.kind === 'hline' && point) {
@@ -739,6 +792,7 @@ export function useDrawingInteraction({
           syncSceneRef.current()
           return
         }
+        lastClickRef.current = null
         const point = readDragPoint(chart, series, container, candlesAt(), event, drag.handle !== 'body' && snapEnabledRef.current)
         const nextDrawing = point ? applyDrag(chart, drag, point) : null
         const next = nextDrawing ? replaceDrawing(drawingsRef.current, nextDrawing) : dragDrawingsRef.current

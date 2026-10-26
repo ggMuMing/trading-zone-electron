@@ -24,6 +24,8 @@ import type {
 import type { ChartLayout } from '../../../../shared/types/chartLayout'
 import {
   DEFAULT_DRAWING_STROKE,
+  horizontalPrice,
+  withHorizontalPrice,
   type ChartDrawing,
   type DrawingStroke,
   type DrawingTool
@@ -41,6 +43,7 @@ import { PaneCornerActions } from './PaneCornerActions'
 import { PriceLegend, type PriceLegendBar, type PriceLegendOverlayGroup } from './PriceLegend'
 import { SubpaneLegend, type SubpaneLegendPane } from './SubpaneLegend'
 import { ReplayHighlightPrimitive } from './ReplayHighlightPrimitive'
+import { DrawingPriceDialog } from './DrawingPriceDialog'
 import { DrawingPrimitive } from './drawings/DrawingPrimitive'
 import { useDrawingInteraction } from './drawings/useDrawingInteraction'
 import type { StrategyChartOverlay } from './strategyOverlay'
@@ -376,6 +379,7 @@ export function KlineChart({
   overlayRef.current = overlay
 
   const [hoverBar, setHoverBar] = useState<PriceLegendBar | null>(null)
+  const [priceEditId, setPriceEditId] = useState<string | null>(null)
   const [hoverValues, setHoverValues] = useState<Record<string, number | null> | null>(null)
   const [subpaneTops, setSubpaneTops] = useState<Array<{ paneIndex: number; top: number }>>([])
   const [subpaneHosts, setSubpaneHosts] = useState<Array<{ paneIndex: number; host: HTMLElement }>>(
@@ -642,8 +646,18 @@ export function KlineChart({
     snapEnabled: drawingSnap,
     onDrawingsChange: onDrawingsChange ?? (() => undefined),
     onToolChange: onDrawingToolChange ?? (() => undefined),
-    onSelectedChange: onSelectedDrawingChange ?? (() => undefined)
+    onSelectedChange: onSelectedDrawingChange ?? (() => undefined),
+    onEditHorizontalPrice: setPriceEditId
   })
+
+  useEffect(() => {
+    setPriceEditId(null)
+  }, [tsCode])
+
+  const priceEditDrawing =
+    drawings.find(
+      (item) => item.id === priceEditId && (item.kind === 'hline' || item.kind === 'hsegment')
+    ) ?? null
 
   useEffect(() => {
     ensureDrawingCursorStyle()
@@ -791,6 +805,27 @@ export function KlineChart({
           pane.instanceId
         )
       })}
+      <DrawingPriceDialog
+        open={priceEditDrawing !== null}
+        price={priceEditDrawing ? horizontalPrice(priceEditDrawing) : null}
+        onClose={() => setPriceEditId(null)}
+        onConfirm={(price) => {
+          const current = priceEditDrawing
+          if (!current) {
+            setPriceEditId(null)
+            return
+          }
+          const currentPrice = horizontalPrice(current)
+          if (currentPrice === null || currentPrice === price) {
+            setPriceEditId(null)
+            return
+          }
+          onDrawingsChange?.(
+            drawings.map((item) => (item.id === current.id ? withHorizontalPrice(item, price) : item))
+          )
+          setPriceEditId(null)
+        }}
+      />
     </div>
   )
 }

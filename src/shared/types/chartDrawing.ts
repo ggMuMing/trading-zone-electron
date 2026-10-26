@@ -203,6 +203,31 @@ export function parseDrawingHit(externalId: string): DrawingHit | null {
   return { id, handle }
 }
 
+export function horizontalPrice(drawing: ChartDrawing): number | null {
+  if (drawing.kind === 'hline') {
+    return drawing.price
+  }
+  if (drawing.kind === 'hsegment') {
+    return drawing.a.price
+  }
+  return null
+}
+
+/** 水平线改价格；水平线段两端价格一起改，时间端点不动。 */
+export function withHorizontalPrice(drawing: ChartDrawing, price: number): ChartDrawing {
+  if (drawing.kind === 'hline') {
+    return { ...drawing, price }
+  }
+  if (drawing.kind === 'hsegment') {
+    return {
+      ...drawing,
+      a: { ...drawing.a, price },
+      b: { ...drawing.b, price }
+    }
+  }
+  return drawing
+}
+
 export function moveDrawing(drawing: ChartDrawing, handle: DrawingHandle, point: DrawingPoint): ChartDrawing {
   if (drawing.kind === 'hline') {
     return { ...drawing, price: point.price }
