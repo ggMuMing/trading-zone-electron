@@ -17,26 +17,54 @@ import CloseIcon from '@mui/icons-material/Close'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import { useEffect, useRef, useState } from 'react'
 import { DEFAULT_SCRIPT_TITLE, defaultScriptParams } from '../../../../../shared/chart/indicatorScript'
-import type { IndicatorScript, ScriptTryParams, ScriptTryResult } from '../../../../../shared/types/indicatorScript'
+import type { IndicatorManifest } from '../../../../../shared/types/indicatorScript'
 import type { MarketQueryParams } from '../../../../../shared/types/market'
+import type { StrategyScriptManifest } from '../../../../../shared/types/strategyScript'
 import { ScriptSourceEditor } from './ScriptSourceEditor'
+
+export type ScriptKind = 'indicator' | 'strategy'
 
 export interface ScriptDraft {
   id: string | null
+  kind: ScriptKind
   title: string
   source: string
 }
 
+export interface EditorScriptRef {
+  id: string
+  title: string
+  source: string
+}
+
+export interface EditorTryResult {
+  ok: boolean
+  error?: string
+  traceback?: string
+  line?: number | null
+  column?: number | null
+  manifest?: IndicatorManifest | StrategyScriptManifest
+  buy_count?: number
+  sell_count?: number
+  bar_count?: number
+}
+
+export interface EditorTryParams {
+  source: string
+  params?: object
+  query?: MarketQueryParams
+}
+
 export interface ScriptEditorPanelProps {
   draft: ScriptDraft
-  scripts: IndicatorScript[]
+  scripts: EditorScriptRef[]
   disabled?: boolean
   tryQuery: MarketQueryParams | null
   onDraftChange: (draft: ScriptDraft) => void
   onClose: () => void
-  onCreateNew: () => void
-  onTry: (params: ScriptTryParams) => Promise<ScriptTryResult>
-  onCreate: (title: string, source: string) => Promise<IndicatorScript | null>
+  onCreateNew: (kind: ScriptKind) => void
+  onTry: (params: EditorTryParams) => Promise<EditorTryResult>
+  onCreate: (title: string, source: string) => Promise<EditorScriptRef | null>
   onUpdate: (id: string, patch: { title: string; source: string }) => Promise<void>
   onRename: (id: string, title: string) => Promise<void>
 }
@@ -47,6 +75,27 @@ type EditorBanner =
 
 const EDITOR_WIDTH_MIN = 320
 const EDITOR_WIDTH_DEFAULT = 480
+
+function isIndicatorManifest(
+  manifest: IndicatorManifest | StrategyScriptManifest
+): manifest is IndicatorManifest {
+  return 'fields' in manifest && 'plots' in manifest
+}
+
+function strategyDefaultParams(manifest: StrategyScriptManifest | undefined): Record<string, number | string> {
+  const params: Record<string, number | string> = {}
+  for (const field of manifest?.parameters ?? []) {
+    params[field.name] = field.default
+  }
+  return params
+}
+
+function successText(result: EditorTryResult, fallback: string): string {
+  if (typeof result.buy_count === 'number') {
+    return `测试通过，买入 ${result.buy_count}，卖出 ${result.sell_count ?? 0}，K 线 ${result.bar_count ?? 0}`
+  }
+  return fallback
+}
 
 function clampEditorWidth(value: number, maxWidth: number): number {
   const max = Math.max(EDITOR_WIDTH_MIN, maxWidth)
@@ -76,15 +125,15 @@ export function ScriptEditorPanel({
   const [customMenuAnchor, setCustomMenuAnchor] = useState<HTMLElement | null>(null)
   const [renameOpen, setRenameOpen] = useState(false)
   const [renameValue, setRenameValue] = useState(draft.title)
-  const [tryResult, setTryResult] = useState<ScriptTryResult | null>(null)
+  const [tryResult, setTryResult] = useState<EditorTryResult | null>(null)
   const [banner, setBanner] = useState<EditorBanner | null>(null)
   const [tryBusy, setTryBusy] = useState(false)
   widthRef.current = width
 
-  const applyTryResult = (result: ScriptTryResult, successMessage = '测试通过'): void => {
+  const applyTryResult = (result: EditorTryResult, successMessage = '测试通过'): void => {
     setTryResult(result)
     if (result.ok) {
-      setBanner({ type: 'success', message: successMessage })
+      setBanner({ type: 'success', message: successText(result, successMessage) })
       return
     }
     setBanner({
@@ -166,9 +215,17 @@ export function ScriptEditorPanel({
         applyTryResult(loaded)
         return
       }
+      const params =
+        draft.kind === 'strategy'
+          ? strategyDefaultParams(
+              loaded.manifest && !isIndicatorManifest(loaded.manifest) ? loaded.manifest : undefined
+            )
+          : loaded.manifest && isIndicatorManifest(loaded.manifest)
+            ? defaultScriptParams(loaded.manifest)
+            : { inputs: {}, styles: {} }
       const result = await onTry({
         source: draft.source,
-        params: loaded.manifest ? defaultScriptParams(loaded.manifest) : { inputs: {}, styles: {} },
+        params,
         query: tryQuery
       })
       applyTryResult(result)
@@ -201,7 +258,7 @@ export function ScriptEditorPanel({
         if (created) {
           keepResultForIdRef.current = created.id
           applyTryResult(result, `新脚本${created.title}创建成功`)
-          onDraftChange({ id: created.id, title: created.title, source: created.source })
+          onDraftChange({ id: created.id, kind: draft.kind, title: created.title, source: created.source })
         }
       } else {
         await onUpdate(draft.id, { title: draft.title, source: draft.source })
@@ -337,16 +394,26 @@ export function ScriptEditorPanel({
               closeMenus()
               setBanner(null)
               setTryResult(null)
-              onCreateNew()
+              onCreateNew('indicator')
             }}
           >
             创建新指标
           </MenuItem>
           <MenuItem
+            onClick={() => {
+              closeMenus()
+              setBanner(null)
+              setTryResult(null)
+              onCreateNew('strategy')
+            }}
+          >
+            创建新策略
+          </MenuItem>
+          <MenuItem
             onClick={(event) => setCustomMenuAnchor(event.currentTarget)}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 2 }}>
-              自定义指标
+              {draft.kind === 'strategy' ? '自定义策略' : '自定义指标'}
               <ChevronRightIcon fontSize="small" />
             </Box>
           </MenuItem>
@@ -364,7 +431,12 @@ export function ScriptEditorPanel({
                 key={script.id}
                 selected={script.id === draft.id}
                 onClick={() => {
-                  onDraftChange({ id: script.id, title: script.title, source: script.source })
+                  onDraftChange({
+                    id: script.id,
+                    kind: draft.kind,
+                    title: script.title,
+                    source: script.source
+                  })
                   closeMenus()
                 }}
               >
@@ -372,7 +444,9 @@ export function ScriptEditorPanel({
               </MenuItem>
             ))
           ) : (
-            <MenuItem disabled>还没有已创建的指标</MenuItem>
+            <MenuItem disabled>
+              {draft.kind === 'strategy' ? '还没有已创建的策略' : '还没有已创建的指标'}
+            </MenuItem>
           )}
         </Menu>
         <ScriptSourceEditor

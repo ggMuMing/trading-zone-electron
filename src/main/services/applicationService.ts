@@ -32,6 +32,14 @@ import type {
   ScriptTryParams,
   ScriptTryResult
 } from '../../shared/types/indicatorScript'
+import {
+  readStrategyManifest,
+  strategyScriptPublicId,
+  strategyScriptStorageId,
+  type StrategyScript,
+  type StrategyScriptTryParams,
+  type StrategyScriptTryResult
+} from '../../shared/types/strategyScript'
 import type { Stock } from '../../shared/types/stock'
 import {
   PYTHON_METHODS,
@@ -48,6 +56,7 @@ import {
   type IndexConstituentsResult as PyIndexConstituentsResult,
   type IndexWeightSyncResult as PyIndexWeightSyncResult,
   type StrategyListResult,
+  type StrategyParameter,
   type StrategyRunParams,
   type StrategyRunResult,
   type SwIndustryWorkerResult
@@ -65,11 +74,12 @@ import type {
   PipelineRunStepOutcome,
   PipelineStatusResult
 } from '../../shared/types/pipeline'
-import { pythonBridge, readExampleMaSource } from '../bridge/pythonBridge'
+import { pythonBridge, readExampleMaSource, readExampleStrategySource } from '../bridge/pythonBridge'
 import { getTushareToken } from '../config/appConfig'
 import { chartDrawingRepository } from '../db/chartDrawingRepository'
 import { chartLayoutRepository } from '../db/chartLayoutRepository'
 import { indicatorScriptRepository } from '../db/indicatorScriptRepository'
+import { strategyScriptRepository } from '../db/strategyScriptRepository'
 import { marketPoolRepository } from '../db/marketPoolRepository'
 import { stocksRepository } from '../db/stocksRepository'
 import { swIndustryRepository } from '../db/swIndustryRepository'
@@ -507,6 +517,69 @@ export const applicationService = {
     return readExampleMaSource()
   },
 
+  exampleStrategySource(): string {
+    return readExampleStrategySource()
+  },
+
+  listStrategyScripts(): StrategyScript[] {
+    return strategyScriptRepository.list()
+  },
+
+  async tryStrategyScript(params: StrategyScriptTryParams): Promise<StrategyScriptTryResult> {
+    if (typeof params.source !== 'string') {
+      throw new Error('source must be a string')
+    }
+    const payload: Record<string, unknown> = { source: params.source }
+    if (params.params !== undefined) {
+      payload.params = params.params
+    }
+    if (params.query !== undefined) {
+      const query: Record<string, unknown> = {
+        ts_code: params.query.ts_code.trim(),
+        start_date: params.query.start_date ?? MARKET_SYNC_EARLIEST,
+        end_date: params.query.end_date ?? todayYyyymmdd(),
+        adjust: params.query.adjust ?? 'none'
+      }
+      if (params.query.limit !== undefined) {
+        query.limit = params.query.limit
+      }
+      payload.query = query
+    }
+    return pythonBridge.call<StrategyScriptTryResult>(PYTHON_METHODS.strategyScriptTry, payload)
+  },
+
+  async createStrategyScript(title: string, source: string): Promise<StrategyScript[]> {
+    const manifest = await loadStrategyParameters(source)
+    return strategyScriptRepository.create({ title, source, manifest })
+  },
+
+  async updateStrategyScript(
+    id: string,
+    patch: { title?: string; source?: string }
+  ): Promise<StrategyScript[]> {
+    if (!id.trim()) {
+      throw new Error('id is required')
+    }
+    const existing = strategyScriptRepository.get(id.trim())
+    if (!existing) {
+      throw new Error(`策略不存在：${id}`)
+    }
+    const source = patch.source !== undefined ? patch.source : existing.source
+    const manifest = await loadStrategyParameters(source)
+    return strategyScriptRepository.update(id.trim(), {
+      title: patch.title,
+      source: patch.source,
+      manifest
+    })
+  },
+
+  removeStrategyScript(id: string): StrategyScript[] {
+    if (!id.trim()) {
+      throw new Error('id is required')
+    }
+    return strategyScriptRepository.remove(id.trim())
+  },
+
   async getChartLayout(): Promise<ChartLayout> {
     return withNormalizedScriptParams(await ensureScriptLayoutDefaults())
   },
@@ -774,7 +847,13 @@ export const applicationService = {
   },
 
   async listStrategies(): Promise<StrategyListResult> {
-    return pythonBridge.call<StrategyListResult>(PYTHON_METHODS.strategyList)
+    const builtin = await pythonBridge.call<StrategyListResult>(PYTHON_METHODS.strategyList)
+    const scripts = strategyScriptRepository.list().map((script) => ({
+      id: strategyScriptPublicId(script.id),
+      name: script.title,
+      parameters: script.manifest
+    }))
+    return { strategies: [...builtin.strategies, ...scripts] }
   },
 
   async runStrategy(params: StrategyRunParams): Promise<StrategyRunResult> {
@@ -797,6 +876,22 @@ export const applicationService = {
     const adjust = params.adjust ?? 'qfq'
     if (adjust !== 'none' && adjust !== 'qfq' && adjust !== 'hfq') {
       throw new Error('adjust must be none | qfq | hfq')
+    }
+    const storageId = strategyScriptStorageId(strategyId)
+    if (storageId) {
+      const script = strategyScriptRepository.get(storageId)
+      if (!script) {
+        throw new Error(`策略不存在：${strategyId}`)
+      }
+      const result = await pythonBridge.call<StrategyRunResult>(PYTHON_METHODS.strategyScriptRun, {
+        source: script.source,
+        ts_code: tsCode,
+        start_date: startDate,
+        end_date: endDate,
+        adjust,
+        ...(params.params !== undefined ? { params: params.params } : {})
+      })
+      return { ...result, strategy_id: strategyId }
     }
     return pythonBridge.call<StrategyRunResult>(PYTHON_METHODS.strategyRun, {
       strategy_id: strategyId,
@@ -990,6 +1085,17 @@ async function runDailyBarStep(
 /** 快照类步骤把「跑过的那个已收盘开市日」记下来，作为是否过期的标尺。 */
 async function markStepSynced(stepId: PipelineStepId): Promise<void> {
   await pythonBridge.call(PYTHON_METHODS.metaMarkStep, { step_id: stepId })
+}
+
+async function loadStrategyParameters(source: string): Promise<StrategyParameter[]> {
+  const result = await applicationService.tryStrategyScript({ source })
+  if (!result.ok) {
+    throw new Error(result.error || '策略脚本解析失败')
+  }
+  if (!result.manifest) {
+    throw new Error('strategy try did not return manifest')
+  }
+  return readStrategyManifest(result.manifest).parameters
 }
 
 async function loadScriptManifest(source: string): Promise<IndicatorManifest> {

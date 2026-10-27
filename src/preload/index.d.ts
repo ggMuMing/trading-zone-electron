@@ -9,6 +9,11 @@ import type { ChartDrawing } from '../shared/types/chartDrawing'
 import type { ChartLayout, LayoutItemParams, LayoutReorderDirection } from '../shared/types/chartLayout'
 import type { IndicatorScript, ScriptTryParams, ScriptTryResult } from '../shared/types/indicatorScript'
 import type {
+  StrategyScript,
+  StrategyScriptTryParams,
+  StrategyScriptTryResult
+} from '../shared/types/strategyScript'
+import type {
   BoardStats,
   MarketCoverageResult,
   MarketPoolItem,
@@ -103,6 +108,14 @@ export interface AppApi {
   strategy: {
     list: () => Promise<StrategyListResult>
     run: (params: StrategyRunParams) => Promise<StrategyRunResult>
+  }
+  strategyScript: {
+    list: () => Promise<StrategyScript[]>
+    exampleSource: () => Promise<string>
+    try: (params: StrategyScriptTryParams) => Promise<StrategyScriptTryResult>
+    create: (params: { title: string; source: string }) => Promise<StrategyScript[]>
+    update: (params: { id: string; title?: string; source?: string }) => Promise<StrategyScript[]>
+    remove: (params: { id: string }) => Promise<StrategyScript[]>
   }
   paperPlan: {
     list: () => Promise<PaperPlan[]>

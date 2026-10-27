@@ -274,5 +274,7 @@ export const PYTHON_METHODS = {
   computeIndicator: 'compute.indicator',
   computeScriptTry: 'compute.script_try',
   strategyList: 'strategy.list',
-  strategyRun: 'strategy.run'
+  strategyRun: 'strategy.run',
+  strategyScriptTry: 'strategy.script_try',
+  strategyScriptRun: 'strategy.script_run'
 } as const

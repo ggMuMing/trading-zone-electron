@@ -9,6 +9,7 @@ import { pythonBridge } from '../bridge/pythonBridge'
 import type { AdjustType, MarketQueryParams } from '../../shared/types/market'
 import type { LayoutItemParams, ScriptParams } from '../../shared/types/chartLayout'
 import type { ScriptTryParams } from '../../shared/types/indicatorScript'
+import type { StrategyScriptTryParams } from '../../shared/types/strategyScript'
 import { readPaperArchiveDraft } from '../../shared/paper/paperArchive'
 import { readPaperPlanDraft } from '../../shared/paper/paperPlan'
 import { readTradeJournalDraft } from '../../shared/tradeJournal/tradeJournal'
@@ -384,6 +385,88 @@ export function registerHandlers(): void {
       patch.source = p.source
     }
     return applicationService.updateIndicatorScript(p.id, patch)
+  })
+
+  ipcMain.handle('strategyScript:list', () => {
+    return applicationService.listStrategyScripts()
+  })
+
+  ipcMain.handle('strategyScript:exampleSource', () => {
+    return applicationService.exampleStrategySource()
+  })
+
+  ipcMain.handle('strategyScript:try', (_event, params: unknown) => {
+    if (!params || typeof params !== 'object') {
+      throw new Error('strategyScript:try requires params object')
+    }
+    const p = params as Record<string, unknown>
+    if (typeof p.source !== 'string') {
+      throw new Error('source must be a string')
+    }
+    const payload: StrategyScriptTryParams = { source: p.source }
+    if (p.params !== undefined) {
+      const parsed = parseStrategyParamValues(p.params)
+      if (!parsed) {
+        throw new Error('params must be an object')
+      }
+      payload.params = parsed
+    }
+    if (p.query !== undefined) {
+      payload.query = parseMarketQueryParams(p.query, 'strategyScript:try')
+    }
+    return applicationService.tryStrategyScript(payload)
+  })
+
+  ipcMain.handle('strategyScript:create', (_event, params: unknown) => {
+    if (!params || typeof params !== 'object') {
+      throw new Error('strategyScript:create requires params object')
+    }
+    const p = params as Record<string, unknown>
+    if (typeof p.title !== 'string') {
+      throw new Error('title must be a string')
+    }
+    if (typeof p.source !== 'string') {
+      throw new Error('source must be a string')
+    }
+    return applicationService.createStrategyScript(p.title, p.source)
+  })
+
+  ipcMain.handle('strategyScript:update', (_event, params: unknown) => {
+    if (!params || typeof params !== 'object') {
+      throw new Error('strategyScript:update requires params object')
+    }
+    const p = params as Record<string, unknown>
+    if (typeof p.id !== 'string' || !p.id.trim()) {
+      throw new Error('id must be a non-empty string')
+    }
+    if (p.title === undefined && p.source === undefined) {
+      throw new Error('title or source is required')
+    }
+    const patch: { title?: string; source?: string } = {}
+    if (p.title !== undefined) {
+      if (typeof p.title !== 'string') {
+        throw new Error('title must be a string')
+      }
+      patch.title = p.title
+    }
+    if (p.source !== undefined) {
+      if (typeof p.source !== 'string') {
+        throw new Error('source must be a string')
+      }
+      patch.source = p.source
+    }
+    return applicationService.updateStrategyScript(p.id, patch)
+  })
+
+  ipcMain.handle('strategyScript:remove', (_event, params: unknown) => {
+    if (!params || typeof params !== 'object') {
+      throw new Error('strategyScript:remove requires params object')
+    }
+    const id = (params as Record<string, unknown>).id
+    if (typeof id !== 'string' || !id.trim()) {
+      throw new Error('id must be a non-empty string')
+    }
+    return applicationService.removeStrategyScript(id)
   })
 
   ipcMain.handle('indicatorScript:remove', (_event, params: unknown) => {

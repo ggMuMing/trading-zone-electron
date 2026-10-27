@@ -33,9 +33,10 @@ import type {
 } from '../../../shared/types/chartLayout'
 import type {
   IndicatorScript,
-  ScriptTryParams,
-  ScriptTryResult
+  ScriptTryParams
 } from '../../../shared/types/indicatorScript'
+import type { StrategyScript } from '../../../shared/types/strategyScript'
+import { strategyScriptPublicId } from '../../../shared/types/strategyScript'
 import type {
   AdjustType,
   MarketCoverageResult,
@@ -52,7 +53,7 @@ import { IndicatorSettingsDialog } from './chart/IndicatorSettingsDialog'
 import { KlineChart, type ChartLocateRequest } from './chart/KlineChart'
 import type { ReplayStartRequest } from './chart/ReplayPanel'
 import { sliceChartInput } from './chart/sliceChartInput'
-import { ScriptEditorPanel, type ScriptDraft } from './chart/scriptEditor/ScriptEditorPanel'
+import { ScriptEditorPanel, type EditorTryParams, type EditorTryResult, type ScriptDraft, type ScriptKind } from './chart/scriptEditor/ScriptEditorPanel'
 import { StrategyPanel } from './chart/StrategyPanel'
 import type { StrategyChartOverlay } from './chart/strategyOverlay'
 import { resolveUniverseStocks, universeListEmptyHint } from './resolveUniverseStocks'
@@ -252,6 +253,9 @@ export function ChartPage({
   const [layout, setLayout] = useState<ChartLayout | null>(null)
   const [scripts, setScripts] = useState<IndicatorScript[]>([])
   const [exampleSource, setExampleSource] = useState('')
+  const [strategyScripts, setStrategyScripts] = useState<StrategyScript[]>([])
+  const [strategyExampleSource, setStrategyExampleSource] = useState('')
+  const [strategyCatalogVersion, setStrategyCatalogVersion] = useState(0)
   const [indicatorOpen, setIndicatorOpen] = useState(false)
   const [settingsItem, setSettingsItem] = useState<ChartLayoutItem | null>(null)
   const [scriptDraft, setScriptDraft] = useState<ScriptDraft | null>(null)
@@ -303,18 +307,23 @@ export function ChartPage({
   )
 
   const loadStocksAndCoverage = async (): Promise<void> => {
-    const [listed, cov, currentLayout, example, listedScripts] = await Promise.all([
-      window.api.stocks.list(),
-      window.api.market.coverage(),
-      window.api.chartLayout.get(),
-      window.api.indicatorScript.exampleSource(),
-      window.api.indicatorScript.list()
-    ])
+    const [listed, cov, currentLayout, example, listedScripts, strategyExample, listedStrategies] =
+      await Promise.all([
+        window.api.stocks.list(),
+        window.api.market.coverage(),
+        window.api.chartLayout.get(),
+        window.api.indicatorScript.exampleSource(),
+        window.api.indicatorScript.list(),
+        window.api.strategyScript.exampleSource(),
+        window.api.strategyScript.list()
+      ])
     setAllStocks(listed)
     setCoverage(cov)
     setLayout(currentLayout)
     setExampleSource(example)
     setScripts(listedScripts)
+    setStrategyExampleSource(strategyExample)
+    setStrategyScripts(listedStrategies)
     if (!fixedPickerStocks) {
       await applyUniverse(universeId, listed, false)
     }
@@ -678,8 +687,15 @@ export function ChartPage({
   const handleCreateScript = async (
     title: string,
     source: string
-  ): Promise<IndicatorScript | null> => {
+  ): Promise<IndicatorScript | StrategyScript | null> => {
     try {
+      if (scriptDraft?.kind === 'strategy') {
+        const knownIds = new Set(strategyScripts.map((script) => script.id))
+        const next = await window.api.strategyScript.create({ title, source })
+        setStrategyScripts(next)
+        setStrategyCatalogVersion((version) => version + 1)
+        return next.find((script) => !knownIds.has(script.id)) ?? null
+      }
       const knownIds = new Set(scripts.map((script) => script.id))
       const next = await window.api.indicatorScript.create({ title, source })
       applyScripts(next)
@@ -690,11 +706,39 @@ export function ChartPage({
     }
   }
 
+  const syncSelectedStrategy = (script: StrategyScript): void => {
+    const publicId = strategyScriptPublicId(script.id)
+    setSelectedStrategy((current) => {
+      if (!current || current.id !== publicId) {
+        return current
+      }
+      return {
+        id: publicId,
+        name: script.title,
+        parameters: script.manifest
+      }
+    })
+  }
+
   const handleUpdateScript = async (
     id: string,
     patch: { title: string; source: string }
   ): Promise<void> => {
     try {
+      if (scriptDraft?.kind === 'strategy') {
+        const next = await window.api.strategyScript.update({
+          id,
+          title: patch.title,
+          source: patch.source
+        })
+        setStrategyScripts(next)
+        setStrategyCatalogVersion((version) => version + 1)
+        const updated = next.find((script) => script.id === id)
+        if (updated) {
+          syncSelectedStrategy(updated)
+        }
+        return
+      }
       applyScripts(
         await window.api.indicatorScript.update({ id, title: patch.title, source: patch.source })
       )
@@ -706,20 +750,40 @@ export function ChartPage({
 
   const handleRenameScript = async (id: string, title: string): Promise<void> => {
     try {
+      if (scriptDraft?.kind === 'strategy') {
+        const next = await window.api.strategyScript.update({ id, title })
+        setStrategyScripts(next)
+        setStrategyCatalogVersion((version) => version + 1)
+        const updated = next.find((script) => script.id === id)
+        if (updated) {
+          syncSelectedStrategy(updated)
+        }
+        return
+      }
       applyScripts(await window.api.indicatorScript.update({ id, title }))
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
     }
   }
 
-  const openNewScriptEditor = (): void => {
+  const openScriptEditor = (kind: ScriptKind): void => {
     setIndicatorOpen(false)
-    setScriptDraft({ id: null, title: DEFAULT_SCRIPT_TITLE, source: exampleSource })
+    setScriptDraft({
+      id: null,
+      kind,
+      title: DEFAULT_SCRIPT_TITLE,
+      source: kind === 'strategy' ? strategyExampleSource : exampleSource
+    })
   }
 
   const openEditScriptEditor = (script: IndicatorScript): void => {
     setIndicatorOpen(false)
-    setScriptDraft({ id: script.id, title: script.title, source: script.source })
+    setScriptDraft({ id: script.id, kind: 'indicator', title: script.title, source: script.source })
+  }
+
+  const openEditStrategyEditor = (script: StrategyScript): void => {
+    setIndicatorOpen(false)
+    setScriptDraft({ id: script.id, kind: 'strategy', title: script.title, source: script.source })
   }
 
   const openLayoutSettings = (instanceId: string): void => {
@@ -748,8 +812,32 @@ export function ChartPage({
     }
   }
 
-  const handleTryScript = async (params: ScriptTryParams): Promise<ScriptTryResult> => {
-    return window.api.indicatorScript.try(params)
+  const handleRemoveStrategy = async (id: string): Promise<void> => {
+    try {
+      const next = await window.api.strategyScript.remove({ id })
+      setStrategyScripts(next)
+      setStrategyCatalogVersion((version) => version + 1)
+      if (selectedStrategy?.id === strategyScriptPublicId(id)) {
+        closeStrategyPanel()
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleTryScript = async (params: EditorTryParams): Promise<EditorTryResult> => {
+    if (scriptDraft?.kind === 'strategy') {
+      return window.api.strategyScript.try({
+        source: params.source,
+        params: params.params as Record<string, number | string> | undefined,
+        query: params.query
+      })
+    }
+    return window.api.indicatorScript.try({
+      source: params.source,
+      params: params.params as ScriptTryParams['params'],
+      query: params.query
+    })
   }
 
   const tryQuery: MarketQueryParams | null = selectedCode
@@ -765,9 +853,11 @@ export function ChartPage({
     if (!indicatorOpen) {
       return
     }
-    void window.api.indicatorScript
-      .list()
-      .then(applyScripts)
+    void Promise.all([window.api.indicatorScript.list(), window.api.strategyScript.list()])
+      .then(([indicatorScripts, nextStrategyScripts]) => {
+        applyScripts(indicatorScripts)
+        setStrategyScripts(nextStrategyScripts)
+      })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : String(err))
       })
@@ -1301,7 +1391,7 @@ export function ChartPage({
                   typeof rightPanel === 'function' ? rightPanel(panelContext) : rightPanel
                 ) : selectedStrategy ? (
                   <StrategyPanel
-                    key={selectedStrategy.id}
+                    key={`${selectedStrategy.id}:${JSON.stringify(selectedStrategy.parameters ?? [])}`}
                     strategyId={selectedStrategy.id}
                     strategyName={selectedStrategy.name}
                     parameters={selectedStrategy.parameters}
@@ -1320,12 +1410,12 @@ export function ChartPage({
           {scriptDraft ? (
             <ScriptEditorPanel
               draft={scriptDraft}
-              scripts={scripts}
+              scripts={scriptDraft.kind === 'strategy' ? strategyScripts : scripts}
               disabled={querying}
               tryQuery={tryQuery}
               onDraftChange={setScriptDraft}
               onClose={() => setScriptDraft(null)}
-              onCreateNew={openNewScriptEditor}
+              onCreateNew={openScriptEditor}
               onTry={handleTryScript}
               onCreate={handleCreateScript}
               onUpdate={handleUpdateScript}
@@ -1337,16 +1427,22 @@ export function ChartPage({
       <IndicatorDialog
         open={indicatorOpen}
         exampleSource={exampleSource}
+        strategyExampleSource={strategyExampleSource}
         layout={layout}
         scripts={scripts}
+        strategyScripts={strategyScripts}
+        strategyCatalogVersion={strategyCatalogVersion}
         selectedStrategyId={selectedStrategy?.id ?? null}
         disabled={querying}
         strategyDisabled={replayActive || hasRightPanel}
         onClose={() => setIndicatorOpen(false)}
         onAdd={(ref) => void handleAddIndicator(ref)}
-        onCreateEditor={openNewScriptEditor}
+        onCreateEditor={() => openScriptEditor('indicator')}
+        onCreateStrategy={() => openScriptEditor('strategy')}
         onEditEditor={openEditScriptEditor}
+        onEditStrategy={openEditStrategyEditor}
         onRemoveScript={(id) => void handleRemoveScript(id)}
+        onRemoveStrategy={(id) => void handleRemoveStrategy(id)}
         onSelectStrategy={(strategy) => setSelectedStrategy(strategy)}
       />
       <IndicatorSettingsDialog

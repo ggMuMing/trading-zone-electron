@@ -22,21 +22,29 @@ import { scriptDisplayKey } from '../../../../shared/chart/indicatorScript'
 import type { ChartLayout } from '../../../../shared/types/chartLayout'
 import type { IndicatorScript } from '../../../../shared/types/indicatorScript'
 import type { StrategyInfo } from '../../../../shared/types/pythonProtocol'
+import type { StrategyScript } from '../../../../shared/types/strategyScript'
+import { strategyScriptStorageId } from '../../../../shared/types/strategyScript'
 import { CHART_ICON_SX, ChartIconButton } from './ChartIconButton'
 
 export interface IndicatorDialogProps {
   open: boolean
   exampleSource: string
+  strategyExampleSource: string
   layout: ChartLayout | null
   scripts: IndicatorScript[]
+  strategyScripts: StrategyScript[]
+  strategyCatalogVersion?: number
   selectedStrategyId?: string | null
   disabled?: boolean
   strategyDisabled?: boolean
   onClose: () => void
   onAdd: (ref: string) => void
   onCreateEditor: () => void
+  onCreateStrategy: () => void
   onEditEditor: (script: IndicatorScript) => void
+  onEditStrategy: (script: StrategyScript) => void
   onRemoveScript: (id: string) => void
+  onRemoveStrategy: (id: string) => void
   onSelectStrategy: (strategy: StrategyInfo) => void
 }
 
@@ -75,16 +83,22 @@ function EmptyCatalog({
 export function IndicatorDialog({
   open,
   exampleSource,
+  strategyExampleSource,
   layout,
   scripts,
+  strategyScripts,
+  strategyCatalogVersion = 0,
   selectedStrategyId = null,
   disabled = false,
   strategyDisabled = false,
   onClose,
   onAdd,
   onCreateEditor,
+  onCreateStrategy,
   onEditEditor,
+  onEditStrategy,
   onRemoveScript,
+  onRemoveStrategy,
   onSelectStrategy
 }: IndicatorDialogProps): React.JSX.Element {
   const [tab, setTab] = useState<CatalogTab>('indicator')
@@ -121,7 +135,7 @@ export function IndicatorDialog({
     return () => {
       cancelled = true
     }
-  }, [open, tab])
+  }, [open, tab, strategyCatalogVersion])
 
   return (
     <Dialog
@@ -145,11 +159,14 @@ export function IndicatorDialog({
           指标与策略
         </Typography>
         <ChartIconButton
-          ariaLabel="新建脚本"
-          title="新建脚本"
+          ariaLabel={tab === 'strategy' ? '新建策略' : '新建脚本'}
+          title={tab === 'strategy' ? '新建策略' : '新建脚本'}
           roomy
-          disabled={disabled || !exampleSource}
-          onClick={onCreateEditor}
+          disabled={
+            disabled ||
+            (tab === 'strategy' ? strategyDisabled || !strategyExampleSource : !exampleSource)
+          }
+          onClick={tab === 'strategy' ? onCreateStrategy : onCreateEditor}
         >
           <Add sx={CHART_ICON_SX} />
         </ChartIconButton>
@@ -205,32 +222,60 @@ export function IndicatorDialog({
               <List dense disablePadding>
                 {strategies.map((strategy) => {
                   const selected = strategy.id === selectedStrategyId
+                  const storageId = strategyScriptStorageId(strategy.id)
+                  const script = storageId
+                    ? strategyScripts.find((item) => item.id === storageId)
+                    : undefined
                   return (
                     <ListItem
                       key={strategy.id}
                       disablePadding
                       secondaryAction={
-                        <ChartIconButton
-                          ariaLabel={selected ? '已选中策略' : selectedStrategyId ? '切换策略' : '添加策略'}
-                          title={selected ? '已选中' : selectedStrategyId ? '切换' : '添加'}
-                          roomy
-                          disabled={disabled || strategyDisabled || selected}
-                          onClick={() => {
-                            onSelectStrategy(strategy)
-                            onClose()
-                          }}
-                        >
-                          {selected ? (
-                            <Check sx={CHART_ICON_SX} />
-                          ) : selectedStrategyId ? (
-                            <SwapHoriz sx={CHART_ICON_SX} />
-                          ) : (
-                            <Add sx={CHART_ICON_SX} />
-                          )}
-                        </ChartIconButton>
+                        <Stack direction="row" spacing={0.25}>
+                          {script ? (
+                            <>
+                              <ChartIconButton
+                                ariaLabel="编辑策略"
+                                title="编辑策略"
+                                roomy
+                                disabled={disabled}
+                                onClick={() => onEditStrategy(script)}
+                              >
+                                <EditOutlined sx={CHART_ICON_SX} />
+                              </ChartIconButton>
+                              <ChartIconButton
+                                ariaLabel="删除策略"
+                                title="删除策略"
+                                roomy
+                                disabled={disabled}
+                                onClick={() => onRemoveStrategy(script.id)}
+                              >
+                                <DeleteOutline sx={CHART_ICON_SX} />
+                              </ChartIconButton>
+                            </>
+                          ) : null}
+                          <ChartIconButton
+                            ariaLabel={selected ? '已选中策略' : selectedStrategyId ? '切换策略' : '添加策略'}
+                            title={selected ? '已选中' : selectedStrategyId ? '切换' : '添加'}
+                            roomy
+                            disabled={disabled || strategyDisabled || selected}
+                            onClick={() => {
+                              onSelectStrategy(strategy)
+                              onClose()
+                            }}
+                          >
+                            {selected ? (
+                              <Check sx={CHART_ICON_SX} />
+                            ) : selectedStrategyId ? (
+                              <SwapHoriz sx={CHART_ICON_SX} />
+                            ) : (
+                              <Add sx={CHART_ICON_SX} />
+                            )}
+                          </ChartIconButton>
+                        </Stack>
                       }
                       sx={{
-                        pr: 6,
+                        pr: script ? 14 : 6,
                         bgcolor: selected ? 'action.selected' : undefined,
                         '&:hover': { bgcolor: selected ? 'action.selected' : 'action.hover' }
                       }}

@@ -317,4 +317,12 @@ export function readExampleMaSource(): string {
   return readFileSync(path, 'utf8')
 }
 
+export function readExampleStrategySource(): string {
+  const path = join(pythonPackageRoot(), 'worker', 'strategies', 'example_strategy.py')
+  if (!existsSync(path)) {
+    throw new Error(`example strategy script not found: ${path}`)
+  }
+  return readFileSync(path, 'utf8')
+}
+
 export const pythonBridge = new PythonBridge()

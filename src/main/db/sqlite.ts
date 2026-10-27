@@ -54,6 +54,14 @@ CREATE TABLE IF NOT EXISTS indicator_script (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS strategy_script (
+  id         TEXT PRIMARY KEY NOT NULL,
+  title      TEXT NOT NULL,
+  source     TEXT NOT NULL,
+  manifest   TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS sw_industry (
   index_code    TEXT PRIMARY KEY NOT NULL,
   industry_code TEXT NOT NULL UNIQUE,

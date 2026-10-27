@@ -10,6 +10,11 @@ import type { ChartDrawing } from '../shared/types/chartDrawing'
 import type { ChartLayout, LayoutItemParams, LayoutReorderDirection } from '../shared/types/chartLayout'
 import type { IndicatorScript, ScriptTryParams, ScriptTryResult } from '../shared/types/indicatorScript'
 import type {
+  StrategyScript,
+  StrategyScriptTryParams,
+  StrategyScriptTryResult
+} from '../shared/types/strategyScript'
+import type {
   BoardStats,
   MarketCoverageResult,
   MarketPoolItem,
@@ -139,6 +144,18 @@ const api = {
     list: (): Promise<StrategyListResult> => ipcRenderer.invoke('strategy:list'),
     run: (params: StrategyRunParams): Promise<StrategyRunResult> =>
       ipcRenderer.invoke('strategy:run', params)
+  },
+  strategyScript: {
+    list: (): Promise<StrategyScript[]> => ipcRenderer.invoke('strategyScript:list'),
+    exampleSource: (): Promise<string> => ipcRenderer.invoke('strategyScript:exampleSource'),
+    try: (params: StrategyScriptTryParams): Promise<StrategyScriptTryResult> =>
+      ipcRenderer.invoke('strategyScript:try', params),
+    create: (params: { title: string; source: string }): Promise<StrategyScript[]> =>
+      ipcRenderer.invoke('strategyScript:create', params),
+    update: (params: { id: string; title?: string; source?: string }): Promise<StrategyScript[]> =>
+      ipcRenderer.invoke('strategyScript:update', params),
+    remove: (params: { id: string }): Promise<StrategyScript[]> =>
+      ipcRenderer.invoke('strategyScript:remove', params)
   },
   paperPlan: {
     list: (): Promise<PaperPlan[]> => ipcRenderer.invoke('paperPlan:list'),

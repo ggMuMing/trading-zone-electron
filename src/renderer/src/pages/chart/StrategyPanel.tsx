@@ -74,6 +74,7 @@ const COLUMN_LABELS: Record<string, string> = {
 
 const STAT_LABELS: Record<string, string> = {
   buy_count: '买入信号数量',
+  sell_count: '卖出信号数量',
   bar_count: '总K线数'
 }
 

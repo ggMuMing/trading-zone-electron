@@ -39,6 +39,7 @@ from worker.handlers.market_sync import sync_market_pool  # noqa: E402
 from worker.handlers.stock_list import sync_stock_list  # noqa: E402
 from worker.handlers.try_script import try_script  # noqa: E402
 from worker.handlers.strategy import strategy_list, strategy_run  # noqa: E402
+from worker.handlers.strategy_script import strategy_script_run, strategy_script_try  # noqa: E402
 from worker.models import ReadyMessage, WorkerError, WorkerRequest, WorkerResponse  # noqa: E402
 
 Handler = Callable[[dict[str, Any]], Any]
@@ -72,6 +73,8 @@ HANDLERS: dict[str, Handler] = {
     "compute.script_try": try_script,
     "strategy.list": strategy_list,
     "strategy.run": strategy_run,
+    "strategy.script_try": strategy_script_try,
+    "strategy.script_run": strategy_script_run,
 }
 
 
