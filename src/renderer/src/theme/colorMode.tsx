@@ -66,6 +66,9 @@ const DARK_SCROLLBAR_STYLES = {
   },
   '*::-webkit-scrollbar-corner': {
     backgroundColor: '#121417'
+  },
+  'input[type="date"]::-webkit-calendar-picker-indicator': {
+    filter: 'invert(1)'
   }
 }
 

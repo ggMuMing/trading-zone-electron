@@ -109,6 +109,15 @@ CREATE TABLE IF NOT EXISTS chart_drawing (
 );
 
 CREATE INDEX IF NOT EXISTS idx_chart_drawing_code ON chart_drawing(ts_code);
+
+CREATE TABLE IF NOT EXISTS trade_journal (
+  id         TEXT PRIMARY KEY NOT NULL,
+  payload    TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_trade_journal_updated ON trade_journal(updated_at);
 `
 
 function rebuildPaperArchiveIfNeeded(database: Database.Database): void {

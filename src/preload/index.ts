@@ -3,6 +3,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 import type { Stock } from '../shared/types/stock'
 import type { PaperArchive, PaperArchiveDraft } from '../shared/types/paperArchive'
 import type { PaperPlan, PaperPlanDraft } from '../shared/types/paperPlan'
+import type { TradeJournal, TradeJournalDraft } from '../shared/types/tradeJournal'
 import type { MarketClearResult, StrategyListResult, StrategyRunParams, StrategyRunResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
 import type { ChartInput } from '../shared/types/chart'
 import type { ChartDrawing } from '../shared/types/chartDrawing'
@@ -151,6 +152,14 @@ const api = {
     list: (): Promise<PaperArchive[]> => ipcRenderer.invoke('paperArchive:list'),
     create: (params: { draft: PaperArchiveDraft }): Promise<PaperArchive> =>
       ipcRenderer.invoke('paperArchive:create', params)
+  },
+  tradeJournal: {
+    list: (): Promise<TradeJournal[]> => ipcRenderer.invoke('tradeJournal:list'),
+    create: (params: { draft: TradeJournalDraft }): Promise<TradeJournal> =>
+      ipcRenderer.invoke('tradeJournal:create', params),
+    update: (params: { id: string; draft: TradeJournalDraft }): Promise<TradeJournal> =>
+      ipcRenderer.invoke('tradeJournal:update', params),
+    remove: (params: { id: string }): Promise<void> => ipcRenderer.invoke('tradeJournal:remove', params)
   }
 }
 

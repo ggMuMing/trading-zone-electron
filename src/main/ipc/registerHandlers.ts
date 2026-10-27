@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import { getTushareToken, hasTushareToken, setTushareToken } from '../config/appConfig'
 import { paperArchiveRepository } from '../db/paperArchiveRepository'
 import { paperPlanRepository } from '../db/paperPlanRepository'
+import { tradeJournalRepository } from '../db/tradeJournalRepository'
 import { stocksRepository } from '../db/stocksRepository'
 import { applicationService } from '../services/applicationService'
 import { pythonBridge } from '../bridge/pythonBridge'
@@ -10,6 +11,7 @@ import type { LayoutItemParams, ScriptParams } from '../../shared/types/chartLay
 import type { ScriptTryParams } from '../../shared/types/indicatorScript'
 import { readPaperArchiveDraft } from '../../shared/paper/paperArchive'
 import { readPaperPlanDraft } from '../../shared/paper/paperPlan'
+import { readTradeJournalDraft } from '../../shared/tradeJournal/tradeJournal'
 import type { StrategyRunParams } from '../../shared/types/pythonProtocol'
 import { pipelineStepMeta, type PipelineStepId } from '../../shared/constants/pipeline'
 
@@ -466,6 +468,40 @@ export function registerHandlers(): void {
       throw new Error('id must be a non-empty string')
     }
     paperPlanRepository.remove(id.trim())
+  })
+
+  ipcMain.handle('tradeJournal:list', () => {
+    return tradeJournalRepository.list()
+  })
+
+  ipcMain.handle('tradeJournal:create', (_event, params: unknown) => {
+    if (!params || typeof params !== 'object') {
+      throw new Error('tradeJournal:create requires params object')
+    }
+    const draft = (params as Record<string, unknown>).draft
+    return tradeJournalRepository.create(readTradeJournalDraft(draft))
+  })
+
+  ipcMain.handle('tradeJournal:update', (_event, params: unknown) => {
+    if (!params || typeof params !== 'object') {
+      throw new Error('tradeJournal:update requires params object')
+    }
+    const raw = params as Record<string, unknown>
+    if (typeof raw.id !== 'string' || !raw.id.trim()) {
+      throw new Error('id must be a non-empty string')
+    }
+    return tradeJournalRepository.update(raw.id.trim(), readTradeJournalDraft(raw.draft))
+  })
+
+  ipcMain.handle('tradeJournal:remove', (_event, params: unknown) => {
+    if (!params || typeof params !== 'object') {
+      throw new Error('tradeJournal:remove requires params object')
+    }
+    const id = (params as Record<string, unknown>).id
+    if (typeof id !== 'string' || !id.trim()) {
+      throw new Error('id must be a non-empty string')
+    }
+    tradeJournalRepository.remove(id.trim())
   })
 
   ipcMain.handle('paperArchive:list', () => {

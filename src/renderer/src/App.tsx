@@ -3,6 +3,7 @@ import { AppShell, type AppPage } from './layout/AppShell'
 import { ChartPage } from './pages/ChartPage'
 import { DashboardPage } from './pages/dashboard/DashboardPage'
 import { MarketPage } from './pages/MarketPage'
+import { JournalPage } from './pages/journal/JournalPage'
 import { PaperTradingPage } from './pages/paper/PaperTradingPage'
 import { SettingsPage } from './pages/SettingsPage'
 import type { MarketSyncProgress } from '../../shared/types/market'
@@ -57,6 +58,8 @@ function App(): React.JSX.Element {
         <MarketPage />
       ) : page === 'paper' ? (
         <PaperTradingPage />
+      ) : page === 'journal' ? (
+        <JournalPage />
       ) : (
         <ChartPage />
       )}

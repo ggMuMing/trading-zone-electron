@@ -7,9 +7,10 @@ import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet'
 import CandlestickChartIcon from '@mui/icons-material/CandlestickChart'
 import SettingsIcon from '@mui/icons-material/Settings'
 import TableChartIcon from '@mui/icons-material/TableChart'
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import type { ReactNode } from 'react'
 
-export type AppPage = 'dashboard' | 'settings' | 'market' | 'chart' | 'paper'
+export type AppPage = 'dashboard' | 'settings' | 'market' | 'chart' | 'paper' | 'journal'
 
 interface AppShellProps {
   page: AppPage
@@ -82,6 +83,18 @@ export function AppShell({
               aria-label="模拟盘"
             >
               <AccountBalanceWalletIcon />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Tooltip title={navigationLocked ? lockedTitle : '交易管理'} placement="right">
+          <span>
+            <IconButton
+              color={page === 'journal' ? 'primary' : 'default'}
+              onClick={() => onPageChange('journal')}
+              disabled={navigationLocked}
+              aria-label="交易管理"
+            >
+              <ReceiptLongIcon />
             </IconButton>
           </span>
         </Tooltip>
