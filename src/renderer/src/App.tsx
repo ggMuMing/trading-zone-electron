@@ -5,6 +5,7 @@ import { DashboardPage } from './pages/dashboard/DashboardPage'
 import { MarketPage } from './pages/MarketPage'
 import { JournalPage } from './pages/journal/JournalPage'
 import { PaperTradingPage } from './pages/paper/PaperTradingPage'
+import { ScreenerPage } from './pages/screen/ScreenerPage'
 import { SettingsPage } from './pages/SettingsPage'
 import type { MarketSyncProgress } from '../../shared/types/market'
 
@@ -58,6 +59,8 @@ function App(): React.JSX.Element {
         <MarketPage />
       ) : page === 'paper' ? (
         <PaperTradingPage />
+      ) : page === 'screen' ? (
+        <ScreenerPage />
       ) : page === 'journal' ? (
         <JournalPage />
       ) : (

@@ -5,6 +5,7 @@ import type { PaperArchive, PaperArchiveDraft } from '../shared/types/paperArchi
 import type { PaperPlan, PaperPlanDraft } from '../shared/types/paperPlan'
 import type { TradeJournal, TradeJournalDraft } from '../shared/types/tradeJournal'
 import type { MarketClearResult, StrategyListResult, StrategyRunParams, StrategyRunResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
+import type { StrategyScreenParams, StrategyScreenResult } from '../shared/types/screener'
 import type { ChartInput } from '../shared/types/chart'
 import type { ChartDrawing } from '../shared/types/chartDrawing'
 import type { ChartLayout, LayoutItemParams, LayoutReorderDirection } from '../shared/types/chartLayout'
@@ -143,7 +144,9 @@ const api = {
   strategy: {
     list: (): Promise<StrategyListResult> => ipcRenderer.invoke('strategy:list'),
     run: (params: StrategyRunParams): Promise<StrategyRunResult> =>
-      ipcRenderer.invoke('strategy:run', params)
+      ipcRenderer.invoke('strategy:run', params),
+    screen: (params: StrategyScreenParams): Promise<StrategyScreenResult> =>
+      ipcRenderer.invoke('strategy:screen', params)
   },
   strategyScript: {
     list: (): Promise<StrategyScript[]> => ipcRenderer.invoke('strategyScript:list'),

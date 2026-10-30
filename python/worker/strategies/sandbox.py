@@ -87,6 +87,56 @@ def load_strategy_class(source: str) -> type[StrategyScript]:
     return cls
 
 
+def _side_of(row: dict[str, Any]) -> str | None:
+    if row.get("buy_signal"):
+        return "buy"
+    if row.get("sell_signal"):
+        return "sell"
+    return None
+
+
+def execute_frames(
+    source: str,
+    params: dict[str, Any] | None,
+    frames: list[dict[str, Any]],
+    signal_date: str,
+) -> dict[str, Any]:
+    """Run one user script over many symbols and keep only the signal-day side."""
+    if params is None:
+        params = {}
+    if not isinstance(params, dict):
+        raise ValueError("params must be an object")
+    if not isinstance(signal_date, str) or len(signal_date) != 8:
+        raise ValueError("signal_date must be YYYYMMDD")
+    cls = load_strategy_class(source)
+    instance = cls()
+    apply_declare(instance, params)
+    hits: list[dict[str, str]] = []
+    for item in frames:
+        if not isinstance(item, dict):
+            raise ValueError("frames entries must be objects")
+        ts_code = item.get("ts_code")
+        bars = item.get("bars")
+        if not isinstance(ts_code, str) or not ts_code:
+            raise ValueError("frames entries must include ts_code")
+        if not isinstance(bars, list):
+            raise ValueError("frames entries must include bars")
+        frame = bars_to_frame(bars)
+        if frame.empty or signal_date not in frame.index:
+            continue
+        result = run_compute(instance, frame)
+        series = result.get("series")
+        if not isinstance(series, list):
+            raise ValueError("compute result must include series")
+        row = next((entry for entry in series if isinstance(entry, dict) and entry.get("time") == signal_date), None)
+        if not isinstance(row, dict):
+            continue
+        side = _side_of(row)
+        if side:
+            hits.append({"ts_code": ts_code, "side": side})
+    return {"hits": hits}
+
+
 def execute_source(
     source: str,
     params: dict[str, Any] | None,
@@ -155,9 +205,19 @@ def _run_child(
     source: str,
     params: dict[str, Any],
     bars: list[dict[str, Any]] | None,
+    *,
+    frames: list[dict[str, Any]] | None = None,
+    signal_date: str | None = None,
+    timeout: float = SCRIPT_TIMEOUT_SEC,
 ) -> dict[str, Any]:
+    body: dict[str, Any] = {"source": source, "params": params}
+    if frames is not None:
+        body["frames"] = frames
+        body["signal_date"] = signal_date
+    else:
+        body["bars"] = bars
     payload = json.dumps(
-        {"source": source, "params": params, "bars": bars},
+        body,
         ensure_ascii=False,
     ).encode("utf-8")
     env = dict(os.environ)
@@ -170,7 +230,7 @@ def _run_child(
             cwd=str(PYTHON_ROOT),
             input=payload,
             capture_output=True,
-            timeout=SCRIPT_TIMEOUT_SEC,
+            timeout=timeout,
             check=False,
             env=env,
         )
@@ -240,6 +300,46 @@ def run_source(
     return {"stats": stats, "series": series}
 
 
+SCREEN_TIMEOUT_SEC = 120
+
+
+def run_frames(
+    source: str,
+    params: dict[str, Any] | None,
+    frames: list[dict[str, Any]],
+    signal_date: str,
+) -> list[dict[str, str]]:
+    try:
+        message = _run_child(
+            source,
+            params or {},
+            None,
+            frames=frames,
+            signal_date=signal_date,
+            timeout=SCREEN_TIMEOUT_SEC,
+        )
+    except Exception as exc:
+        diagnostic = user_script_diagnostic(exc)
+        text = str(diagnostic.get("error") or "脚本失败")
+        line = diagnostic.get("line")
+        if isinstance(line, int):
+            text = f"{text} (line {line})"
+        raise ValueError(text) from exc
+    hits = message.get("hits")
+    if not isinstance(hits, list):
+        raise ValueError("script ok payload must include hits")
+    cleaned: list[dict[str, str]] = []
+    for item in hits:
+        if not isinstance(item, dict):
+            raise ValueError("script hits must be objects")
+        ts_code = item.get("ts_code")
+        side = item.get("side")
+        if not isinstance(ts_code, str) or side not in ("buy", "sell"):
+            raise ValueError("script hits must include ts_code and side")
+        cleaned.append({"ts_code": ts_code, "side": side})
+    return cleaned
+
+
 def _child_main() -> int:
     try:
         raw = json.load(sys.stdin)
@@ -248,16 +348,25 @@ def _child_main() -> int:
         source = raw.get("source")
         params = raw.get("params")
         bars = raw.get("bars")
+        frames = raw.get("frames")
         if not isinstance(source, str):
             raise ValueError("source must be a string")
         if not isinstance(params, dict):
             raise ValueError("params must be an object")
         if bars is not None and not isinstance(bars, list):
             raise ValueError("bars must be a list or null")
+        if frames is not None and not isinstance(frames, list):
+            raise ValueError("frames must be a list")
         real_stdout = sys.stdout
         sys.stdout = sys.stderr
         try:
-            payload = execute_source(source, params, bars)
+            if frames is not None:
+                signal_date = raw.get("signal_date")
+                if not isinstance(signal_date, str):
+                    raise ValueError("signal_date must be a string")
+                payload = execute_frames(source, params, frames, signal_date)
+            else:
+                payload = execute_source(source, params, bars)
         finally:
             sys.stdout = real_stdout
         json.dump({"ok": True, **payload}, real_stdout, ensure_ascii=False)

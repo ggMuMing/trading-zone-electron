@@ -17,6 +17,11 @@ const HIGHLIGHT_COLORS: Record<Exclude<StrategyHighlightKind, 'neutral'>, string
   sell: fade(DOWN_COLOR, 0.18)
 }
 
+const PROMINENT_COLORS: Record<Exclude<StrategyHighlightKind, 'neutral'>, string> = {
+  buy: fade(UP_COLOR, 0.35),
+  sell: fade(DOWN_COLOR, 0.35)
+}
+
 function fade(hex: string, alpha: number): string {
   const n = hex.replace('#', '')
   const r = Number.parseInt(n.slice(0, 2), 16)
@@ -60,6 +65,7 @@ class HighlightRenderer implements IPrimitivePaneRenderer {
 interface HighlightBand {
   timeIso: string
   kind: StrategyHighlightKind
+  prominent?: boolean
 }
 
 interface DrawnBand {
@@ -124,11 +130,11 @@ export class ReplayHighlightPrimitive implements ISeriesPrimitive<Time> {
     this.requestUpdate?.()
   }
 
-  private bandColor(kind: StrategyHighlightKind): string {
+  private bandColor(kind: StrategyHighlightKind, prominent = false): string {
     if (kind === 'neutral') {
       return this.neutralColor
     }
-    return HIGHLIGHT_COLORS[kind]
+    return prominent ? PROMINENT_COLORS[kind] : HIGHLIGHT_COLORS[kind]
   }
 
   updateAllViews(): void {
@@ -147,18 +153,23 @@ export class ReplayHighlightPrimitive implements ISeriesPrimitive<Time> {
         grouped.set(band.timeIso, kinds)
       }
     }
+    const prominentTime = this.highlight?.prominent ? this.highlight.timeIso : null
+    const prominentKind = this.highlight?.prominent ? this.highlight.kind : null
     const drawn: DrawnBand[] = []
     for (const [timeIso, kinds] of grouped) {
       const x = timeScale.timeToCoordinate(timeIso as Time)
+      const prominent = (kind: StrategyHighlightKind): boolean =>
+        timeIso === prominentTime && kind === prominentKind
       if (kinds.length <= 1) {
-        drawn.push({ x, color: this.bandColor(kinds[0] ?? 'neutral'), span: 1, shift: 0 })
+        const kind = kinds[0] ?? 'neutral'
+        drawn.push({ x, color: this.bandColor(kind, prominent(kind)), span: 1, shift: 0 })
         continue
       }
       kinds.forEach((kind, index) => {
         const span = 1 / kinds.length
         drawn.push({
           x,
-          color: this.bandColor(kind),
+          color: this.bandColor(kind, prominent(kind)),
           span,
           shift: (index + 0.5) * span - 0.5
         })

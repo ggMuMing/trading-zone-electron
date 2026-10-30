@@ -8,9 +8,10 @@ import CandlestickChartIcon from '@mui/icons-material/CandlestickChart'
 import SettingsIcon from '@mui/icons-material/Settings'
 import TableChartIcon from '@mui/icons-material/TableChart'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
+import FilterAltIcon from '@mui/icons-material/FilterAlt'
 import type { ReactNode } from 'react'
 
-export type AppPage = 'dashboard' | 'settings' | 'market' | 'chart' | 'paper' | 'journal'
+export type AppPage = 'dashboard' | 'settings' | 'market' | 'chart' | 'screen' | 'paper' | 'journal'
 
 interface AppShellProps {
   page: AppPage
@@ -71,6 +72,18 @@ export function AppShell({
               aria-label="图表"
             >
               <CandlestickChartIcon />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Tooltip title={navigationLocked ? lockedTitle : '选股'} placement="right">
+          <span>
+            <IconButton
+              color={page === 'screen' ? 'primary' : 'default'}
+              onClick={() => onPageChange('screen')}
+              disabled={navigationLocked}
+              aria-label="选股"
+            >
+              <FilterAltIcon />
             </IconButton>
           </span>
         </Tooltip>

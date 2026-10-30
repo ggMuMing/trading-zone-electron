@@ -43,10 +43,12 @@ import type {
   MarketQueryParams
 } from '../../../shared/types/market'
 import type { Stock } from '../../../shared/types/stock'
+import type { StrategyScreenHit } from '../../../shared/types/screener'
 import type { StrategyInfo } from '../../../shared/types/pythonProtocol'
 import { ChartToolbar } from './chart/ChartToolbar'
 import { DrawingToolbar } from './chart/DrawingToolbar'
 import { nearestTradingDate } from './chart/locateDate'
+import type { StrategyChartOverlay, StrategyHighlightKind } from './chart/strategyOverlay'
 import { IndustryBreadcrumb } from './chart/IndustryBreadcrumb'
 import { IndicatorDialog } from './chart/IndicatorDialog'
 import { IndicatorSettingsDialog } from './chart/IndicatorSettingsDialog'
@@ -55,7 +57,6 @@ import type { ReplayStartRequest } from './chart/ReplayPanel'
 import { sliceChartInput } from './chart/sliceChartInput'
 import { ScriptEditorPanel, type EditorTryParams, type EditorTryResult, type ScriptDraft, type ScriptKind } from './chart/scriptEditor/ScriptEditorPanel'
 import { StrategyPanel } from './chart/StrategyPanel'
-import type { StrategyChartOverlay } from './chart/strategyOverlay'
 import { resolveUniverseStocks, universeListEmptyHint } from './resolveUniverseStocks'
 import { StockPicker } from './StockPicker'
 
@@ -191,10 +192,20 @@ export interface ChartRightPanelContext {
   symbolAlias: ReadonlyMap<string, string>
   /** 图表复权方式。指数标的图表本身仍用不复权。 */
   adjust: AdjustType
+  /** 左列当前范围，不含选股命中过滤。 */
+  windowStocks: readonly Stock[]
+  /** 本地日线最大交易日，YYYYMMDD。没有日线时为 null。 */
+  coverageMax: string | null
+  /** 当前左列范围 id。切换范围时选股页用来清掉上一次命中。 */
+  universeId: string
   showSymbols: (stocks: Stock[], presentation: ChartSessionPresentation) => void
   setCutoff: (isoDate: string | null) => void
   setReplayRunning: (running: boolean) => void
   setTradeMarkers: (markers: StrategyChartOverlay['markers']) => void
+  setScreenHits: (hits: StrategyScreenHit[] | null) => void
+  setDateHighlight: (
+    highlight: { timeIso: string; kind: StrategyHighlightKind; prominent?: boolean } | null
+  ) => void
   locateTrade: (tsCode: string, timeIso: string) => void
 }
 
@@ -215,6 +226,8 @@ export interface ChartPageProps {
   replayFixedStart?: string
   /** 模拟盘：工具栏只保留下一根，开始和结束由右栏控制。 */
   paperSession?: boolean
+  /** 选股：左列和主图一开始为空，只在有命中结果后显示标的。计算窗口用全部股票。 */
+  screenSession?: boolean
 }
 
 export function ChartPage({
@@ -226,7 +239,8 @@ export function ChartPage({
   pickerFixedWidth,
   showToolbarExtras = true,
   replayFixedStart,
-  paperSession = false
+  paperSession = false,
+  screenSession = false
 }: ChartPageProps = {}): React.JSX.Element {
   const [loading, setLoading] = useState(true)
   const [querying, setQuerying] = useState(false)
@@ -273,6 +287,10 @@ export function ChartPage({
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyInfo | null>(null)
   const [strategyOverlay, setStrategyOverlay] = useState<StrategyChartOverlay | null>(null)
   const [paperMarkers, setPaperMarkers] = useState<StrategyChartOverlay['markers']>([])
+  const [screenHits, setScreenHitsState] = useState<StrategyScreenHit[] | null>(null)
+  const [dateHighlight, setDateHighlightState] = useState<
+    { timeIso: string; kind: StrategyHighlightKind; prominent?: boolean } | null
+  >(null)
   const hasRightPanel = rightPanel != null
   const [strategyWidth, setStrategyWidth] = useState(() => loadStrategyWidth(rightPanelWidthStorageKey))
   const [strategyResizing, setStrategyResizing] = useState(false)
@@ -331,6 +349,8 @@ export function ChartPage({
 
   const handleUniverseChange = (nextUniverseId: string): void => {
     setUniverseId(nextUniverseId)
+    setScreenHitsState(null)
+    setDateHighlightState(null)
     try {
       localStorage.setItem(UNIVERSE_STORAGE_KEY, nextUniverseId)
     } catch {
@@ -864,7 +884,9 @@ export function ChartPage({
   }, [indicatorOpen])
 
   const isAllEmpty = allStocks.length === 0
-  const selected = pickerStocks.find((stock) => stock.ts_code === selectedCode)
+  const selected = (screenSession ? allStocks : pickerStocks).find(
+    (stock) => stock.ts_code === selectedCode
+  )
   const constituentsEmptyHint = universeListEmptyHint(universeId, pickerStocks, universeLoading)
   const fullChartInput = useMemo(() => {
     if (!chartRaw) {
@@ -1016,6 +1038,29 @@ export function ChartPage({
     setLocateRequest((current) => ({ timeIso, token: (current?.token ?? 0) + 1 }))
   }, [])
 
+  const setScreenHits = useCallback((hits: StrategyScreenHit[] | null) => {
+    setScreenHitsState(hits)
+    if (!hits || hits.length === 0) {
+      setSelectedCode(null)
+    }
+  }, [])
+
+  const setDateHighlight = useCallback(
+    (highlight: { timeIso: string; kind: StrategyHighlightKind; prominent?: boolean } | null) => {
+      setDateHighlightState((current) => {
+        if (
+          current?.timeIso === highlight?.timeIso &&
+          current?.kind === highlight?.kind &&
+          current?.prominent === highlight?.prominent
+        ) {
+          return current
+        }
+        return highlight
+      })
+    },
+    []
+  )
+
   const panelContext: ChartRightPanelContext = {
     stock: selected ?? null,
     bar: displayedBar,
@@ -1025,14 +1070,37 @@ export function ChartPage({
     chartFault,
     symbolAlias,
     adjust,
+    windowStocks: screenSession ? allStocks : pickerStocks,
+    coverageMax: coverage?.max_date ?? null,
+    universeId,
     showSymbols: showSessionSymbols,
     setCutoff: setReplayCutoff,
     setReplayRunning,
     setTradeMarkers,
+    setScreenHits,
+    setDateHighlight,
     locateTrade
   }
   const selectedAlias = selected ? symbolAlias.get(selected.ts_code) : undefined
-  const pickerView = pickerStocks.map((stock) => {
+  const hitCatalog = screenSession ? allStocks : pickerStocks
+  const listedStocks =
+    screenHits == null
+      ? screenSession
+        ? []
+        : pickerStocks
+      : (() => {
+          const byCode = new Map(hitCatalog.map((stock) => [stock.ts_code, stock]))
+          return screenHits.flatMap((hit) => {
+            const stock = byCode.get(hit.ts_code)
+            if (!stock) {
+              return []
+            }
+            const mark = hit.side === 'buy' ? '买' : '卖'
+            const name = stock.name || stock.ts_code
+            return [{ ...stock, name: `${name} ${mark}` }]
+          })
+        })()
+  const pickerView = listedStocks.map((stock) => {
     const alias = symbolAlias.get(stock.ts_code)
     return alias ? { ...stock, name: alias } : stock
   })
@@ -1040,7 +1108,9 @@ export function ChartPage({
     ? paperMarkers.length > 0
       ? { markers: paperMarkers, highlight: null, shadeMarkers: true }
       : null
-    : strategyOverlay
+    : dateHighlight
+      ? { markers: [], highlight: dateHighlight }
+      : strategyOverlay
 
   return (
     <Box
@@ -1090,11 +1160,13 @@ export function ChartPage({
             width={pickerFixedWidth ?? pickerWidth}
             universeId={universeId}
             universeCaption={universeCaption}
-            emptyHint={constituentsEmptyHint}
+            emptyHint={
+              screenHits && screenHits.length === 0 ? '这一天没有信号' : constituentsEmptyHint
+            }
             hideCode={symbolAlias.size > 0}
             onSelect={setSelectedCode}
-            onUniverseChange={fixedPickerStocks ? undefined : handleUniverseChange}
-            showSearch={!fixedPickerStocks}
+            onUniverseChange={fixedPickerStocks || screenSession ? undefined : handleUniverseChange}
+            showSearch={screenSession ? Boolean(screenHits && screenHits.length > 0) : !fixedPickerStocks}
           />
           {pickerFixedWidth != null ? (
             <Box
@@ -1291,7 +1363,10 @@ export function ChartPage({
                       layout={layout}
                       scripts={scripts}
                       overlay={klineOverlay}
-                      focusTimeIso={paperSession ? null : (strategyOverlay?.highlight?.timeIso ?? null)}
+                      focusTimeIso={
+                        dateHighlight?.timeIso ??
+                        (paperSession ? null : (strategyOverlay?.highlight?.timeIso ?? null))
+                      }
                       locateRequest={locateRequest}
                       hideTimeAxis={hideChartTime}
                       hidePriceLegend={hideChartTime}

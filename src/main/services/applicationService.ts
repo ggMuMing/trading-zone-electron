@@ -1,9 +1,11 @@
+import { isChartUniverseIndexCode } from '../../shared/constants/chartUniverse'
 import {
   MARKET_POOL_SIZE,
   MARKET_SYNC_DEFAULT_START,
   MARKET_SYNC_EARLIEST,
   todayYyyymmdd
 } from '../../shared/constants/market'
+import type { StrategyScreenParams, StrategyScreenResult } from '../../shared/types/screener'
 import type {
   BoardStats,
   MarketCoverageResult,
@@ -900,6 +902,46 @@ export const applicationService = {
       end_date: endDate,
       adjust,
       ...(params.params !== undefined ? { params: params.params } : {})
+    })
+  },
+
+  async screenStrategy(params: StrategyScreenParams): Promise<StrategyScreenResult> {
+    const strategyId = params.strategy_id?.trim()
+    if (!strategyId) {
+      throw new Error('strategy_id is required')
+    }
+    const signalDate = params.signal_date?.trim() ?? ''
+    if (!DATE_RE.test(signalDate)) {
+      throw new Error('signal_date must be YYYYMMDD')
+    }
+    const adjust = params.adjust ?? 'qfq'
+    if (adjust !== 'none' && adjust !== 'qfq' && adjust !== 'hfq') {
+      throw new Error('adjust must be none | qfq | hfq')
+    }
+    const tsCodes = (params.ts_codes ?? [])
+      .map((code) => code.trim())
+      .filter((code) => code.length > 0 && !isChartUniverseIndexCode(code))
+    if (tsCodes.length === 0) {
+      throw new Error('窗口里没有股票')
+    }
+    const storageId = strategyScriptStorageId(strategyId)
+    if (storageId) {
+      const script = strategyScriptRepository.get(storageId)
+      if (!script) {
+        throw new Error(`策略不存在：${strategyId}`)
+      }
+      return pythonBridge.call<StrategyScreenResult>(PYTHON_METHODS.strategyScreen, {
+        source: script.source,
+        ts_codes: tsCodes,
+        signal_date: signalDate,
+        adjust
+      })
+    }
+    return pythonBridge.call<StrategyScreenResult>(PYTHON_METHODS.strategyScreen, {
+      strategy_id: strategyId,
+      ts_codes: tsCodes,
+      signal_date: signalDate,
+      adjust
     })
   }
 }

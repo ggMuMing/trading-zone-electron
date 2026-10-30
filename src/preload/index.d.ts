@@ -4,6 +4,7 @@ import type { PaperArchive, PaperArchiveDraft } from '../shared/types/paperArchi
 import type { PaperPlan, PaperPlanDraft } from '../shared/types/paperPlan'
 import type { TradeJournal, TradeJournalDraft } from '../shared/types/tradeJournal'
 import type { MarketClearResult, StrategyListResult, StrategyRunParams, StrategyRunResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
+import type { StrategyScreenParams, StrategyScreenResult } from '../shared/types/screener'
 import type { ChartInput } from '../shared/types/chart'
 import type { ChartDrawing } from '../shared/types/chartDrawing'
 import type { ChartLayout, LayoutItemParams, LayoutReorderDirection } from '../shared/types/chartLayout'
@@ -108,6 +109,7 @@ export interface AppApi {
   strategy: {
     list: () => Promise<StrategyListResult>
     run: (params: StrategyRunParams) => Promise<StrategyRunResult>
+    screen: (params: StrategyScreenParams) => Promise<StrategyScreenResult>
   }
   strategyScript: {
     list: () => Promise<StrategyScript[]>

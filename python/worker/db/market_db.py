@@ -907,6 +907,103 @@ def get_anchor_adj_factors(ts_code: str) -> tuple[float | None, float | None]:
     )
 
 
+def _trade_date_text(value: object) -> str:
+    text = str(value).replace("-", "")
+    digits = "".join(ch for ch in text if ch.isdigit())
+    return digits[:8]
+
+
+def query_strategy_frames(
+    ts_codes: list[str],
+    start_date: str,
+    end_date: str,
+    adjust: str,
+) -> dict[str, Any]:
+    """One read of daily bars for many symbols.
+
+    Prices match load_strategy_frame: raw bars, then the symbol's earliest and
+    latest adj_factor in the whole table. Bars stop at end_date.
+    """
+    import pandas as pd
+
+    columns = ["open", "high", "low", "close", "vol"]
+    codes = [code for code in ts_codes if code]
+    if not codes:
+        return {}
+    conn = get_conn()
+    placeholders = ", ".join(["?"] * len(codes))
+    table = conn.execute(
+        f"""
+        SELECT
+          d.ts_code,
+          d.trade_date,
+          d.open,
+          d.high,
+          d.low,
+          d.close,
+          d.vol,
+          a.adj_factor
+        FROM daily_bar d
+        LEFT JOIN adj_factor a
+          ON d.ts_code = a.ts_code AND d.trade_date = a.trade_date
+        WHERE d.ts_code IN ({placeholders})
+          AND d.trade_date >= ?
+          AND d.trade_date <= ?
+        ORDER BY d.ts_code, d.trade_date
+        """,
+        [*codes, start_date, end_date],
+    ).fetch_arrow_table()
+    if table.num_rows == 0:
+        return {}
+    daily = table.to_pandas()
+    anchors = conn.execute(
+        f"""
+        WITH ranked AS (
+          SELECT
+            ts_code,
+            adj_factor,
+            ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY trade_date ASC) AS rn_asc,
+            ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) AS rn_desc
+          FROM adj_factor
+          WHERE ts_code IN ({placeholders})
+        )
+        SELECT
+          ts_code,
+          MAX(CASE WHEN rn_asc = 1 THEN adj_factor END) AS earliest,
+          MAX(CASE WHEN rn_desc = 1 THEN adj_factor END) AS latest
+        FROM ranked
+        WHERE rn_asc = 1 OR rn_desc = 1
+        GROUP BY ts_code
+        """,
+        codes,
+    ).fetch_arrow_table().to_pandas()
+    if anchors.empty:
+        daily["earliest"] = None
+        daily["latest"] = None
+    else:
+        daily = daily.merge(anchors, on="ts_code", how="left")
+    adj = daily["adj_factor"]
+    scale = pd.Series(1.0, index=daily.index, dtype="float64")
+    if adjust == "qfq":
+        usable = daily["latest"].notna() & (daily["latest"] != 0) & adj.notna()
+        scale.loc[usable] = (adj.loc[usable] / daily.loc[usable, "latest"]).astype(float)
+    elif adjust == "hfq":
+        usable = daily["earliest"].notna() & (daily["earliest"] != 0) & adj.notna()
+        scale.loc[usable] = (adj.loc[usable] / daily.loc[usable, "earliest"]).astype(float)
+    scale = scale.fillna(1.0)
+    for column in ("open", "high", "low", "close"):
+        daily[column] = daily[column] * scale
+    daily["trade_date"] = daily["trade_date"].map(_trade_date_text)
+    frames: dict[str, pd.DataFrame] = {}
+    for ts_code, group in daily.groupby("ts_code", sort=False):
+        frame = group.drop_duplicates("trade_date", keep="last").set_index("trade_date")
+        for column in columns:
+            if column not in frame.columns:
+                frame[column] = None
+        frames[str(ts_code)] = frame.loc[:, columns]
+    return frames
+
+
 def upsert_trade_cal(rows: list[tuple[str, int]]) -> int:
     if not rows:
         return 0

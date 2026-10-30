@@ -5,7 +5,7 @@ export type StrategyHighlightKind = 'buy' | 'sell' | 'neutral'
 
 export interface StrategyChartOverlay {
   markers: Array<{ timeIso: string; side: StrategyMarkerSide }>
-  highlight: { timeIso: string; kind: StrategyHighlightKind } | null
+  highlight: { timeIso: string; kind: StrategyHighlightKind; prominent?: boolean } | null
   /** 为 true 时，每个买卖点都铺上回放同款的竖条背景。 */
   shadeMarkers?: boolean
 }

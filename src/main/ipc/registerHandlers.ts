@@ -14,6 +14,7 @@ import { readPaperArchiveDraft } from '../../shared/paper/paperArchive'
 import { readPaperPlanDraft } from '../../shared/paper/paperPlan'
 import { readTradeJournalDraft } from '../../shared/tradeJournal/tradeJournal'
 import type { StrategyRunParams } from '../../shared/types/pythonProtocol'
+import type { StrategyScreenParams } from '../../shared/types/screener'
 import { pipelineStepMeta, type PipelineStepId } from '../../shared/constants/pipeline'
 
 function parseMarketQueryParams(params: unknown, channel: string): MarketQueryParams {
@@ -59,6 +60,35 @@ function parseStrategyParamValues(value: unknown): Record<string, number | strin
     }
   }
   return out
+}
+
+function parseStrategyScreenParams(params: unknown): StrategyScreenParams {
+  if (!params || typeof params !== 'object') {
+    throw new Error('strategy:screen requires params object')
+  }
+  const p = params as Record<string, unknown>
+  if (typeof p.strategy_id !== 'string' || !p.strategy_id.trim()) {
+    throw new Error('strategy_id must be a non-empty string')
+  }
+  if (typeof p.signal_date !== 'string' || !p.signal_date.trim()) {
+    throw new Error('signal_date must be a non-empty string')
+  }
+  if (
+    !Array.isArray(p.ts_codes) ||
+    p.ts_codes.some((code) => typeof code !== 'string' || !code.trim())
+  ) {
+    throw new Error('ts_codes must be a list of strings')
+  }
+  const adjust = p.adjust
+  if (adjust !== undefined && adjust !== 'none' && adjust !== 'qfq' && adjust !== 'hfq') {
+    throw new Error('adjust must be none | qfq | hfq')
+  }
+  return {
+    strategy_id: p.strategy_id,
+    signal_date: p.signal_date,
+    ts_codes: p.ts_codes,
+    adjust
+  }
 }
 
 function parseStrategyRunParams(params: unknown): StrategyRunParams {
@@ -517,6 +547,10 @@ export function registerHandlers(): void {
 
   ipcMain.handle('strategy:run', (_event, params: unknown) => {
     return applicationService.runStrategy(parseStrategyRunParams(params))
+  })
+
+  ipcMain.handle('strategy:screen', (_event, params: unknown) => {
+    return applicationService.screenStrategy(parseStrategyScreenParams(params))
   })
 
   ipcMain.handle('paperPlan:list', () => {

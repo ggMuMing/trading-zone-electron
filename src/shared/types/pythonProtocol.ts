@@ -276,5 +276,6 @@ export const PYTHON_METHODS = {
   strategyList: 'strategy.list',
   strategyRun: 'strategy.run',
   strategyScriptTry: 'strategy.script_try',
-  strategyScriptRun: 'strategy.script_run'
+  strategyScriptRun: 'strategy.script_run',
+  strategyScreen: 'strategy.screen'
 } as const
