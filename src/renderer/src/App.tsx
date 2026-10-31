@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AppShell, type AppPage } from './layout/AppShell'
 import { ChartPage } from './pages/ChartPage'
+import { GroupManagerDialog } from './pages/groups/GroupManagerDialog'
 import { DashboardPage } from './pages/dashboard/DashboardPage'
 import { MarketPage } from './pages/MarketPage'
 import { JournalPage } from './pages/journal/JournalPage'
@@ -11,6 +12,7 @@ import type { MarketSyncProgress } from '../../shared/types/market'
 
 function App(): React.JSX.Element {
   const [page, setPage] = useState<AppPage>('dashboard')
+  const [groupManagerOpen, setGroupManagerOpen] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [clearing, setClearing] = useState(false)
   const [progress, setProgress] = useState<MarketSyncProgress | null>(null)
@@ -39,9 +41,11 @@ function App(): React.JSX.Element {
   }
 
   return (
+    <>
     <AppShell
       page={page}
       onPageChange={handlePageChange}
+      onOpenGroupManager={() => setGroupManagerOpen(true)}
       navigationLocked={interactionLocked}
       navigationLockHint={lockHint}
     >
@@ -67,6 +71,8 @@ function App(): React.JSX.Element {
         <ChartPage />
       )}
     </AppShell>
+    <GroupManagerDialog open={groupManagerOpen} onClose={() => setGroupManagerOpen(false)} />
+    </>
   )
 }
 

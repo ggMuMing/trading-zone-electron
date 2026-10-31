@@ -1,7 +1,7 @@
 /** 一个模拟盘方案对应一份表单。 */
 
 export type PaperStartMode = 'random' | 'fixed'
-export type PaperSymbolCount = 'single' | 'group'
+export type PaperSymbolCount = 'single' | 'group' | 'bundle'
 export type PaperSymbolSource = 'specified' | 'random'
 
 export interface PaperSymbolRef {
@@ -17,8 +17,10 @@ export interface PaperPlanDraft {
   /** 随机开始时间时，是否隐藏时间。 */
   hideStartTime: boolean
   symbolCount: PaperSymbolCount
-  /** 一组标的的数量，1 到 10。单个标的时不使用。 */
+  /** 一组标的的数量，1 到 10。单个标的时不使用。分组标的不使用。 */
   groupSize: number
+  /** 分组标的所载入的分组。其他档位为空字符串。 */
+  bundleGroupId: string
   symbolSource: PaperSymbolSource
   symbols: PaperSymbolRef[]
   /** 随机标的时，是否隐藏名称和代码。 */

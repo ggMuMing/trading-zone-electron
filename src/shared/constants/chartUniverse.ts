@@ -28,6 +28,10 @@ export function industryUniverseId(indexCode: string): string {
   return `industry:${indexCode}`
 }
 
+export function groupUniverseId(groupId: string): string {
+  return `group:${groupId}`
+}
+
 export function parseIndustryIndexCode(universeId: string): string | null {
   if (!universeId.startsWith('industry:')) {
     return null
@@ -42,6 +46,14 @@ export function parseConstituentsIndexCode(universeId: string): string | null {
   }
   const code = universeId.slice('constituents:'.length).trim()
   return code || null
+}
+
+export function parseGroupId(universeId: string): string | null {
+  if (!universeId.startsWith('group:')) {
+    return null
+  }
+  const id = universeId.slice('group:'.length).trim()
+  return id || null
 }
 
 export function isIndexUniverse(universeId: string): boolean {
@@ -91,7 +103,8 @@ export function isChartUniverseIndexCode(tsCode: string): boolean {
 
 export function resolveUniverseLabel(
   universeId: string,
-  industryNames?: ReadonlyMap<string, string>
+  industryNames?: ReadonlyMap<string, string>,
+  groupNames?: ReadonlyMap<string, string>
 ): string {
   const option = CHART_UNIVERSE_OPTIONS.find((item) => item.id === universeId)
   if (option) {
@@ -100,6 +113,10 @@ export function resolveUniverseLabel(
   const industryCode = parseIndustryIndexCode(universeId)
   if (industryCode) {
     return industryNames?.get(industryCode) ?? industryCode
+  }
+  const groupId = parseGroupId(universeId)
+  if (groupId) {
+    return groupNames?.get(groupId) ?? '分组'
   }
   return universeId
 }

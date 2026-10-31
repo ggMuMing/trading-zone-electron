@@ -319,7 +319,7 @@ interface KlineChartProps {
   onRemove?: (instanceId: string) => void
   onMovePane?: (instanceId: string, direction: 'up' | 'down') => void
   hideTimeAxis?: boolean
-  hidePriceLegend?: boolean
+  hideLegendDate?: boolean
   tsCode?: string | null
   drawings?: ChartDrawing[]
   drawingStroke?: DrawingStroke
@@ -343,7 +343,7 @@ export function KlineChart({
   onRemove,
   onMovePane,
   hideTimeAxis = false,
-  hidePriceLegend = false,
+  hideLegendDate = false,
   tsCode = null,
   drawings = [],
   drawingStroke = DEFAULT_DRAWING_STROKE,
@@ -774,8 +774,9 @@ export function KlineChart({
         style={{ width: '100%', height: '100%', minHeight: 0 }}
       />
       <PriceLegend
-        bar={hidePriceLegend ? null : (hoverBar ?? defaultBar)}
-        overlays={hidePriceLegend ? [] : overlays}
+        bar={hoverBar ?? defaultBar}
+        overlays={overlays}
+        hideDate={hideLegendDate}
         onOpenSettings={onOpenSettings}
         onOpenEditor={onOpenEditor}
         onRemove={onRemove}

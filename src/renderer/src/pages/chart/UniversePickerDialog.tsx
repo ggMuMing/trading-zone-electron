@@ -18,10 +18,12 @@ import {
   CHART_UNIVERSE_INDEX_BROAD,
   CHART_UNIVERSE_INDEX_MARKET,
   CHART_UNIVERSE_OPTIONS,
+  groupUniverseId,
   industryUniverseId,
-  resolveUniverseNavTab,
-  type UniverseNavTab
+  parseGroupId,
+  resolveUniverseNavTab
 } from '../../../../shared/constants/chartUniverse'
+import type { SymbolGroupCategorySummary } from '../../../../shared/types/symbolGroup'
 import type { SwIndustryNode } from '../../../../shared/types/swIndustry'
 import { CHART_ICON_SX, ChartIconButton } from './ChartIconButton'
 
@@ -32,11 +34,15 @@ interface UniversePickerDialogProps {
   onSelect: (universeId: string) => void
 }
 
-const DIALOG_WIDTH = 600
+const DIALOG_WIDTH = 640
 const DIALOG_HEIGHT = 480
-const NAV_WIDTH = 120
+const NAV_WIDTH = 148
 
-const NAV_TABS: Array<{ id: UniverseNavTab; label: string }> = [
+function categoryTabId(categoryId: string): string {
+  return `category:${categoryId}`
+}
+
+const NAV_TABS: Array<{ id: string; label: string }> = [
   { id: 'index', label: '指数行情' },
   { id: 'constituents', label: '成分股' },
   { id: 'industry', label: '行业' }
@@ -117,8 +123,9 @@ export function UniversePickerDialog({
   onClose,
   onSelect
 }: UniversePickerDialogProps): React.JSX.Element {
-  const [tab, setTab] = useState<UniverseNavTab>(() => resolveUniverseNavTab(universeId))
+  const [tab, setTab] = useState<string>(() => resolveUniverseNavTab(universeId))
   const [tree, setTree] = useState<SwIndustryNode[]>([])
+  const [categories, setCategories] = useState<SymbolGroupCategorySummary[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -126,8 +133,14 @@ export function UniversePickerDialog({
     if (!open) {
       return
     }
-    setTab(resolveUniverseNavTab(universeId))
-  }, [open, universeId])
+    const groupId = parseGroupId(universeId)
+    if (!groupId) {
+      setTab(resolveUniverseNavTab(universeId))
+      return
+    }
+    const category = categories.find((item) => item.groups.some((group) => group.id === groupId))
+    setTab(category ? categoryTabId(category.id) : resolveUniverseNavTab(universeId))
+  }, [open, universeId, categories])
 
   useEffect(() => {
     if (!open) {
@@ -136,17 +149,18 @@ export function UniversePickerDialog({
     let cancelled = false
     setLoading(true)
     setError(null)
-    void window.api.industry
-      .tree()
-      .then((rows) => {
+    void Promise.all([window.api.industry.tree(), window.api.symbolGroup.tree()])
+      .then(([rows, groups]) => {
         if (!cancelled) {
           setTree(rows)
+          setCategories(groups.categories)
         }
       })
       .catch((err: unknown) => {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : String(err))
           setTree([])
+          setCategories([])
         }
       })
       .finally(() => {
@@ -171,6 +185,12 @@ export function UniversePickerDialog({
 
   const roots = childrenOf(byParent, '0')
   const constituents = CHART_UNIVERSE_OPTIONS.filter((item) => item.kind === 'constituents')
+  const navTabs: Array<{ id: string; label: string }> = [
+    ...NAV_TABS,
+    ...categories.map((category) => ({ id: categoryTabId(category.id), label: category.name }))
+  ]
+  const activeCategoryId = tab.startsWith('category:') ? tab.slice('category:'.length) : null
+  const activeCategory = categories.find((category) => category.id === activeCategoryId) ?? null
 
   const handleSelect = (nextId: string): void => {
     onSelect(nextId)
@@ -213,17 +233,19 @@ export function UniversePickerDialog({
             flexShrink: 0,
             borderRight: 1,
             borderColor: 'divider',
-            py: 0.5
+            py: 0.5,
+            minHeight: 0,
+            overflow: 'auto'
           }}
         >
-          <List dense disablePadding>
-            {NAV_TABS.map((item) => (
+          <List dense disablePadding sx={{ overflow: 'auto', height: '100%' }}>
+            {navTabs.map((item) => (
               <ListItemButton
                 key={item.id}
                 selected={tab === item.id}
                 onClick={() => setTab(item.id)}
               >
-                <ListItemText primary={item.label} />
+                <ListItemText primary={item.label} primaryTypographyProps={{ noWrap: true }} />
               </ListItemButton>
             ))}
           </List>
@@ -302,6 +324,27 @@ export function UniversePickerDialog({
                   onSelect={handleSelect}
                 />
               ))}
+            </List>
+          ) : null}
+          {activeCategory ? (
+            <List dense disablePadding>
+              {activeCategory.groups.length === 0 ? (
+                <Box sx={{ px: 2, py: 1.5 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    该分类还没有分组
+                  </Typography>
+                </Box>
+              ) : (
+                activeCategory.groups.map((group) => (
+                  <ListItemButton
+                    key={group.id}
+                    selected={universeId === groupUniverseId(group.id)}
+                    onClick={() => handleSelect(groupUniverseId(group.id))}
+                  >
+                    <ListItemText primary={group.name} primaryTypographyProps={{ noWrap: true }} />
+                  </ListItemButton>
+                ))
+              )}
             </List>
           ) : null}
         </Box>

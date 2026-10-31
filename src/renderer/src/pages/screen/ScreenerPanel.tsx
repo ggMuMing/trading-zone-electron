@@ -10,6 +10,7 @@ import { isoToYyyymmdd, yyyymmddToIso } from '../../../../shared/constants/marke
 import type { StrategyInfo } from '../../../../shared/types/pythonProtocol'
 import type { StrategyScreenHit } from '../../../../shared/types/screener'
 import type { ChartRightPanelContext } from '../ChartPage'
+import { SaveGroupDialog } from '../groups/SaveGroupDialog'
 import { MonthCalendar } from './MonthCalendar'
 
 function errorMessage(error: unknown): string {
@@ -34,8 +35,11 @@ export function ScreenerPanel({ session }: { session: ChartRightPanelContext }):
   const [signalIso, setSignalIso] = useState<string | null>(null)
   const [heldHits, setHeldHits] = useState<StrategyScreenHit[] | null>(null)
   const [screenSignalIso, setScreenSignalIso] = useState<string | null>(null)
+  const [screenStrategyName, setScreenStrategyName] = useState('')
   const [running, setRunning] = useState(false)
   const [runError, setRunError] = useState<string | null>(null)
+  const [saveOpen, setSaveOpen] = useState(false)
+  const [saveNote, setSaveNote] = useState<string | null>(null)
   const runningRef = useRef(false)
   const seenUniverse = useRef(universeId)
   const maxIso = coverageMax ? yyyymmddToIso(coverageMax) : null
@@ -77,7 +81,9 @@ export function ScreenerPanel({ session }: { session: ChartRightPanelContext }):
     seenUniverse.current = universeId
     setHeldHits(null)
     setScreenSignalIso(null)
+    setScreenStrategyName('')
     setRunError(null)
+    setSaveNote(null)
     setScreenHits(null)
     setDateHighlight(null)
   }, [universeId, setScreenHits, setDateHighlight])
@@ -128,6 +134,7 @@ export function ScreenerPanel({ session }: { session: ChartRightPanelContext }):
       .then((result) => {
         setHeldHits(result.hits)
         setScreenSignalIso(signalIso)
+        setScreenStrategyName(strategies.find((item) => item.id === strategyId)?.name ?? '策略')
         setScreenHits(result.hits)
         const first = result.hits[0]
         if (first) {
@@ -188,7 +195,28 @@ export function ScreenerPanel({ session }: { session: ChartRightPanelContext }):
       <Button variant="contained" disabled={!canRun} onClick={run}>
         {running ? '正在选股' : '执行选股'}
       </Button>
+      <Button
+        variant="outlined"
+        disabled={running || !heldHits || heldHits.length === 0 || !screenSignalIso}
+        onClick={() => setSaveOpen(true)}
+      >
+        保存为分组
+      </Button>
+      {saveNote ? <Alert severity="success">{saveNote}</Alert> : null}
       {runError ? <Alert severity="error">{runError}</Alert> : null}
+      {screenSignalIso && heldHits && heldHits.length > 0 ? (
+        <SaveGroupDialog
+          open={saveOpen}
+          signalIso={screenSignalIso}
+          strategyName={screenStrategyName || '策略'}
+          symbols={heldHits.map((hit) => {
+            const stock = windowStocks.find((item) => item.ts_code === hit.ts_code)
+            return { tsCode: hit.ts_code, name: stock?.name || hit.ts_code }
+          })}
+          onClose={() => setSaveOpen(false)}
+          onSaved={(result) => setSaveNote(`已保存为「${result.name}」`)}
+        />
+      ) : null}
     </Box>
   )
 }

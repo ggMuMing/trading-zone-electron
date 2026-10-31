@@ -14,6 +14,7 @@ export function defaultPaperPlanDraft(name: string): PaperPlanDraft {
     hideStartTime: false,
     symbolCount: 'single',
     groupSize: 5,
+    bundleGroupId: '',
     symbolSource: 'random',
     symbols: [],
     hideSymbol: false,
@@ -31,6 +32,7 @@ export function paperPlanDraftOf(plan: PaperPlan): PaperPlanDraft {
     hideStartTime: plan.hideStartTime,
     symbolCount: plan.symbolCount,
     groupSize: plan.groupSize,
+    bundleGroupId: plan.bundleGroupId,
     symbolSource: plan.symbolSource,
     symbols: plan.symbols.map((symbol) => ({ ...symbol })),
     hideSymbol: plan.hideSymbol,
@@ -58,7 +60,25 @@ export function paperPlanError(draft: PaperPlanDraft): string | null {
   if (draft.symbolCount === 'group' && !isGroupSize(draft.groupSize)) {
     return `一组标的数量为 1 到 ${PAPER_GROUP_SIZE_MAX}`
   }
-  if (draft.symbolSource === 'specified') {
+  if (draft.symbolCount === 'bundle') {
+    if (!draft.bundleGroupId.trim()) {
+      return '请选择分组'
+    }
+    if (draft.symbols.length === 0) {
+      return '请至少保留 1 个标的'
+    }
+    const codes = new Set<string>()
+    for (const symbol of draft.symbols) {
+      const code = symbol.tsCode.trim()
+      if (!code || !symbol.name.trim()) {
+        return '标的无效'
+      }
+      if (codes.has(code)) {
+        return '标的不能重复'
+      }
+      codes.add(code)
+    }
+  } else if (draft.symbolSource === 'specified') {
     const limit = draft.symbolCount === 'single' ? 1 : draft.groupSize
     if (!isGroupSize(limit) || draft.symbols.length !== limit) {
       return draft.symbolCount === 'single' ? '请指定 1 个标的' : `请指定 ${limit} 个标的`
@@ -87,15 +107,29 @@ export function paperPlanError(draft: PaperPlanDraft): string | null {
   return null
 }
 
+export function paperMasksSymbol(
+  draft: Pick<PaperPlanDraft, 'symbolCount' | 'symbolSource' | 'hideSymbol'>
+): boolean {
+  if (!draft.hideSymbol) {
+    return false
+  }
+  return draft.symbolCount === 'bundle' || draft.symbolSource === 'random'
+}
+
 export function normalizePaperPlanDraft(draft: PaperPlanDraft): PaperPlanDraft {
   const limit = draft.symbolCount === 'single' ? 1 : draft.groupSize
   const symbols: PaperSymbolRef[] =
-    draft.symbolSource === 'specified'
-      ? draft.symbols.slice(0, limit).map((symbol) => ({
+    draft.symbolCount === 'bundle'
+      ? draft.symbols.map((symbol) => ({
           tsCode: symbol.tsCode.trim(),
           name: symbol.name.trim()
         }))
-      : []
+      : draft.symbolSource === 'specified'
+        ? draft.symbols.slice(0, limit).map((symbol) => ({
+            tsCode: symbol.tsCode.trim(),
+            name: symbol.name.trim()
+          }))
+        : []
   return {
     name: draft.name.trim(),
     startMode: draft.startMode,
@@ -103,7 +137,8 @@ export function normalizePaperPlanDraft(draft: PaperPlanDraft): PaperPlanDraft {
     hideStartTime: draft.hideStartTime,
     symbolCount: draft.symbolCount,
     groupSize: isGroupSize(draft.groupSize) ? draft.groupSize : 5,
-    symbolSource: draft.symbolSource,
+    bundleGroupId: draft.bundleGroupId.trim(),
+    symbolSource: draft.symbolCount === 'bundle' ? 'specified' : draft.symbolSource,
     symbols,
     hideSymbol: draft.hideSymbol,
     capital: draft.capital,
@@ -148,7 +183,7 @@ function parsePaperPlanDraft(value: unknown): PaperPlanDraft {
     (raw.startMode !== 'random' && raw.startMode !== 'fixed') ||
     typeof raw.fixedDate !== 'string' ||
     typeof raw.hideStartTime !== 'boolean' ||
-    (raw.symbolCount !== 'single' && raw.symbolCount !== 'group') ||
+    (raw.symbolCount !== 'single' && raw.symbolCount !== 'group' && raw.symbolCount !== 'bundle') ||
     typeof raw.groupSize !== 'number' ||
     (raw.symbolSource !== 'specified' && raw.symbolSource !== 'random') ||
     typeof raw.hideSymbol !== 'boolean' ||
@@ -177,6 +212,7 @@ function parsePaperPlanDraft(value: unknown): PaperPlanDraft {
     hideStartTime: raw.hideStartTime,
     symbolCount: raw.symbolCount,
     groupSize: raw.groupSize,
+    bundleGroupId: typeof raw.bundleGroupId === 'string' ? raw.bundleGroupId : '',
     symbolSource: raw.symbolSource,
     symbols,
     hideSymbol: raw.hideSymbol,

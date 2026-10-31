@@ -35,6 +35,13 @@ import type {
   SwIndustryNode,
   SwIndustrySyncResult
 } from '../shared/types/swIndustry'
+import type {
+  SaveSymbolGroupHitsParams,
+  SaveSymbolGroupHitsResult,
+  SymbolGroupMember,
+  SymbolGroupTree,
+  SymbolRef
+} from '../shared/types/symbolGroup'
 
 export interface SyncStockListResult {
   count: number
@@ -167,6 +174,36 @@ const api = {
     update: (params: { id: string; draft: PaperPlanDraft }): Promise<PaperPlan> =>
       ipcRenderer.invoke('paperPlan:update', params),
     remove: (params: { id: string }): Promise<void> => ipcRenderer.invoke('paperPlan:remove', params)
+  },
+  symbolGroup: {
+    tree: (): Promise<SymbolGroupTree> => ipcRenderer.invoke('symbolGroup:tree'),
+    createCategory: (params: { name: string }): Promise<{ id: string; name: string }> =>
+      ipcRenderer.invoke('symbolGroup:createCategory', params),
+    renameCategory: (params: { id: string; name: string }): Promise<{ id: string; name: string }> =>
+      ipcRenderer.invoke('symbolGroup:renameCategory', params),
+    deleteCategory: (params: { id: string }): Promise<void> =>
+      ipcRenderer.invoke('symbolGroup:deleteCategory', params),
+    createGroup: (params: {
+      categoryId: string | null
+      name: string
+    }): Promise<{ id: string; categoryId: string | null; name: string }> =>
+      ipcRenderer.invoke('symbolGroup:createGroup', params),
+    renameGroup: (params: { id: string; name: string }): Promise<{ id: string; name: string }> =>
+      ipcRenderer.invoke('symbolGroup:renameGroup', params),
+    deleteGroup: (params: { id: string }): Promise<void> =>
+      ipcRenderer.invoke('symbolGroup:deleteGroup', params),
+    members: (params: { groupId: string }): Promise<SymbolGroupMember[]> =>
+      ipcRenderer.invoke('symbolGroup:members', params),
+    addMembers: (params: { groupId: string; symbols: SymbolRef[] }): Promise<void> =>
+      ipcRenderer.invoke('symbolGroup:addMembers', params),
+    removeMembers: (params: { groupId: string; tsCodes: string[] }): Promise<void> =>
+      ipcRenderer.invoke('symbolGroup:removeMembers', params),
+    membership: (params: { tsCode: string }): Promise<string[]> =>
+      ipcRenderer.invoke('symbolGroup:membership', params),
+    setSymbolGroups: (params: { tsCode: string; name: string; groupIds: string[] }): Promise<void> =>
+      ipcRenderer.invoke('symbolGroup:setSymbolGroups', params),
+    saveHits: (params: SaveSymbolGroupHitsParams): Promise<SaveSymbolGroupHitsResult> =>
+      ipcRenderer.invoke('symbolGroup:saveHits', params)
   },
   paperArchive: {
     list: (): Promise<PaperArchive[]> => ipcRenderer.invoke('paperArchive:list'),

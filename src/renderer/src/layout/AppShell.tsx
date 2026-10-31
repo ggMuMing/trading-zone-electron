@@ -9,6 +9,7 @@ import SettingsIcon from '@mui/icons-material/Settings'
 import TableChartIcon from '@mui/icons-material/TableChart'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import FilterAltIcon from '@mui/icons-material/FilterAlt'
+import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import type { ReactNode } from 'react'
 
 export type AppPage = 'dashboard' | 'settings' | 'market' | 'chart' | 'screen' | 'paper' | 'journal'
@@ -16,6 +17,7 @@ export type AppPage = 'dashboard' | 'settings' | 'market' | 'chart' | 'screen' |
 interface AppShellProps {
   page: AppPage
   onPageChange: (page: AppPage) => void
+  onOpenGroupManager: () => void
   navigationLocked?: boolean
   navigationLockHint?: string
   children: ReactNode
@@ -24,6 +26,7 @@ interface AppShellProps {
 export function AppShell({
   page,
   onPageChange,
+  onOpenGroupManager,
   navigationLocked = false,
   navigationLockHint,
   children
@@ -124,6 +127,17 @@ export function AppShell({
           </span>
         </Tooltip>
         <Box sx={{ flex: 1, minHeight: 0 }} />
+        <Tooltip title={navigationLocked ? lockedTitle : '分类管理'} placement="right">
+          <span>
+            <IconButton
+              onClick={onOpenGroupManager}
+              disabled={navigationLocked}
+              aria-label="分类管理"
+            >
+              <AccountTreeIcon />
+            </IconButton>
+          </span>
+        </Tooltip>
         <Tooltip title={navigationLocked ? lockedTitle : '配置'} placement="right">
           <span>
             <IconButton

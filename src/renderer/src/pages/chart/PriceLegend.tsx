@@ -46,6 +46,7 @@ function formatInt(value: number | null | undefined): string {
 interface PriceLegendProps {
   bar: PriceLegendBar | null
   overlays?: PriceLegendOverlayGroup[]
+  hideDate?: boolean
   onOpenSettings?: (instanceId: string) => void
   onOpenEditor?: (instanceId: string) => void
   onRemove?: (instanceId: string) => void
@@ -54,6 +55,7 @@ interface PriceLegendProps {
 export function PriceLegend({
   bar,
   overlays = [],
+  hideDate = false,
   onOpenSettings,
   onOpenEditor,
   onRemove
@@ -89,7 +91,7 @@ export function PriceLegend({
       }}
     >
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-        <span>{bar.date}</span>
+        {hideDate ? null : <span>{bar.date}</span>}
         <span style={{ color: chrome.legendLabel }}>
           开<span style={{ color: ocColor }}>{formatNumber(bar.open)}</span>
         </span>

@@ -46,6 +46,7 @@ import type { Stock } from '../../../shared/types/stock'
 import type { StrategyScreenHit } from '../../../shared/types/screener'
 import type { StrategyInfo } from '../../../shared/types/pythonProtocol'
 import { ChartToolbar } from './chart/ChartToolbar'
+import { AssignGroupDialog } from './groups/AssignGroupDialog'
 import { DrawingToolbar } from './chart/DrawingToolbar'
 import { nearestTradingDate } from './chart/locateDate'
 import type { StrategyChartOverlay, StrategyHighlightKind } from './chart/strategyOverlay'
@@ -271,6 +272,7 @@ export function ChartPage({
   const [strategyExampleSource, setStrategyExampleSource] = useState('')
   const [strategyCatalogVersion, setStrategyCatalogVersion] = useState(0)
   const [indicatorOpen, setIndicatorOpen] = useState(false)
+  const [assignOpen, setAssignOpen] = useState(false)
   const [settingsItem, setSettingsItem] = useState<ChartLayoutItem | null>(null)
   const [scriptDraft, setScriptDraft] = useState<ScriptDraft | null>(null)
   const [pickerWidth, setPickerWidth] = useState(loadPickerWidth)
@@ -356,7 +358,9 @@ export function ChartPage({
     } catch {
       // ignore storage failures
     }
-    void applyUniverse(nextUniverseId, allStocks, true)
+    void applyUniverse(nextUniverseId, allStocks, true).catch((err: unknown) => {
+      setError(err instanceof Error ? err.message : String(err))
+    })
   }
 
   const refreshAll = async (): Promise<void> => {
@@ -1259,6 +1263,8 @@ export function ChartPage({
               replayCanStep={replayCanStep}
               showGroup={showToolbarExtras}
               showJump={showToolbarExtras}
+              groupDisabled={!selected}
+              onOpenGroup={showToolbarExtras && selected ? () => setAssignOpen(true) : undefined}
               replayDirect={replayFixedStart != null || paperSession}
               replayShowStart={!paperSession}
               onReplayBegin={replayFixedStart != null ? handleReplayBegin : undefined}
@@ -1369,7 +1375,7 @@ export function ChartPage({
                       }
                       locateRequest={locateRequest}
                       hideTimeAxis={hideChartTime}
-                      hidePriceLegend={hideChartTime}
+                      hideLegendDate={hideChartTime}
                       onOpenSettings={openLayoutSettings}
                       onOpenEditor={openLayoutEditor}
                       onRemove={(id) => void handleRemoveIndicator(id)}
@@ -1499,6 +1505,14 @@ export function ChartPage({
           ) : null}
         </Box>
       )}
+      {selected ? (
+        <AssignGroupDialog
+          open={assignOpen}
+          tsCode={selected.ts_code}
+          name={selected.name || selected.ts_code}
+          onClose={() => setAssignOpen(false)}
+        />
+      ) : null}
       <IndicatorDialog
         open={indicatorOpen}
         exampleSource={exampleSource}

@@ -4,6 +4,7 @@ import {
   CHART_UNIVERSE_INDEX_BROAD,
   CHART_UNIVERSE_INDEX_MARKET,
   parseConstituentsIndexCode,
+  parseGroupId,
   parseIndustryIndexCode
 } from '../../../shared/constants/chartUniverse'
 import {
@@ -17,6 +18,21 @@ import type { Stock } from '../../../shared/types/stock'
 export interface UniverseStockList {
   stocks: Stock[]
   caption: string | null
+}
+
+function memberToStock(member: { tsCode: string; name: string }): Stock {
+  return {
+    ts_code: member.tsCode,
+    symbol: member.tsCode.split('.')[0] ?? member.tsCode,
+    name: member.name,
+    area: null,
+    industry: null,
+    market: null,
+    list_date: null,
+    list_status: 'L',
+    delist_date: null,
+    synced_at: ''
+  }
 }
 
 function indexMetaToStock(meta: DashboardIndexMeta): Stock {
@@ -61,6 +77,15 @@ export async function resolveUniverseStocks(
       caption: null
     }
   }
+  const groupId = parseGroupId(universeId)
+  if (groupId) {
+    const members = await window.api.symbolGroup.members({ groupId })
+    const byCode = new Map(listed.map((stock) => [stock.ts_code, stock]))
+    return {
+      stocks: members.map((member) => byCode.get(member.tsCode) ?? memberToStock(member)),
+      caption: null
+    }
+  }
   const indexCode = parseConstituentsIndexCode(universeId)
   if (!indexCode) {
     return { stocks: listed, caption: null }
@@ -86,6 +111,9 @@ export function universeListEmptyHint(
   }
   if (parseIndustryIndexCode(universeId) !== null) {
     return '尚无行业数据，请到配置页更新行业分类'
+  }
+  if (parseGroupId(universeId) !== null) {
+    return '该分组还没有标的'
   }
   if (universeId === CHART_UNIVERSE_DELISTED) {
     return '尚无退市股票，请到配置页更新数据'

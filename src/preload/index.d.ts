@@ -34,6 +34,13 @@ import type {
   SwIndustryNode,
   SwIndustrySyncResult
 } from '../shared/types/swIndustry'
+import type {
+  SaveSymbolGroupHitsParams,
+  SaveSymbolGroupHitsResult,
+  SymbolGroupMember,
+  SymbolGroupTree,
+  SymbolRef
+} from '../shared/types/symbolGroup'
 
 export interface SyncStockListResult {
   count: number
@@ -124,6 +131,24 @@ export interface AppApi {
     create: (params: { draft: PaperPlanDraft }) => Promise<PaperPlan>
     update: (params: { id: string; draft: PaperPlanDraft }) => Promise<PaperPlan>
     remove: (params: { id: string }) => Promise<void>
+  }
+  symbolGroup: {
+    tree: () => Promise<SymbolGroupTree>
+    createCategory: (params: { name: string }) => Promise<{ id: string; name: string }>
+    renameCategory: (params: { id: string; name: string }) => Promise<{ id: string; name: string }>
+    deleteCategory: (params: { id: string }) => Promise<void>
+    createGroup: (params: {
+      categoryId: string | null
+      name: string
+    }) => Promise<{ id: string; categoryId: string | null; name: string }>
+    renameGroup: (params: { id: string; name: string }) => Promise<{ id: string; name: string }>
+    deleteGroup: (params: { id: string }) => Promise<void>
+    members: (params: { groupId: string }) => Promise<SymbolGroupMember[]>
+    addMembers: (params: { groupId: string; symbols: SymbolRef[] }) => Promise<void>
+    removeMembers: (params: { groupId: string; tsCodes: string[] }) => Promise<void>
+    membership: (params: { tsCode: string }) => Promise<string[]>
+    setSymbolGroups: (params: { tsCode: string; name: string; groupIds: string[] }) => Promise<void>
+    saveHits: (params: SaveSymbolGroupHitsParams) => Promise<SaveSymbolGroupHitsResult>
   }
   paperArchive: {
     list: () => Promise<PaperArchive[]>

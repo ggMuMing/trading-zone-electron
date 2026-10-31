@@ -126,6 +126,41 @@ CREATE TABLE IF NOT EXISTS trade_journal (
 );
 
 CREATE INDEX IF NOT EXISTS idx_trade_journal_updated ON trade_journal(updated_at);
+
+CREATE TABLE IF NOT EXISTS symbol_group_category (
+  id         TEXT PRIMARY KEY NOT NULL,
+  name       TEXT NOT NULL UNIQUE,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  sort_order INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_symbol_group_category_one_default
+  ON symbol_group_category(is_default) WHERE is_default = 1;
+
+CREATE TABLE IF NOT EXISTS symbol_group (
+  id          TEXT PRIMARY KEY NOT NULL,
+  category_id TEXT REFERENCES symbol_group_category(id) ON DELETE SET NULL,
+  name        TEXT NOT NULL,
+  sort_order  INTEGER NOT NULL,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_symbol_group_category
+  ON symbol_group(category_id, sort_order);
+
+CREATE TABLE IF NOT EXISTS symbol_group_member (
+  group_id   TEXT NOT NULL REFERENCES symbol_group(id) ON DELETE CASCADE,
+  ts_code    TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  sort_order INTEGER NOT NULL,
+  PRIMARY KEY (group_id, ts_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_symbol_group_member_code
+  ON symbol_group_member(ts_code);
 `
 
 function rebuildPaperArchiveIfNeeded(database: Database.Database): void {

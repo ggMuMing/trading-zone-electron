@@ -244,7 +244,9 @@ export function MarketPage(): React.JSX.Element {
     } catch {
       // 浏览器拒绝写入时，本次会话仍使用内存里的分类。
     }
-    void applyUniverse(nextUniverseId, allStocks, true)
+    void applyUniverse(nextUniverseId, allStocks, true).catch((err: unknown) => {
+      setError(err instanceof Error ? err.message : String(err))
+    })
   }
 
   const refreshAll = async (): Promise<void> => {

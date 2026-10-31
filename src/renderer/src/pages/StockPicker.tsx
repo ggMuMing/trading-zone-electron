@@ -10,6 +10,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   CHART_UNIVERSE_ALL,
+  parseGroupId,
   parseIndustryIndexCode,
   resolveUniverseLabel
 } from '../../../shared/constants/chartUniverse'
@@ -49,6 +50,7 @@ export function StockPicker({
   const [keyword, setKeyword] = useState('')
   const [pickerOpen, setPickerOpen] = useState(false)
   const [industryNames, setIndustryNames] = useState<Map<string, string>>(new Map())
+  const [groupNames, setGroupNames] = useState<Map<string, string>>(new Map())
   const parentRef = useRef<HTMLDivElement>(null)
   const query = keyword.trim().toLowerCase()
 
@@ -68,6 +70,38 @@ export function StockPicker({
       .catch(() => {
         if (!cancelled) {
           setIndustryNames(new Map())
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [universeEnabled, universeId])
+
+  useEffect(() => {
+    if (!universeEnabled || !parseGroupId(universeId)) {
+      return
+    }
+    let cancelled = false
+    void window.api.symbolGroup
+      .tree()
+      .then((result) => {
+        if (cancelled) {
+          return
+        }
+        const names = new Map<string, string>()
+        for (const group of result.uncategorized) {
+          names.set(group.id, group.name)
+        }
+        for (const category of result.categories) {
+          for (const group of category.groups) {
+            names.set(group.id, group.name)
+          }
+        }
+        setGroupNames(names)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setGroupNames(new Map())
         }
       })
     return () => {
@@ -124,7 +158,7 @@ export function StockPicker({
             sx={{ justifyContent: 'space-between', textTransform: 'none' }}
           >
             <Typography variant="body2" noWrap>
-              {resolveUniverseLabel(universeId, industryNames)}
+              {resolveUniverseLabel(universeId, industryNames, groupNames)}
             </Typography>
           </Button>
           <UniversePickerDialog

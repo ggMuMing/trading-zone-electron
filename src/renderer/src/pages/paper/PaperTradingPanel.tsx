@@ -5,6 +5,11 @@ import Checkbox from '@mui/material/Checkbox'
 import InputAdornment from '@mui/material/InputAdornment'
 import Link from '@mui/material/Link'
 import FormControlLabel from '@mui/material/FormControlLabel'
+import IconButton from '@mui/material/IconButton'
+import List from '@mui/material/List'
+import ListItem from '@mui/material/ListItem'
+import ListItemText from '@mui/material/ListItemText'
+import ListSubheader from '@mui/material/ListSubheader'
 import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
 import Popover from '@mui/material/Popover'
@@ -19,8 +24,10 @@ import DeleteOutline from '@mui/icons-material/DeleteOutline'
 import FolderOpen from '@mui/icons-material/FolderOpen'
 import Save from '@mui/icons-material/Save'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { paperBuyCash, paperFeeRate, paperPositionPnl, paperSellCash } from '../../../../shared/paper/paperFees'
 import {
   defaultPaperPlanDraft,
+  paperMasksSymbol,
   paperPlanDraftOf,
   paperPlanError,
   PAPER_DEFAULT_PLAN_NAME,
@@ -35,6 +42,7 @@ import {
 import { isoToYyyymmdd } from '../../../../shared/constants/market'
 import { isChartUniverseIndexCode } from '../../../../shared/constants/chartUniverse'
 import type { PaperArchive } from '../../../../shared/types/paperArchive'
+import type { SymbolGroupTree } from '../../../../shared/types/symbolGroup'
 import type {
   PaperPlan,
   PaperPlanDraft,
@@ -107,7 +115,24 @@ function FieldText({ children }: { children: React.ReactNode }): React.JSX.Eleme
   )
 }
 
-function TemplateSummary({ draft }: { draft: PaperPlanDraft }): React.JSX.Element {
+function bundleGroupLabel(tree: SymbolGroupTree | null, groupId: string): string {
+  if (!groupId) {
+    return '未选择'
+  }
+  if (!tree) {
+    return '分组'
+  }
+  const groups = [...tree.uncategorized, ...tree.categories.flatMap((category) => category.groups)]
+  return groups.find((group) => group.id === groupId)?.name ?? '分组已删除'
+}
+
+function TemplateSummary({
+  draft,
+  bundleGroupName
+}: {
+  draft: PaperPlanDraft
+  bundleGroupName: string
+}): React.JSX.Element {
   const capital = Number.isFinite(draft.capital) ? String(draft.capital) : '-'
   const stamp = Number.isFinite(draft.stampTaxPct) ? String(draft.stampTaxPct) : '-'
   const commission = Number.isFinite(draft.commissionPct) ? String(draft.commissionPct) : '-'
@@ -131,10 +156,16 @@ function TemplateSummary({ draft }: { draft: PaperPlanDraft }): React.JSX.Elemen
     <>
       {draft.symbolCount === 'single' ? (
         <FieldText>单个标的</FieldText>
+      ) : draft.symbolCount === 'bundle' ? (
+        <FieldText>{`分组标的 ${bundleGroupName} ${draft.symbols.length} 只`}</FieldText>
       ) : (
         <FieldText>{`一组 ${draft.groupSize} 个`}</FieldText>
       )}{' '}
-      {draft.symbolSource === 'random' ? (
+      {draft.symbolCount === 'bundle' ? (
+        draft.hideSymbol ? (
+          <FieldText>隐藏名称和代码</FieldText>
+        ) : null
+      ) : draft.symbolSource === 'random' ? (
         <>
           <FieldText>随机</FieldText>
           {draft.hideSymbol ? (
@@ -209,6 +240,7 @@ interface PaperLot {
   name: string
   date: string | null
   shares: number
+  /** 买入付出的现金，含手续费。 */
   cost: number
 }
 
@@ -226,12 +258,13 @@ function floorLot(shares: number): number {
   return Math.floor(shares / SHARE_LOT) * SHARE_LOT
 }
 
-function maxBuyShares(cash: number, priceText: string): number {
+function maxBuyShares(cash: number, priceText: string, commissionPct: number): number {
   const price = Number(priceText)
-  if (!Number.isFinite(cash) || cash <= 0 || !Number.isFinite(price) || price <= 0) {
+  const perShare = paperBuyCash(price, 1, commissionPct)
+  if (!Number.isFinite(cash) || cash <= 0 || !(perShare > 0)) {
     return 0
   }
-  return floorLot(cash / price)
+  return floorLot(cash / perShare)
 }
 
 function sellableShares(lots: readonly PaperLot[], today: string | null, tsCode: string | null): number {
@@ -360,11 +393,15 @@ function priceInBar(value: string, bar: ChartPanelQuote | null): boolean {
 function PositionBoard({
   positions,
   priceOf,
-  labelOf
+  labelOf,
+  commissionPct,
+  stampTaxPct
 }: {
   positions: readonly PaperPosition[]
   priceOf: (tsCode: string) => number | null
   labelOf: (position: PaperPosition) => string
+  commissionPct: number
+  stampTaxPct: number
 }): React.JSX.Element | null {
   if (positions.length === 0) {
     return null
@@ -398,7 +435,10 @@ function PositionBoard({
         {positions.map((position) => {
           const price = priceOf(position.tsCode)
           const costPrice = position.shares > 0 ? position.cost / position.shares : null
-          const pnl = price === null || costPrice === null ? null : price * position.shares - position.cost
+          const pnl =
+            price === null || costPrice === null
+              ? null
+              : paperPositionPnl(position.cost, price, position.shares, commissionPct, stampTaxPct)
           return (
             <TableRow key={position.tsCode}>
               <TableCell>{labelOf(position)}</TableCell>
@@ -779,6 +819,7 @@ export function PaperTradingPanel({
   const [stocks, setStocks] = useState<Stock[]>([])
   const [stocksLoading, setStocksLoading] = useState(true)
   const [stocksError, setStocksError] = useState<string | null>(null)
+  const [groupTree, setGroupTree] = useState<SymbolGroupTree | null>(null)
   const [planMenuOpen, setPlanMenuOpen] = useState(false)
   const [saveOpen, setSaveOpen] = useState(false)
   const [saveName, setSaveName] = useState('')
@@ -834,6 +875,25 @@ export function PaperTradingPanel({
     }
     session.setTradeMarkers(markers)
   }, [viewingArchive, trades, symbol, session.setTradeMarkers])
+
+  useEffect(() => {
+    let cancelled = false
+    void window.api.symbolGroup
+      .tree()
+      .then((next) => {
+        if (!cancelled) {
+          setGroupTree(next)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setGroupTree(null)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [draft.symbolCount])
 
   useEffect(() => {
     let cancelled = false
@@ -915,6 +975,14 @@ export function PaperTradingPanel({
       if (!current) {
         return current
       }
+      if (symbolCount === 'bundle') {
+        return {
+          ...current,
+          symbolCount,
+          symbols: current.symbolCount === 'bundle' ? current.symbols : [],
+          bundleGroupId: current.symbolCount === 'bundle' ? current.bundleGroupId : ''
+        }
+      }
       const limit = symbolCount === 'single' ? 1 : current.groupSize
       return {
         ...current,
@@ -923,6 +991,33 @@ export function PaperTradingPanel({
       }
     })
     setError(null)
+  }
+
+  const chooseBundleGroup = (groupId: string): void => {
+    if (templateLocked) {
+      return
+    }
+    if (!groupId) {
+      updateDraft({ bundleGroupId: '', symbols: [], symbolSource: 'specified' })
+      return
+    }
+    setBusy(true)
+    setError(null)
+    void window.api.symbolGroup
+      .members({ groupId })
+      .then((members) => {
+        updateDraft({
+          bundleGroupId: groupId,
+          symbolSource: 'specified',
+          symbols: members.map((member) => ({ tsCode: member.tsCode, name: member.name }))
+        })
+      })
+      .catch((err: unknown) => {
+        setError(errorMessage(err))
+      })
+      .finally(() => {
+        setBusy(false)
+      })
   }
 
   const setGroupSize = (groupSize: number): void => {
@@ -1076,16 +1171,19 @@ export function PaperTradingPanel({
     }
     return quoteCloses.closes[tsCode] ?? null
   }
+  const commissionPct = tradeDraft.commissionPct
+  const stampTaxPct = tradeDraft.stampTaxPct
   let marketValue = 0
   let pnl = 0
   for (const position of positions) {
     const price = priceOf(position.tsCode)
     if (price === null) {
-      marketValue += position.cost
+      const rate = paperFeeRate(commissionPct)
+      marketValue += rate > 0 ? position.cost / (1 + rate) : position.cost
       continue
     }
     marketValue += price * position.shares
-    pnl += price * position.shares - position.cost
+    pnl += paperPositionPnl(position.cost, price, position.shares, commissionPct, stampTaxPct)
   }
 
   useEffect(() => {
@@ -1150,7 +1248,7 @@ export function PaperTradingPanel({
     setPendingStart(false)
   }, [pendingStart, sessionSymbols, session, tradeDraft])
 
-  const buyable = maxBuyShares(available, buyPrice)
+  const buyable = maxBuyShares(available, buyPrice, tradeDraft.commissionPct)
   const sellable = sellableShares(lots, bar?.time ?? null, symbol?.ts_code ?? null)
   const buyShares = lotShares(buyQty)
   const sellShares = lotShares(sellQty)
@@ -1177,20 +1275,32 @@ export function PaperTradingPanel({
       setArchiveReady(false)
       return
     }
-    const need = tradeDraft.symbolCount === 'single' ? 1 : tradeDraft.groupSize
-    const picked = pickSessionStocks(tradeDraft, stocks)
-    if (tradeDraft.symbolSource === 'specified' && picked.length !== need) {
+    const bundle = tradeDraft.symbolCount === 'bundle'
+    const need = bundle
+      ? tradeDraft.symbols.length
+      : tradeDraft.symbolCount === 'single'
+        ? 1
+        : tradeDraft.groupSize
+    const picked = pickSessionStocks(
+      bundle ? { ...tradeDraft, symbolSource: 'specified' } : tradeDraft,
+      stocks
+    )
+    if (bundle && picked.length === 0) {
+      setError('请先在模板里保留至少 1 个标的')
+      return
+    }
+    if (!bundle && tradeDraft.symbolSource === 'specified' && picked.length !== need) {
       setError('请先在模板里选满指定标的')
       return
     }
-    if (picked.length < need) {
+    if (!bundle && picked.length < need) {
       setError(stocksLoading ? '标的列表还在加载' : '没有足够的标的可以开始')
       return
     }
     setViewingArchiveId(null)
     session.setReplayRunning(false)
     session.setCutoff(null)
-    const maskSymbol = tradeDraft.symbolSource === 'random' && tradeDraft.hideSymbol
+    const maskSymbol = paperMasksSymbol(tradeDraft)
     const hideTime = tradeDraft.startMode === 'random' && tradeDraft.hideStartTime
     setMaskSymbols(maskSymbol)
     setHideSessionTime(hideTime)
@@ -1300,7 +1410,7 @@ export function PaperTradingPanel({
     const picked = paperArchiveSymbols(record).map(
       (ref) => stocks.find((item) => item.ts_code === ref.tsCode) ?? stockFromRef(ref)
     )
-    const maskSymbol = record.template.symbolSource === 'random' && record.template.hideSymbol
+    const maskSymbol = paperMasksSymbol(record.template)
     const hideTime = record.template.startMode === 'random' && record.template.hideStartTime
     setViewingArchiveId(record.id)
     session.showSymbols(picked, { maskSymbol, hideTime })
@@ -1313,22 +1423,24 @@ export function PaperTradingPanel({
       return
     }
     const price = Number(buyPrice)
-    const cost = price * buyShares
+    const notional = price * buyShares
+    const spent = paperBuyCash(price, buyShares, tradeDraft.commissionPct)
     const date = bar?.time ?? null
     const tsCode = symbol?.ts_code
-    if (!tsCode) {
+    if (!tsCode || spent > available + 1e-6) {
       return
     }
-    setSessionCapital(available - cost)
+    setSessionCapital(available - spent)
     setLots((current) => {
       const index = current.findIndex((lot) => lot.tsCode === tsCode && lot.date === date)
       if (index < 0) {
-        return [...current, { tsCode, name: symbol?.name ?? '', date, shares: buyShares, cost }]
+        return [...current, { tsCode, name: symbol?.name ?? '', date, shares: buyShares, cost: spent }]
       }
       return current.map((lot, lotIndex) =>
-        lotIndex === index ? { ...lot, shares: lot.shares + buyShares, cost: lot.cost + cost } : lot
+        lotIndex === index ? { ...lot, shares: lot.shares + buyShares, cost: lot.cost + spent } : lot
       )
     })
+    setBuyPrice('')
     setBuyQty('')
     tradeSeq.current += 1
     setTrades((current) => [
@@ -1340,7 +1452,7 @@ export function PaperTradingPanel({
         side: 'buy',
         price,
         shares: buyShares,
-        amount: cost
+        amount: notional
       },
       ...current
     ])
@@ -1374,8 +1486,10 @@ export function PaperTradingPanel({
     if (remaining > 0) {
       return
     }
-    setSessionCapital(available + price * sellShares)
+    const received = paperSellCash(price, sellShares, tradeDraft.commissionPct, tradeDraft.stampTaxPct)
+    setSessionCapital(available + received)
     setLots(next)
+    setSellPrice('')
     setSellQty('')
     tradeSeq.current += 1
     setTrades((current) => [
@@ -1652,60 +1766,145 @@ export function PaperTradingPanel({
                 disabled={formDisabled}
                 onSelect={() => setSymbolCount('group')}
               />
-            </Box>
-            {draft.symbolCount === 'group' ? (
-              <TextField
-                size="small"
-                type="number"
-                label="数量"
-                disabled={formDisabled}
-                value={numberValue(draft.groupSize)}
-                onChange={(event) => {
-                  const next = event.target.value
-                  setGroupSize(next === '' ? Number.NaN : Number(next))
-                }}
-                helperText={`1 到 ${PAPER_GROUP_SIZE_MAX} 个`}
-                slotProps={{
-                  htmlInput: { min: 1, max: PAPER_GROUP_SIZE_MAX, step: 1, 'aria-label': '标的数量' }
-                }}
-                sx={[paperFieldSx, { mt: 1 }]}
-              />
-            ) : null}
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
               <ModeCheckbox
-                label="指定标的"
-                checked={draft.symbolSource === 'specified'}
+                label="分组标的"
+                checked={draft.symbolCount === 'bundle'}
                 disabled={formDisabled}
-                onSelect={() => updateDraft({ symbolSource: 'specified' satisfies PaperSymbolSource })}
-              />
-              <ModeCheckbox
-                label="随机标的"
-                checked={draft.symbolSource === 'random'}
-                disabled={formDisabled}
-                onSelect={() => updateDraft({ symbolSource: 'random' })}
+                onSelect={() => setSymbolCount('bundle')}
               />
             </Box>
-            {draft.symbolSource === 'specified' ? (
+            {draft.symbolCount === 'bundle' ? (
               <Box sx={{ mt: 1 }}>
-                <PaperSymbolPicker
-                  stocks={stocks}
-                  stocksLoading={stocksLoading}
-                  stocksError={stocksError}
-                  symbols={draft.symbols}
-                  limit={Number.isInteger(symbolLimit) && symbolLimit >= 1 ? symbolLimit : 1}
-                  selectedBelowSearch
-                  placeholderGrid={draft.symbolCount === 'group'}
+                <TextField
+                  select
+                  size="small"
+                  fullWidth
+                  label="分组"
                   disabled={formDisabled}
-                  onChange={(symbols: PaperSymbolRef[]) => updateDraft({ symbols })}
+                  value={draft.bundleGroupId}
+                  onChange={(event) => chooseBundleGroup(event.target.value)}
+                  sx={paperFieldSx}
+                >
+                  <MenuItem value="">请选择分组</MenuItem>
+                  {groupTree && groupTree.uncategorized.length > 0 ? (
+                    <ListSubheader>未分类</ListSubheader>
+                  ) : null}
+                  {groupTree?.uncategorized.map((group) => (
+                    <MenuItem key={group.id} value={group.id}>
+                      {group.name}
+                    </MenuItem>
+                  ))}
+                  {groupTree?.categories.flatMap((category) =>
+                    category.groups.length === 0
+                      ? []
+                      : [
+                          <ListSubheader key={`head-${category.id}`}>{category.name}</ListSubheader>,
+                          ...category.groups.map((group) => (
+                            <MenuItem key={group.id} value={group.id}>
+                              {group.name}
+                            </MenuItem>
+                          ))
+                        ]
+                  )}
+                </TextField>
+                <ModeCheckbox
+                  label="隐藏标的名称和代码"
+                  checked={draft.hideSymbol}
+                  disabled={formDisabled}
+                  onSelect={() => updateDraft({ hideSymbol: !draft.hideSymbol })}
                 />
+                {draft.symbols.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    请选择分组
+                  </Typography>
+                ) : (
+                  <List dense disablePadding sx={{ maxHeight: 220, overflow: 'auto' }}>
+                    {draft.symbols.map((item) => (
+                      <ListItem
+                        key={item.tsCode}
+                        secondaryAction={
+                          <IconButton
+                            edge="end"
+                            size="small"
+                            aria-label={`删除 ${item.name}`}
+                            disabled={formDisabled}
+                            onClick={() =>
+                              updateDraft({
+                                symbols: draft.symbols.filter((symbol) => symbol.tsCode !== item.tsCode)
+                              })
+                            }
+                          >
+                            <DeleteOutline fontSize="small" />
+                          </IconButton>
+                        }
+                      >
+                        <ListItemText
+                          primary={item.name}
+                          secondary={item.tsCode}
+                          primaryTypographyProps={{ noWrap: true, variant: 'body2' }}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                )}
               </Box>
             ) : (
-              <ModeCheckbox
-                label="隐藏标的名称和代码"
-                checked={draft.hideSymbol}
-                disabled={formDisabled}
-                onSelect={() => updateDraft({ hideSymbol: !draft.hideSymbol })}
-              />
+              <>
+                {draft.symbolCount === 'group' ? (
+                  <TextField
+                    size="small"
+                    type="number"
+                    label="数量"
+                    disabled={formDisabled}
+                    value={numberValue(draft.groupSize)}
+                    onChange={(event) => {
+                      const next = event.target.value
+                      setGroupSize(next === '' ? Number.NaN : Number(next))
+                    }}
+                    helperText={`1 到 ${PAPER_GROUP_SIZE_MAX} 个`}
+                    slotProps={{
+                      htmlInput: { min: 1, max: PAPER_GROUP_SIZE_MAX, step: 1, 'aria-label': '标的数量' }
+                    }}
+                    sx={[paperFieldSx, { mt: 1 }]}
+                  />
+                ) : null}
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  <ModeCheckbox
+                    label="指定标的"
+                    checked={draft.symbolSource === 'specified'}
+                    disabled={formDisabled}
+                    onSelect={() => updateDraft({ symbolSource: 'specified' satisfies PaperSymbolSource })}
+                  />
+                  <ModeCheckbox
+                    label="随机标的"
+                    checked={draft.symbolSource === 'random'}
+                    disabled={formDisabled}
+                    onSelect={() => updateDraft({ symbolSource: 'random' })}
+                  />
+                </Box>
+                {draft.symbolSource === 'specified' ? (
+                  <Box sx={{ mt: 1 }}>
+                    <PaperSymbolPicker
+                      stocks={stocks}
+                      stocksLoading={stocksLoading}
+                      stocksError={stocksError}
+                      symbols={draft.symbols}
+                      limit={Number.isInteger(symbolLimit) && symbolLimit >= 1 ? symbolLimit : 1}
+                      selectedBelowSearch
+                      placeholderGrid={draft.symbolCount === 'group'}
+                      disabled={formDisabled}
+                      onChange={(symbols: PaperSymbolRef[]) => updateDraft({ symbols })}
+                    />
+                  </Box>
+                ) : (
+                  <ModeCheckbox
+                    label="隐藏标的名称和代码"
+                    checked={draft.hideSymbol}
+                    disabled={formDisabled}
+                    onSelect={() => updateDraft({ hideSymbol: !draft.hideSymbol })}
+                  />
+                )}
+              </>
             )}
           </Box>
 
@@ -1824,7 +2023,10 @@ export function PaperTradingPanel({
             </TextField>
           </Box>
           <Box sx={{ px: 1, py: 1, borderBottom: 1, borderColor: 'divider' }}>
-            <TemplateSummary draft={tradeDraft} />
+            <TemplateSummary
+              draft={tradeDraft}
+              bundleGroupName={bundleGroupLabel(groupTree, tradeDraft.bundleGroupId)}
+            />
           </Box>
           <Box sx={{ px: 1, py: 1, borderBottom: 1, borderColor: 'divider' }}>
             <SectionTitle>资金管理</SectionTitle>
@@ -1837,6 +2039,8 @@ export function PaperTradingPanel({
             <PositionBoard
               positions={positions}
               priceOf={priceOf}
+              commissionPct={commissionPct}
+              stampTaxPct={stampTaxPct}
               labelOf={(position) => session.symbolAlias.get(position.tsCode) ?? (position.name || position.tsCode)}
             />
           </Box>
@@ -1949,9 +2153,7 @@ export function PaperTradingPanel({
               <TradeRecords
                 trades={viewingArchive.trades}
                 symbolAlias={
-                  viewingArchive.template.symbolSource === 'random' && viewingArchive.template.hideSymbol
-                    ? session.symbolAlias
-                    : new Map()
+                  paperMasksSymbol(viewingArchive.template) ? session.symbolAlias : new Map()
                 }
                 hideTime={
                   viewingArchive.template.startMode === 'random' && viewingArchive.template.hideStartTime

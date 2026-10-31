@@ -71,6 +71,8 @@ export interface ChartToolbarProps {
   replayShowStart?: boolean
   showGroup?: boolean
   showJump?: boolean
+  onOpenGroup?: () => void
+  groupDisabled?: boolean
   trailing?: ReactNode
 }
 
@@ -99,6 +101,8 @@ export function ChartToolbar({
   replayShowStart = true,
   showGroup = true,
   showJump = true,
+  onOpenGroup,
+  groupDisabled = false,
   trailing
 }: ChartToolbarProps): React.JSX.Element {
   const [periodAnchor, setPeriodAnchor] = useState<HTMLElement | null>(null)
@@ -141,7 +145,13 @@ export function ChartToolbar({
       </Typography>
       <Divider orientation="vertical" flexItem />
       {showGroup ? (
-        <Button size="small" startIcon={<GroupAddIcon />} disabled sx={{ mx: 0.5 }}>
+        <Button
+          size="small"
+          startIcon={<GroupAddIcon />}
+          disabled={groupDisabled || !onOpenGroup}
+          onClick={onOpenGroup}
+          sx={{ mx: 0.5 }}
+        >
           分组
         </Button>
       ) : null}

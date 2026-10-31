@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import { getTushareToken, hasTushareToken, setTushareToken } from '../config/appConfig'
 import { paperArchiveRepository } from '../db/paperArchiveRepository'
 import { paperPlanRepository } from '../db/paperPlanRepository'
+import { symbolGroupRepository } from '../db/symbolGroupRepository'
 import { tradeJournalRepository } from '../db/tradeJournalRepository'
 import { stocksRepository } from '../db/stocksRepository'
 import { applicationService } from '../services/applicationService'
@@ -12,10 +13,34 @@ import type { ScriptTryParams } from '../../shared/types/indicatorScript'
 import type { StrategyScriptTryParams } from '../../shared/types/strategyScript'
 import { readPaperArchiveDraft } from '../../shared/paper/paperArchive'
 import { readPaperPlanDraft } from '../../shared/paper/paperPlan'
+import {
+  readOptionalCategoryId,
+  readRequiredId,
+  readSaveSymbolGroupHits,
+  readSymbolRefs
+} from '../../shared/symbolGroup/symbolGroup'
 import { readTradeJournalDraft } from '../../shared/tradeJournal/tradeJournal'
 import type { StrategyRunParams } from '../../shared/types/pythonProtocol'
 import type { StrategyScreenParams } from '../../shared/types/screener'
 import { pipelineStepMeta, type PipelineStepId } from '../../shared/constants/pipeline'
+
+function readParams(params: unknown, channel: string): Record<string, unknown> {
+  if (!params || typeof params !== 'object' || Array.isArray(params)) {
+    throw new Error(`${channel} requires params object`)
+  }
+  return params as Record<string, unknown>
+}
+
+function readNameField(raw: Record<string, unknown>): string {
+  if (typeof raw.name !== 'string') {
+    throw new Error('请填写名称')
+  }
+  return raw.name
+}
+
+function readNameParam(params: unknown): string {
+  return readNameField(readParams(params, 'symbolGroup:createCategory'))
+}
 
 function parseMarketQueryParams(params: unknown, channel: string): MarketQueryParams {
   if (!params || typeof params !== 'object') {
@@ -585,6 +610,79 @@ export function registerHandlers(): void {
       throw new Error('id must be a non-empty string')
     }
     paperPlanRepository.remove(id.trim())
+  })
+
+  ipcMain.handle('symbolGroup:tree', () => {
+    return symbolGroupRepository.tree()
+  })
+
+  ipcMain.handle('symbolGroup:createCategory', (_event, params: unknown) => {
+    return symbolGroupRepository.createCategory(readNameParam(params))
+  })
+
+  ipcMain.handle('symbolGroup:renameCategory', (_event, params: unknown) => {
+    const raw = readParams(params, 'symbolGroup:renameCategory')
+    return symbolGroupRepository.renameCategory(readRequiredId(raw.id, '分类无效'), readNameField(raw))
+  })
+
+  ipcMain.handle('symbolGroup:deleteCategory', (_event, params: unknown) => {
+    const raw = readParams(params, 'symbolGroup:deleteCategory')
+    symbolGroupRepository.deleteCategory(readRequiredId(raw.id, '分类无效'))
+  })
+
+  ipcMain.handle('symbolGroup:createGroup', (_event, params: unknown) => {
+    const raw = readParams(params, 'symbolGroup:createGroup')
+    return symbolGroupRepository.createGroup(readOptionalCategoryId(raw.categoryId), readNameField(raw))
+  })
+
+  ipcMain.handle('symbolGroup:renameGroup', (_event, params: unknown) => {
+    const raw = readParams(params, 'symbolGroup:renameGroup')
+    return symbolGroupRepository.renameGroup(readRequiredId(raw.id, '分组无效'), readNameField(raw))
+  })
+
+  ipcMain.handle('symbolGroup:deleteGroup', (_event, params: unknown) => {
+    const raw = readParams(params, 'symbolGroup:deleteGroup')
+    symbolGroupRepository.deleteGroup(readRequiredId(raw.id, '分组无效'))
+  })
+
+  ipcMain.handle('symbolGroup:members', (_event, params: unknown) => {
+    const raw = readParams(params, 'symbolGroup:members')
+    return symbolGroupRepository.members(readRequiredId(raw.groupId, '分组无效'))
+  })
+
+  ipcMain.handle('symbolGroup:addMembers', (_event, params: unknown) => {
+    const raw = readParams(params, 'symbolGroup:addMembers')
+    symbolGroupRepository.addMembers(readRequiredId(raw.groupId, '分组无效'), readSymbolRefs(raw.symbols))
+  })
+
+  ipcMain.handle('symbolGroup:removeMembers', (_event, params: unknown) => {
+    const raw = readParams(params, 'symbolGroup:removeMembers')
+    const codes = raw.tsCodes
+    if (!Array.isArray(codes) || codes.some((code) => typeof code !== 'string')) {
+      throw new Error('标的无效')
+    }
+    symbolGroupRepository.removeMembers(readRequiredId(raw.groupId, '分组无效'), codes)
+  })
+
+  ipcMain.handle('symbolGroup:membership', (_event, params: unknown) => {
+    const raw = readParams(params, 'symbolGroup:membership')
+    return symbolGroupRepository.membership(readRequiredId(raw.tsCode, '标的无效'))
+  })
+
+  ipcMain.handle('symbolGroup:setSymbolGroups', (_event, params: unknown) => {
+    const raw = readParams(params, 'symbolGroup:setSymbolGroups')
+    const groupIds = raw.groupIds
+    if (!Array.isArray(groupIds) || groupIds.some((id) => typeof id !== 'string')) {
+      throw new Error('分组无效')
+    }
+    if (typeof raw.name !== 'string') {
+      throw new Error('标的无效')
+    }
+    symbolGroupRepository.setSymbolGroups(readRequiredId(raw.tsCode, '标的无效'), raw.name, groupIds)
+  })
+
+  ipcMain.handle('symbolGroup:saveHits', (_event, params: unknown) => {
+    return symbolGroupRepository.saveHits(readSaveSymbolGroupHits(params))
   })
 
   ipcMain.handle('tradeJournal:list', () => {
