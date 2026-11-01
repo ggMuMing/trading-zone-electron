@@ -4,11 +4,13 @@ import {
   CandlestickSeries,
   CrosshairMode,
   HistogramSeries,
+  LineStyle,
   createChart,
   createSeriesMarkers,
   type DeepPartial,
   type ChartOptions,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
   type MouseEventParams,
@@ -38,6 +40,8 @@ import {
   subplotLegendTitle
 } from '../../../../shared/chart/legendLabel'
 import { lwcChromeOptions, useChartChrome, type ChartChrome } from '../../theme/chartChrome'
+import { CostLinePrimitive } from './CostLinePrimitive'
+import { LimitMarkPrimitive, type ChartLimitMark } from './LimitMarkPrimitive'
 import { DOWN_COLOR, UP_COLOR, VOLUME_COLOR } from '../dashboard/format'
 import { PaneCornerActions } from './PaneCornerActions'
 import { PriceLegend, type PriceLegendBar, type PriceLegendOverlayGroup } from './PriceLegend'
@@ -80,6 +84,8 @@ function overlayMarkers(
 }
 
 const DRAWING_CURSOR_STYLE_ID = 'tz-drawing-cursor-style'
+const EMPTY_LIMIT_MARKS: readonly ChartLimitMark[] = []
+const LIMIT_LINE_COLOR = '#87CEEB'
 
 function ensureDrawingCursorStyle(): void {
   if (document.getElementById(DRAWING_CURSOR_STYLE_ID)) {
@@ -329,6 +335,10 @@ interface KlineChartProps {
   onDrawingsChange?: (next: ChartDrawing[]) => void
   onDrawingToolChange?: (tool: DrawingTool | null) => void
   onSelectedDrawingChange?: (id: string | null) => void
+  /** 模拟盘持仓成本价。有值时画灰色虚线，并在线的右下角标出价格。 */
+  costPrice?: number | null
+  /** 条件单限价。每条画一条天蓝色虚线，并在线的右上方标出说明。 */
+  limitMarks?: readonly ChartLimitMark[]
 }
 
 export function KlineChart({
@@ -352,7 +362,9 @@ export function KlineChart({
   drawingSnap = true,
   onDrawingsChange,
   onDrawingToolChange,
-  onSelectedDrawingChange
+  onSelectedDrawingChange,
+  costPrice = null,
+  limitMarks = EMPTY_LIMIT_MARKS
 }: KlineChartProps): React.JSX.Element {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -371,6 +383,10 @@ export function KlineChart({
   const markersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
   const highlightRef = useRef<ReplayHighlightPrimitive | null>(null)
   const drawingPrimitiveRef = useRef<DrawingPrimitive | null>(null)
+  const costLineRef = useRef<IPriceLine | null>(null)
+  const costLabelRef = useRef<CostLinePrimitive | null>(null)
+  const limitLinesRef = useRef<IPriceLine[]>([])
+  const limitLabelRef = useRef<LimitMarkPrimitive | null>(null)
   const chrome = useChartChrome()
   const chromeRef = useRef(chrome)
   chromeRef.current = chrome
@@ -483,11 +499,17 @@ export function KlineChart({
     const highlight = new ReplayHighlightPrimitive()
     highlight.setNeutralColor(initialChrome.highlightNeutral)
     const drawingPrimitive = new DrawingPrimitive()
+    const costLabel = new CostLinePrimitive()
+    const limitLabel = new LimitMarkPrimitive()
     candle.attachPrimitive(highlight)
     candle.attachPrimitive(drawingPrimitive)
+    candle.attachPrimitive(costLabel)
+    candle.attachPrimitive(limitLabel)
     markersApiRef.current = markersApi
     highlightRef.current = highlight
     drawingPrimitiveRef.current = drawingPrimitive
+    costLabelRef.current = costLabel
+    limitLabelRef.current = limitLabel
 
     candle.setData(toCandleData(initial.candle))
     volume.setData(toVolumeData(initial.volume))
@@ -617,8 +639,20 @@ export function KlineChart({
       paneLayoutObserverRef.current = null
       rebindPaneLayoutObserverRef.current = null
       chart.unsubscribeCrosshairMove(onCrosshairMove)
+      if (costLineRef.current) {
+        candle.removePriceLine(costLineRef.current)
+        costLineRef.current = null
+      }
+      for (const line of limitLinesRef.current) {
+        candle.removePriceLine(line)
+      }
+      limitLinesRef.current = []
       candle.detachPrimitive(highlight)
       candle.detachPrimitive(drawingPrimitive)
+      candle.detachPrimitive(costLabel)
+      candle.detachPrimitive(limitLabel)
+      costLabelRef.current = null
+      limitLabelRef.current = null
       markersApi.detach()
       chart.remove()
       chartRef.current = null
@@ -631,6 +665,80 @@ export function KlineChart({
       primitivesRef.current = []
     }
   }, [])
+
+  useEffect(() => {
+    const label = costLabelRef.current
+    const candle = candleRef.current
+    label?.setCost(
+      costPrice,
+      costPrice == null ? '' : `持仓成本 ${Number(costPrice.toFixed(4)).toString()}`
+    )
+    if (!candle) {
+      return
+    }
+    if (costPrice == null || !Number.isFinite(costPrice)) {
+      if (costLineRef.current) {
+        candle.removePriceLine(costLineRef.current)
+        costLineRef.current = null
+      }
+      return
+    }
+    const options = {
+      price: costPrice,
+      color: '#9e9e9e',
+      lineWidth: 2 as const,
+      lineStyle: LineStyle.Dashed,
+      lineVisible: true,
+      axisLabelVisible: false,
+      title: ''
+    }
+    if (costLineRef.current) {
+      costLineRef.current.applyOptions(options)
+      return
+    }
+    costLineRef.current = candle.createPriceLine(options)
+  }, [costPrice])
+
+  useEffect(() => {
+    const candle = candleRef.current
+    if (!candle) {
+      return
+    }
+    const prices: number[] = []
+    const seen = new Set<number>()
+    for (const mark of limitMarks) {
+      if (!Number.isFinite(mark.price) || seen.has(mark.price)) {
+        continue
+      }
+      seen.add(mark.price)
+      prices.push(mark.price)
+    }
+    limitLabelRef.current?.setMarks(limitMarks)
+    const lines = limitLinesRef.current
+    while (lines.length > prices.length) {
+      const line = lines.pop()
+      if (line) {
+        candle.removePriceLine(line)
+      }
+    }
+    prices.forEach((price, index) => {
+      const options = {
+        price,
+        color: LIMIT_LINE_COLOR,
+        lineWidth: 2 as const,
+        lineStyle: LineStyle.Dashed,
+        lineVisible: true,
+        axisLabelVisible: false,
+        title: ''
+      }
+      const existing = lines[index]
+      if (existing) {
+        existing.applyOptions(options)
+        return
+      }
+      lines[index] = candle.createPriceLine(options)
+    })
+  }, [limitMarks])
 
   useDrawingInteraction({
     chartRef,

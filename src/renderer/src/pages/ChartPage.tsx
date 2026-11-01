@@ -54,6 +54,7 @@ import { IndustryBreadcrumb } from './chart/IndustryBreadcrumb'
 import { IndicatorDialog } from './chart/IndicatorDialog'
 import { IndicatorSettingsDialog } from './chart/IndicatorSettingsDialog'
 import { KlineChart, type ChartLocateRequest } from './chart/KlineChart'
+import type { ChartLimitMark } from './chart/LimitMarkPrimitive'
 import type { ReplayStartRequest } from './chart/ReplayPanel'
 import { sliceChartInput } from './chart/sliceChartInput'
 import { ScriptEditorPanel, type EditorTryParams, type EditorTryResult, type ScriptDraft, type ScriptKind } from './chart/scriptEditor/ScriptEditorPanel'
@@ -69,6 +70,7 @@ const DRAWING_SNAP_STORAGE_KEY = 'trading-zone.chart.drawingSnap'
 const PICKER_WIDTH_MIN = 180
 const PICKER_WIDTH_MAX = 320
 const PICKER_WIDTH_DEFAULT = 220
+const EMPTY_LIMIT_PRICES: readonly ChartLimitMark[] = []
 const STRATEGY_WIDTH_MIN = 280
 const STRATEGY_WIDTH_DEFAULT = 360
 
@@ -208,6 +210,10 @@ export interface ChartRightPanelContext {
     highlight: { timeIso: string; kind: StrategyHighlightKind; prominent?: boolean } | null
   ) => void
   locateTrade: (tsCode: string, timeIso: string) => void
+  /** 当前图上的持仓成本价。null 表示不画成本线。 */
+  setCostPrice: (price: number | null) => void
+  /** 条件单限价。空数组表示不画限价线。 */
+  setLimitPrices: (marks: readonly ChartLimitMark[]) => void
 }
 
 export interface ChartPageProps {
@@ -289,6 +295,8 @@ export function ChartPage({
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyInfo | null>(null)
   const [strategyOverlay, setStrategyOverlay] = useState<StrategyChartOverlay | null>(null)
   const [paperMarkers, setPaperMarkers] = useState<StrategyChartOverlay['markers']>([])
+  const [paperCostPrice, setPaperCostPrice] = useState<number | null>(null)
+  const [paperLimitPrices, setPaperLimitPrices] = useState<readonly ChartLimitMark[]>([])
   const [screenHits, setScreenHitsState] = useState<StrategyScreenHit[] | null>(null)
   const [dateHighlight, setDateHighlightState] = useState<
     { timeIso: string; kind: StrategyHighlightKind; prominent?: boolean } | null
@@ -1017,6 +1025,33 @@ export function ChartPage({
     setSymbolAlias(aliases)
   }
 
+  const setLimitPrices = useCallback((marks: readonly ChartLimitMark[]) => {
+    setPaperLimitPrices((current) => {
+      if (
+        current.length === marks.length &&
+        current.every(
+          (mark, index) =>
+            mark.label === marks[index]?.label && Math.abs(mark.price - (marks[index]?.price ?? mark.price)) < 1e-8
+        )
+      ) {
+        return current
+      }
+      return marks.map((mark) => ({ price: mark.price, label: mark.label }))
+    })
+  }, [])
+
+  const setCostPrice = useCallback((price: number | null) => {
+    setPaperCostPrice((current) => {
+      if (current === price) {
+        return current
+      }
+      if (current != null && price != null && Math.abs(current - price) < 1e-8) {
+        return current
+      }
+      return price
+    })
+  }, [])
+
   const setTradeMarkers = useCallback((markers: StrategyChartOverlay['markers']) => {
     setPaperMarkers((current) => {
       if (
@@ -1081,6 +1116,8 @@ export function ChartPage({
     setCutoff: setReplayCutoff,
     setReplayRunning,
     setTradeMarkers,
+    setCostPrice,
+    setLimitPrices,
     setScreenHits,
     setDateHighlight,
     locateTrade
@@ -1389,6 +1426,8 @@ export function ChartPage({
                       onDrawingsChange={commitDrawings}
                       onDrawingToolChange={setDrawingTool}
                       onSelectedDrawingChange={setSelectedDrawingId}
+                      costPrice={paperSession ? paperCostPrice : null}
+                      limitMarks={paperSession ? paperLimitPrices : EMPTY_LIMIT_PRICES}
                     />
                   ) : null}
                 </Box>

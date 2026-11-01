@@ -5,6 +5,7 @@ import icon from '../../resources/icon.png?asset'
 import { runSprint1Acceptance } from './acceptance/runSprint1'
 import { pythonBridge } from './bridge/pythonBridge'
 import { initAppConfig } from './config/appConfig'
+import { initScriptAgentSecret } from './config/scriptAgentSecret'
 import { closeDb, initDb } from './db/sqlite'
 import { registerHandlers } from './ipc/registerHandlers'
 
@@ -51,6 +52,7 @@ app.whenReady().then(async () => {
 
   const userData = app.getPath('userData')
   initAppConfig(userData)
+  initScriptAgentSecret(userData)
   initDb(userData)
   pythonBridge.configure({ userDataPath: userData })
   registerHandlers()

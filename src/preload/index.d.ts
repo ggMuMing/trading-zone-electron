@@ -15,6 +15,12 @@ import type {
   StrategyScriptTryResult
 } from '../shared/types/strategyScript'
 import type {
+  ScriptAgentProgress,
+  ScriptAgentPublicConfig,
+  ScriptAgentTurnRequest,
+  ScriptAgentTurnResult
+} from '../shared/types/scriptAgent'
+import type {
   BoardStats,
   MarketCoverageResult,
   MarketPoolItem,
@@ -109,6 +115,12 @@ export interface AppApi {
     hasTushareToken: () => Promise<boolean>
     getTushareTokenMasked: () => Promise<string | null>
     setTushareToken: (token: string) => Promise<boolean>
+    getScriptAgent: () => Promise<ScriptAgentPublicConfig>
+    setScriptAgent: (params: {
+      baseUrl: string
+      model: string
+      apiKey?: string
+    }) => Promise<ScriptAgentPublicConfig>
   }
   python: {
     ready: () => Promise<WorkerReadyMessage | null>
@@ -125,6 +137,10 @@ export interface AppApi {
     create: (params: { title: string; source: string }) => Promise<StrategyScript[]>
     update: (params: { id: string; title?: string; source?: string }) => Promise<StrategyScript[]>
     remove: (params: { id: string }) => Promise<StrategyScript[]>
+  }
+  scriptAgent: {
+    turn: (params: ScriptAgentTurnRequest) => Promise<ScriptAgentTurnResult>
+    onProgress: (callback: (progress: ScriptAgentProgress) => void) => () => void
   }
   paperPlan: {
     list: () => Promise<PaperPlan[]>

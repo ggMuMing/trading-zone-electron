@@ -22,9 +22,26 @@ import TableRow from '@mui/material/TableRow'
 import Typography from '@mui/material/Typography'
 import DeleteOutline from '@mui/icons-material/DeleteOutline'
 import FolderOpen from '@mui/icons-material/FolderOpen'
+import PendingActions from '@mui/icons-material/PendingActions'
 import Save from '@mui/icons-material/Save'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { paperBuyCash, paperFeeRate, paperPositionPnl, paperSellCash } from '../../../../shared/paper/paperFees'
+import {
+  conditionalHistoryStart,
+  settleConditionalOrders,
+  type PaperConditionalOrder
+} from '../../../../shared/paper/paperConditional'
+import { closesFromBars, valuePaperAccount, type PaperCloseBook, type PaperValuedPosition } from '../../../../shared/paper/paperAccount'
+import { paperBuyCash, paperSellCash } from '../../../../shared/paper/paperFees'
+import {
+  applyPaperBuy,
+  applyPaperSell,
+  paperLotShares,
+  paperMaxBuyShares,
+  paperSellableShares,
+  positionCostPrice,
+  type PaperLot
+} from '../../../../shared/paper/paperPosition'
+import { isoToYyyymmdd, yyyymmddToIso } from '../../../../shared/constants/market'
 import {
   defaultPaperPlanDraft,
   paperMasksSymbol,
@@ -39,7 +56,6 @@ import {
   paperArchiveSymbols,
   paperReplayDurationDays
 } from '../../../../shared/paper/paperArchive'
-import { isoToYyyymmdd } from '../../../../shared/constants/market'
 import { isChartUniverseIndexCode } from '../../../../shared/constants/chartUniverse'
 import type { PaperArchive } from '../../../../shared/types/paperArchive'
 import type { SymbolGroupTree } from '../../../../shared/types/symbolGroup'
@@ -53,10 +69,12 @@ import type {
 } from '../../../../shared/types/paperPlan'
 import type { Stock } from '../../../../shared/types/stock'
 import { CHART_ICON_SX, ChartIconButton } from '../chart/ChartIconButton'
+import { ConditionalOrderDialog } from './ConditionalOrderDialog'
 import { paperFieldSx, PAPER_FIELD_INSET } from './paperFieldSx'
 import { PaperSymbolPicker } from './PaperSymbolPicker'
 import { SettingsTab, SettingsTabs } from '../chart/SettingsTabs'
 import type { ChartPanelQuote, ChartRightPanelContext } from '../ChartPage'
+import type { ChartLimitMark } from '../chart/LimitMarkPrimitive'
 
 type PaperPanelTab = 'template' | 'trade' | 'records'
 
@@ -78,6 +96,7 @@ const textLinkSx = {
   cursor: 'pointer'
 } as const
 
+const NO_CHART_LIMITS: readonly ChartLimitMark[] = []
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -233,71 +252,6 @@ function TemplateSummary({
   )
 }
 
-const SHARE_LOT = 100
-
-interface PaperLot {
-  tsCode: string
-  name: string
-  date: string | null
-  shares: number
-  /** 买入付出的现金，含手续费。 */
-  cost: number
-}
-
-interface PaperPosition {
-  tsCode: string
-  name: string
-  shares: number
-  cost: number
-}
-
-function floorLot(shares: number): number {
-  if (!Number.isFinite(shares) || shares < SHARE_LOT) {
-    return 0
-  }
-  return Math.floor(shares / SHARE_LOT) * SHARE_LOT
-}
-
-function maxBuyShares(cash: number, priceText: string, commissionPct: number): number {
-  const price = Number(priceText)
-  const perShare = paperBuyCash(price, 1, commissionPct)
-  if (!Number.isFinite(cash) || cash <= 0 || !(perShare > 0)) {
-    return 0
-  }
-  return floorLot(cash / perShare)
-}
-
-function sellableShares(lots: readonly PaperLot[], today: string | null, tsCode: string | null): number {
-  if (!today || !tsCode) {
-    return 0
-  }
-  const free = lots.reduce(
-    (sum, lot) => sum + (lot.tsCode === tsCode && lot.date !== null && lot.date < today ? lot.shares : 0),
-    0
-  )
-  return floorLot(free)
-}
-
-function positionsFromLots(lots: readonly PaperLot[]): PaperPosition[] {
-  const grouped = new Map<string, PaperPosition>()
-  for (const lot of lots) {
-    if (lot.shares <= 0) {
-      continue
-    }
-    const current = grouped.get(lot.tsCode)
-    if (!current) {
-      grouped.set(lot.tsCode, { tsCode: lot.tsCode, name: lot.name, shares: lot.shares, cost: lot.cost })
-      continue
-    }
-    current.shares += lot.shares
-    current.cost += lot.cost
-    if (!current.name && lot.name) {
-      current.name = lot.name
-    }
-  }
-  return [...grouped.values()]
-}
-
 function pnlColor(value: number): string | undefined {
   if (value > 0) {
     return 'error.main'
@@ -306,14 +260,6 @@ function pnlColor(value: number): string | undefined {
     return 'success.main'
   }
   return undefined
-}
-
-function lotShares(value: string): number | null {
-  if (!/^\d+$/.test(value)) {
-    return null
-  }
-  const qty = Number(value)
-  return qty >= SHARE_LOT && qty % SHARE_LOT === 0 ? qty : null
 }
 
 function formatYuan(value: number): string {
@@ -392,16 +338,10 @@ function priceInBar(value: string, bar: ChartPanelQuote | null): boolean {
 
 function PositionBoard({
   positions,
-  priceOf,
-  labelOf,
-  commissionPct,
-  stampTaxPct
+  labelOf
 }: {
-  positions: readonly PaperPosition[]
-  priceOf: (tsCode: string) => number | null
-  labelOf: (position: PaperPosition) => string
-  commissionPct: number
-  stampTaxPct: number
+  positions: readonly PaperValuedPosition[]
+  labelOf: (position: PaperValuedPosition) => string
 }): React.JSX.Element | null {
   if (positions.length === 0) {
     return null
@@ -433,12 +373,7 @@ function PositionBoard({
       </TableHead>
       <TableBody>
         {positions.map((position) => {
-          const price = priceOf(position.tsCode)
-          const costPrice = position.shares > 0 ? position.cost / position.shares : null
-          const pnl =
-            price === null || costPrice === null
-              ? null
-              : paperPositionPnl(position.cost, price, position.shares, commissionPct, stampTaxPct)
+          const { costPrice, price, pnl } = position
           return (
             <TableRow key={position.tsCode}>
               <TableCell>{labelOf(position)}</TableCell>
@@ -832,8 +767,18 @@ export function PaperTradingPanel({
   const [sellQty, setSellQty] = useState('')
   const [lots, setLots] = useState<PaperLot[]>([])
   const [trades, setTrades] = useState<PaperTrade[]>([])
+  const [conditionalOrders, setConditionalOrders] = useState<PaperConditionalOrder[]>([])
+  const [conditionalOpen, setConditionalOpen] = useState(false)
+  const [showOrderLimits, setShowOrderLimits] = useState(false)
   const tradeSeq = useRef(0)
+  const orderSeq = useRef(0)
   const [sessionCapital, setSessionCapital] = useState<number | null>(null)
+  const [closeBook, setCloseBook] = useState<PaperCloseBook>({})
+  const closeSeriesRef = useRef<{ adjust: string; endDate: string; byCode: PaperCloseBook }>({
+    adjust: '',
+    endDate: '',
+    byCode: {}
+  })
   const [trading, setTrading] = useState(false)
   const [archiveReady, setArchiveReady] = useState(false)
   const [archives, setArchives] = useState<PaperArchive[]>([])
@@ -1111,84 +1056,94 @@ export function PaperTradingPanel({
     : defaultPaperPlanDraft(PAPER_DEFAULT_PLAN_NAME)
   const templateCapital = Number.isFinite(tradeDraft.capital) ? tradeDraft.capital : 0
   const available = sessionCapital ?? templateCapital
-  const positions = useMemo(() => positionsFromLots(lots), [lots])
-  const positionKey = positions.map((position) => position.tsCode).join(',')
-  const [quoteCloses, setQuoteCloses] = useState<{ cutoff: string; closes: Record<string, number> } | null>(null)
-  const liveClose =
-    symbol && session.chartCode === symbol.ts_code && bar && Number.isFinite(bar.close) ? bar.close : null
+  const positionCodes = useMemo(() => {
+    const codes = new Set<string>()
+    for (const lot of lots) {
+      if (lot.shares > 0) {
+        codes.add(lot.tsCode)
+      }
+    }
+    return [...codes].sort()
+  }, [lots])
+  const positionKey = positionCodes.join(',')
 
   useEffect(() => {
     const cutoff = session.cutoff
-    if (!cutoff || positions.length === 0) {
+    if (!cutoff || positionCodes.length === 0) {
       return
     }
-    const codes = positions.map((position) => position.tsCode).filter((code) => code !== symbol?.ts_code)
-    if (codes.length === 0) {
-      setQuoteCloses({ cutoff, closes: {} })
+    const adjust = session.adjust
+    const endDate =
+      session.coverageMax && session.coverageMax >= isoToYyyymmdd(cutoff)
+        ? session.coverageMax
+        : isoToYyyymmdd(cutoff)
+    const loaded = closeSeriesRef.current
+    const sameAdjust = loaded.adjust === adjust
+    const coversEnd = sameAdjust && loaded.endDate >= endDate
+    const missing = coversEnd
+      ? positionCodes.filter((code) => loaded.byCode[code] === undefined)
+      : positionCodes
+    if (missing.length === 0) {
       return
     }
     let cancelled = false
-    const endDate = isoToYyyymmdd(cutoff)
     void Promise.all(
-      codes.map(async (code) => {
+      missing.map(async (code) => {
         const result = await window.api.market.query({
           ts_code: code,
-          adjust: isChartUniverseIndexCode(code) ? 'none' : session.adjust,
+          adjust: isChartUniverseIndexCode(code) ? 'none' : adjust,
           end_date: endDate
         })
-        const close = result.bars[result.bars.length - 1]?.close
-        return [code, typeof close === 'number' && Number.isFinite(close) ? close : null] as const
+        return [code, closesFromBars(result.bars)] as const
       })
     )
       .then((rows) => {
         if (cancelled) {
           return
         }
-        const closes: Record<string, number> = {}
-        for (const [code, close] of rows) {
-          if (close !== null) {
-            closes[code] = close
-          }
+        const byCode: Record<string, Record<string, number>> = sameAdjust
+          ? { ...closeSeriesRef.current.byCode }
+          : {}
+        for (const [code, closes] of rows) {
+          byCode[code] = closes
         }
-        setQuoteCloses({ cutoff, closes })
+        closeSeriesRef.current = {
+          adjust,
+          endDate: coversEnd ? closeSeriesRef.current.endDate : endDate,
+          byCode
+        }
+        setCloseBook(byCode)
       })
       .catch(() => {
-        if (!cancelled) {
-          setQuoteCloses({ cutoff, closes: {} })
+        if (!cancelled && !sameAdjust) {
+          closeSeriesRef.current = { adjust, endDate: '', byCode: {} }
+          setCloseBook({})
         }
       })
     return () => {
       cancelled = true
     }
-  }, [positionKey, session.cutoff, session.adjust, symbol?.ts_code])
+  }, [positionKey, session.cutoff, session.adjust, session.coverageMax])
 
-  const priceOf = (tsCode: string): number | null => {
-    if (tsCode === symbol?.ts_code && liveClose !== null) {
-      return liveClose
-    }
-    if (!session.cutoff || quoteCloses?.cutoff !== session.cutoff) {
-      return null
-    }
-    return quoteCloses.closes[tsCode] ?? null
-  }
   const commissionPct = tradeDraft.commissionPct
   const stampTaxPct = tradeDraft.stampTaxPct
-  let marketValue = 0
-  let pnl = 0
-  for (const position of positions) {
-    const price = priceOf(position.tsCode)
-    if (price === null) {
-      const rate = paperFeeRate(commissionPct)
-      marketValue += rate > 0 ? position.cost / (1 + rate) : position.cost
-      continue
-    }
-    marketValue += price * position.shares
-    pnl += paperPositionPnl(position.cost, price, position.shares, commissionPct, stampTaxPct)
-  }
+  const account = useMemo(
+    () =>
+      valuePaperAccount({
+        lots,
+        cash: available,
+        time: session.cutoff,
+        book: closeBook,
+        commissionPct,
+        stampTaxPct
+      }),
+    [lots, available, session.cutoff, closeBook, commissionPct, stampTaxPct]
+  )
 
   useEffect(() => {
     setLots([])
     setTrades([])
+    setConditionalOrders([])
     setSessionCapital(null)
   }, [tradeTemplateId, templateCapital])
 
@@ -1248,10 +1203,10 @@ export function PaperTradingPanel({
     setPendingStart(false)
   }, [pendingStart, sessionSymbols, session, tradeDraft])
 
-  const buyable = maxBuyShares(available, buyPrice, tradeDraft.commissionPct)
-  const sellable = sellableShares(lots, bar?.time ?? null, symbol?.ts_code ?? null)
-  const buyShares = lotShares(buyQty)
-  const sellShares = lotShares(sellQty)
+  const buyable = paperMaxBuyShares(available, buyPrice, tradeDraft.commissionPct)
+  const sellable = paperSellableShares(lots, bar?.time ?? null, symbol?.ts_code ?? null)
+  const buyShares = paperLotShares(buyQty)
+  const sellShares = paperLotShares(sellQty)
   const buyPriceOk = priceInBar(buyPrice, bar)
   const sellPriceOk = priceInBar(sellPrice, bar)
   const canBuy =
@@ -1264,6 +1219,145 @@ export function PaperTradingPanel({
     sellShares !== null &&
     sellShares <= sellable &&
     sellPriceOk
+
+  const lotsRef = useRef(lots)
+  lotsRef.current = lots
+  const ordersRef = useRef(conditionalOrders)
+  ordersRef.current = conditionalOrders
+  const capitalRef = useRef(available)
+  capitalRef.current = available
+  const barRef = useRef(bar)
+  barRef.current = bar
+  const symbolRef = useRef(symbol)
+  symbolRef.current = symbol
+  const feeRef = useRef({ commissionPct, stampTaxPct })
+  feeRef.current = { commissionPct, stampTaxPct }
+  const heldCostPrice =
+    viewingArchiveId || !symbol ? null : positionCostPrice(lots, symbol.ts_code)
+
+  useEffect(() => {
+    session.setCostPrice(heldCostPrice)
+  }, [heldCostPrice, session.setCostPrice])
+
+  useEffect(() => {
+    const clear = session.setCostPrice
+    return () => clear(null)
+  }, [session.setCostPrice])
+
+  const chartLimitPrices = useMemo(() => {
+    if (!trading || !showOrderLimits || viewingArchiveId || !symbol) {
+      return NO_CHART_LIMITS
+    }
+    const marks: ChartLimitMark[] = []
+    for (const order of conditionalOrders) {
+      if (order.status !== 'pending' || order.tsCode !== symbol.ts_code) {
+        continue
+      }
+      const price = Number(order.limitPrice.toFixed(4))
+      if (!Number.isFinite(price)) {
+        continue
+      }
+      const side = order.side === 'buy' ? '买入' : '卖出'
+      marks.push({ price, label: `${side} 限价 ${price} 数量 ${order.shares}` })
+    }
+    return marks.length === 0 ? NO_CHART_LIMITS : marks
+  }, [trading, showOrderLimits, viewingArchiveId, symbol, conditionalOrders])
+
+  useEffect(() => {
+    if (!trading) {
+      setConditionalOpen(false)
+    }
+  }, [trading])
+
+  useEffect(() => {
+    session.setLimitPrices(chartLimitPrices)
+  }, [chartLimitPrices, session.setLimitPrices])
+
+  useEffect(() => {
+    const clear = session.setLimitPrices
+    return () => clear([])
+  }, [session.setLimitPrices])
+
+  useEffect(() => {
+    if (!trading) {
+      return
+    }
+    const quote = barRef.current
+    const code = symbol?.ts_code
+    const times = session.chartTimes
+    if (!quote || !code || !times || session.chartCode !== code) {
+      return
+    }
+    const currentTime = quote.time
+    const historyStart = conditionalHistoryStart(ordersRef.current, times, currentTime, code)
+    let cancelled = false
+    const run = async (): Promise<void> => {
+      const quotes = new Map<string, { time: string; low: number; high: number }>()
+      if (historyStart) {
+        try {
+          const result = await window.api.market.query({
+            ts_code: code,
+            adjust: isChartUniverseIndexCode(code) ? 'none' : sessionRef.current.adjust,
+            end_date: isoToYyyymmdd(currentTime)
+          })
+          for (const item of result.bars) {
+            if (item.low == null || item.high == null) {
+              continue
+            }
+            if (!Number.isFinite(item.low) || !Number.isFinite(item.high)) {
+              continue
+            }
+            const time = yyyymmddToIso(item.trade_date)
+            quotes.set(time, { time, low: item.low, high: item.high })
+          }
+        } catch {
+          // 缺历史行情时停在缺口，不跳过中间 K 线。
+        }
+      }
+      if (cancelled) {
+        return
+      }
+      const live = barRef.current
+      if (!live || live.time !== currentTime || symbolRef.current?.ts_code !== code) {
+        return
+      }
+      quotes.set(live.time, { time: live.time, low: live.low, high: live.high })
+      const fees = feeRef.current
+      const settled = settleConditionalOrders({
+        orders: ordersRef.current,
+        lots: lotsRef.current,
+        capital: capitalRef.current,
+        times,
+        currentTime,
+        tsCode: code,
+        quotes,
+        commissionPct: fees.commissionPct,
+        stampTaxPct: fees.stampTaxPct
+      })
+      if (!settled.changed || cancelled) {
+        return
+      }
+      setConditionalOrders([...settled.orders])
+      setLots([...settled.lots])
+      setSessionCapital(settled.capital)
+      if (settled.trades.length > 0) {
+        setTrades((current) => [
+          ...settled.trades
+            .slice()
+            .reverse()
+            .map((trade) => {
+              tradeSeq.current += 1
+              return { ...trade, id: tradeSeq.current }
+            }),
+          ...current
+        ])
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [trading, bar?.time, symbol?.ts_code, session.chartTimes, session.chartCode, session.adjust])
 
   const beginTrading = (): void => {
     setError(null)
@@ -1358,10 +1452,10 @@ export function PaperTradingPanel({
           name: archiveName.trim(),
           template: tradeDraft,
           capital: {
-            totalAssets: available + marketValue,
-            marketValue,
-            pnl,
-            available
+            totalAssets: account.total,
+            marketValue: account.marketValue,
+            pnl: account.pnl,
+            available: account.cash
           },
           startedOn,
           endedOn,
@@ -1386,6 +1480,7 @@ export function PaperTradingPanel({
     setError(null)
     setLots([])
     setTrades([])
+    setConditionalOrders([])
     setSessionCapital(null)
     setBuyPrice('')
     setBuyQty('')
@@ -1431,15 +1526,15 @@ export function PaperTradingPanel({
       return
     }
     setSessionCapital(available - spent)
-    setLots((current) => {
-      const index = current.findIndex((lot) => lot.tsCode === tsCode && lot.date === date)
-      if (index < 0) {
-        return [...current, { tsCode, name: symbol?.name ?? '', date, shares: buyShares, cost: spent }]
-      }
-      return current.map((lot, lotIndex) =>
-        lotIndex === index ? { ...lot, shares: lot.shares + buyShares, cost: lot.cost + spent } : lot
-      )
-    })
+    setLots((current) =>
+      applyPaperBuy(current, {
+        tsCode,
+        name: symbol?.name ?? '',
+        date,
+        shares: buyShares,
+        cost: spent
+      })
+    )
     setBuyPrice('')
     setBuyQty('')
     tradeSeq.current += 1
@@ -1465,28 +1560,19 @@ export function PaperTradingPanel({
     const price = Number(sellPrice)
     const today = bar?.time ?? null
     const tsCode = symbol?.ts_code
-    if (!tsCode) {
-      return
-    }
-    let remaining = sellShares
-    const next: PaperLot[] = []
-    for (const lot of lots) {
-      const eligible = lot.tsCode === tsCode && today !== null && lot.date !== null && lot.date < today
-      if (!eligible || remaining <= 0 || lot.shares <= 0) {
-        next.push(lot)
-        continue
-      }
-      const take = Math.min(lot.shares, remaining)
-      const takeCost = (lot.cost / lot.shares) * take
-      remaining -= take
-      if (lot.shares > take) {
-        next.push({ ...lot, shares: lot.shares - take, cost: lot.cost - takeCost })
-      }
-    }
-    if (remaining > 0) {
+    if (!tsCode || !today) {
       return
     }
     const received = paperSellCash(price, sellShares, tradeDraft.commissionPct, tradeDraft.stampTaxPct)
+    const next = applyPaperSell(lots, {
+      tsCode,
+      today,
+      shares: sellShares,
+      proceeds: received
+    })
+    if (!next) {
+      return
+    }
     setSessionCapital(available + received)
     setLots(next)
     setSellPrice('')
@@ -1495,7 +1581,7 @@ export function PaperTradingPanel({
     setTrades((current) => [
       {
         id: tradeSeq.current,
-        time: today ?? '',
+        time: today,
         name: symbol?.name ?? '',
         tsCode: symbol?.ts_code ?? '',
         side: 'sell',
@@ -1505,6 +1591,32 @@ export function PaperTradingPanel({
       },
       ...current
     ])
+  }
+
+  const createConditionalOrder = (input: {
+    side: 'buy' | 'sell'
+    limitPrice: number
+    shares: number
+    duration: number
+  }): string | null => {
+    if (!trading || !symbol || !bar) {
+      return '请先开始交易并等到当前 K 线'
+    }
+    orderSeq.current += 1
+    const created: PaperConditionalOrder = {
+      id: orderSeq.current,
+      tsCode: symbol.ts_code,
+      name: symbol.name ?? '',
+      side: input.side,
+      limitPrice: input.limitPrice,
+      shares: input.shares,
+      duration: input.duration,
+      createdTime: bar.time,
+      status: 'pending',
+      checkedThrough: null
+    }
+    setConditionalOrders((current) => [created, ...current])
+    return null
   }
 
   return (
@@ -2031,21 +2143,42 @@ export function PaperTradingPanel({
           <Box sx={{ px: 1, py: 1, borderBottom: 1, borderColor: 'divider' }}>
             <SectionTitle>资金管理</SectionTitle>
             <CapitalSummary
-              total={available + marketValue}
-              marketValue={marketValue}
-              pnl={pnl}
-              available={available}
+              total={account.total}
+              marketValue={account.marketValue}
+              pnl={account.pnl}
+              available={account.cash}
             />
             <PositionBoard
-              positions={positions}
-              priceOf={priceOf}
-              commissionPct={commissionPct}
-              stampTaxPct={stampTaxPct}
+              positions={account.positions}
               labelOf={(position) => session.symbolAlias.get(position.tsCode) ?? (position.name || position.tsCode)}
             />
           </Box>
           <Box sx={{ px: 1, py: 1, borderBottom: 1, borderColor: 'divider' }}>
-            <SectionTitle>交易</SectionTitle>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                mb: 0.75
+              }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                交易
+              </Typography>
+              <ChartIconButton
+                ariaLabel="条件单"
+                title={trading ? '条件单' : '开始交易后才能使用条件单'}
+                boxed
+                disabled={!trading || !symbol}
+                onClick={() => {
+                  if (trading && symbol) {
+                    setConditionalOpen(true)
+                  }
+                }}
+              >
+                <PendingActions sx={CHART_ICON_SX} />
+              </ChartIconButton>
+            </Box>
             <TextField
               size="small"
               value={
@@ -2075,7 +2208,7 @@ export function PaperTradingPanel({
                   label="买入数量"
                   value={buyQty}
                   onChange={(event) => setBuyQty(event.target.value)}
-                  slotProps={{ htmlInput: { min: 0, step: 1, 'aria-label': '买入数量' } }}
+                  slotProps={{ htmlInput: { min: 0, step: 100, 'aria-label': '买入数量' } }}
                   sx={orderFieldSx}
                 />
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
@@ -2100,7 +2233,7 @@ export function PaperTradingPanel({
                   label="卖出数量"
                   value={sellQty}
                   onChange={(event) => setSellQty(event.target.value)}
-                  slotProps={{ htmlInput: { min: 0, step: 1, 'aria-label': '卖出数量' } }}
+                  slotProps={{ htmlInput: { min: 0, step: 100, 'aria-label': '卖出数量' } }}
                   sx={orderFieldSx}
                 />
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
@@ -2172,6 +2305,23 @@ export function PaperTradingPanel({
           </Box>
         </Box>
       )}
+      <ConditionalOrderDialog
+        open={conditionalOpen}
+        trading={trading}
+        hideTime={hideSessionTime}
+        orders={conditionalOrders}
+        showOnChart={showOrderLimits}
+        symbolLabel={
+          symbol
+            ? (session.symbolAlias.get(symbol.ts_code) ??
+              `${symbol.name || symbol.ts_code}（${symbol.ts_code}）`)
+            : ''
+        }
+        symbolLabelOf={(order) => session.symbolAlias.get(order.tsCode) ?? (order.name || order.tsCode)}
+        onClose={() => setConditionalOpen(false)}
+        onCreate={createConditionalOrder}
+        onShowOnChartChange={setShowOrderLimits}
+      />
     </Box>
   )
 }

@@ -1,5 +1,14 @@
 import { ipcMain } from 'electron'
-import { getTushareToken, hasTushareToken, setTushareToken } from '../config/appConfig'
+import {
+  getScriptAgentBaseUrl,
+  getScriptAgentModel,
+  getTushareToken,
+  hasTushareToken,
+  setScriptAgentEndpoint,
+  setTushareToken
+} from '../config/appConfig'
+import { getScriptAgentApiKey, setScriptAgentApiKey } from '../config/scriptAgentSecret'
+import { runScriptAgentTurn } from '../agent/scriptAgent'
 import { paperArchiveRepository } from '../db/paperArchiveRepository'
 import { paperPlanRepository } from '../db/paperPlanRepository'
 import { symbolGroupRepository } from '../db/symbolGroupRepository'
@@ -11,6 +20,11 @@ import type { AdjustType, MarketQueryParams } from '../../shared/types/market'
 import type { LayoutItemParams, ScriptParams } from '../../shared/types/chartLayout'
 import type { ScriptTryParams } from '../../shared/types/indicatorScript'
 import type { StrategyScriptTryParams } from '../../shared/types/strategyScript'
+import type {
+  ScriptAgentMessage,
+  ScriptAgentPublicConfig,
+  ScriptAgentTurnRequest
+} from '../../shared/types/scriptAgent'
 import { readPaperArchiveDraft } from '../../shared/paper/paperArchive'
 import { readPaperPlanDraft } from '../../shared/paper/paperPlan'
 import {
@@ -62,6 +76,86 @@ function parseMarketQueryParams(params: unknown, channel: string): MarketQueryPa
     limit:
       typeof p.limit === 'number' && Number.isInteger(p.limit) && p.limit >= 1 ? p.limit : undefined
   }
+}
+
+function scriptAgentPublicConfig(): ScriptAgentPublicConfig {
+  return {
+    baseUrl: getScriptAgentBaseUrl(),
+    model: getScriptAgentModel(),
+    hasApiKey: Boolean(getScriptAgentApiKey())
+  }
+}
+
+function parseScriptAgentConfig(params: unknown): { baseUrl: string; model: string; apiKey: string } {
+  const raw = readParams(params, 'config:setScriptAgent')
+  if (typeof raw.baseUrl !== 'string' || typeof raw.model !== 'string') {
+    throw new Error('baseUrl and model must be strings')
+  }
+  const baseUrl = raw.baseUrl.trim()
+  const model = raw.model.trim()
+  if (!baseUrl || !model) {
+    throw new Error('请填写 Base URL 和模型名')
+  }
+  let url: URL
+  try {
+    url = new URL(baseUrl)
+  } catch {
+    throw new Error('Base URL 不是合法地址')
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('Base URL 必须是 http 或 https')
+  }
+  return {
+    baseUrl,
+    model,
+    apiKey: typeof raw.apiKey === 'string' ? raw.apiKey.trim() : ''
+  }
+}
+
+function parseScriptAgentTurn(params: unknown): ScriptAgentTurnRequest {
+  const raw = readParams(params, 'scriptAgent:turn')
+  const kind = raw.kind
+  if (kind !== 'indicator' && kind !== 'strategy') {
+    throw new Error('kind must be indicator or strategy')
+  }
+  if (typeof raw.title !== 'string') {
+    throw new Error('title must be a string')
+  }
+  if (typeof raw.source !== 'string') {
+    throw new Error('source must be a string')
+  }
+  if (!Array.isArray(raw.messages) || raw.messages.length < 1) {
+    throw new Error('messages must be a non-empty array')
+  }
+  const messages: ScriptAgentMessage[] = raw.messages.slice(-8).map((item, index) => {
+    if (!item || typeof item !== 'object') {
+      throw new Error(`messages[${index}] must be an object`)
+    }
+    const row = item as Record<string, unknown>
+    if (row.role !== 'user' && row.role !== 'assistant') {
+      throw new Error(`messages[${index}].role is invalid`)
+    }
+    if (typeof row.content !== 'string' || !row.content.trim()) {
+      throw new Error(`messages[${index}].content must be a non-empty string`)
+    }
+    return {
+      role: row.role,
+      content: row.content.trim().slice(0, 8000)
+    }
+  })
+  if (messages[messages.length - 1]?.role !== 'user') {
+    throw new Error('last message must be from the user')
+  }
+  const request: ScriptAgentTurnRequest = {
+    kind,
+    title: raw.title.trim().slice(0, 200),
+    source: raw.source,
+    messages
+  }
+  if (raw.query != null) {
+    request.query = parseMarketQueryParams(raw.query, 'scriptAgent:turn')
+  }
+  return request
 }
 
 function parseStrategyParamValues(value: unknown): Record<string, number | string> | undefined {
@@ -560,6 +654,31 @@ export function registerHandlers(): void {
     }
     setTushareToken(token)
     return true
+  })
+
+  ipcMain.handle('config:getScriptAgent', () => {
+    return scriptAgentPublicConfig()
+  })
+
+  ipcMain.handle('config:setScriptAgent', (_event, params: unknown) => {
+    const input = parseScriptAgentConfig(params)
+    if (input.apiKey) {
+      setScriptAgentApiKey(input.apiKey)
+    }
+    if (!getScriptAgentApiKey()) {
+      throw new Error('请填写 API Key')
+    }
+    setScriptAgentEndpoint(input.baseUrl, input.model)
+    return scriptAgentPublicConfig()
+  })
+
+  ipcMain.handle('scriptAgent:turn', (event, params: unknown) => {
+    return runScriptAgentTurn(parseScriptAgentTurn(params), (progress) => {
+      if (event.sender.isDestroyed()) {
+        return
+      }
+      event.sender.send('scriptAgent:progress', progress)
+    })
   })
 
   ipcMain.handle('python:ready', () => {

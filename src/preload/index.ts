@@ -16,6 +16,12 @@ import type {
   StrategyScriptTryResult
 } from '../shared/types/strategyScript'
 import type {
+  ScriptAgentProgress,
+  ScriptAgentPublicConfig,
+  ScriptAgentTurnRequest,
+  ScriptAgentTurnResult
+} from '../shared/types/scriptAgent'
+import type {
   BoardStats,
   MarketCoverageResult,
   MarketPoolItem,
@@ -143,7 +149,14 @@ const api = {
     getTushareTokenMasked: (): Promise<string | null> =>
       ipcRenderer.invoke('config:getTushareTokenMasked'),
     setTushareToken: (token: string): Promise<boolean> =>
-      ipcRenderer.invoke('config:setTushareToken', token)
+      ipcRenderer.invoke('config:setTushareToken', token),
+    getScriptAgent: (): Promise<ScriptAgentPublicConfig> =>
+      ipcRenderer.invoke('config:getScriptAgent'),
+    setScriptAgent: (params: {
+      baseUrl: string
+      model: string
+      apiKey?: string
+    }): Promise<ScriptAgentPublicConfig> => ipcRenderer.invoke('config:setScriptAgent', params)
   },
   python: {
     ready: (): Promise<WorkerReadyMessage | null> => ipcRenderer.invoke('python:ready')
@@ -166,6 +179,19 @@ const api = {
       ipcRenderer.invoke('strategyScript:update', params),
     remove: (params: { id: string }): Promise<StrategyScript[]> =>
       ipcRenderer.invoke('strategyScript:remove', params)
+  },
+  scriptAgent: {
+    turn: (params: ScriptAgentTurnRequest): Promise<ScriptAgentTurnResult> =>
+      ipcRenderer.invoke('scriptAgent:turn', params),
+    onProgress: (callback: (progress: ScriptAgentProgress) => void): (() => void) => {
+      const listener = (_event: unknown, progress: ScriptAgentProgress): void => {
+        callback(progress)
+      }
+      ipcRenderer.on('scriptAgent:progress', listener)
+      return () => {
+        ipcRenderer.removeListener('scriptAgent:progress', listener)
+      }
+    }
   },
   paperPlan: {
     list: (): Promise<PaperPlan[]> => ipcRenderer.invoke('paperPlan:list'),

@@ -21,6 +21,7 @@ import type { IndicatorManifest } from '../../../../../shared/types/indicatorScr
 import type { MarketQueryParams } from '../../../../../shared/types/market'
 import type { StrategyScriptManifest } from '../../../../../shared/types/strategyScript'
 import { ScriptSourceEditor } from './ScriptSourceEditor'
+import { ScriptAgentChat } from './ScriptAgentChat'
 
 export type ScriptKind = 'indicator' | 'strategy'
 
@@ -277,6 +278,16 @@ export function ScriptEditorPanel({
     }
   }
 
+  const handleApplyAgent = (patch: { title: string; source: string }): void => {
+    setBanner(null)
+    setTryResult(null)
+    onDraftChange({
+      ...draft,
+      title: patch.title.trim() || draft.title,
+      source: patch.source
+    })
+  }
+
   const handleSaveRename = async (): Promise<void> => {
     const nextTitle = renameValue.trim() || DEFAULT_SCRIPT_TITLE
     onDraftChange({ ...draft, title: nextTitle })
@@ -326,7 +337,16 @@ export function ScriptEditorPanel({
           }
         }}
       />
-      <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+      <Box
+        sx={{
+          flex: 1,
+          minWidth: 0,
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          position: 'relative'
+        }}
+      >
         <Stack
           direction="row"
           alignItems="center"
@@ -466,7 +486,7 @@ export function ScriptEditorPanel({
               : null
           }
           readOnly={tryBusy}
-          sx={{ height: 'auto', flex: 1, minHeight: 0, border: 0, borderRadius: 0 }}
+          sx={{ height: 'auto', flex: 1, minHeight: 120, border: 0, borderRadius: 0 }}
         />
         {banner?.type === 'success' ? (
           <Alert severity="success" sx={{ borderRadius: 0 }} onClose={() => setBanner(null)}>
@@ -486,6 +506,12 @@ export function ScriptEditorPanel({
             {banner.traceback ? `\n${banner.traceback}` : ''}
           </Alert>
         ) : null}
+        <ScriptAgentChat
+          draft={draft}
+          tryQuery={tryQuery}
+          disabled={disabled || tryBusy}
+          onApply={handleApplyAgent}
+        />
       </Box>
       <Dialog open={renameOpen} onClose={() => setRenameOpen(false)} fullWidth maxWidth="xs">
         <DialogTitle>修改脚本名称</DialogTitle>

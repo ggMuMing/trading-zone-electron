@@ -3,6 +3,8 @@ import { join } from 'path'
 
 interface AppConfigFile {
   tushareToken?: string
+  scriptAgentBaseUrl?: string
+  scriptAgentModel?: string
 }
 
 let configDir: string | null = null
@@ -50,4 +52,28 @@ export function setTushareToken(token: string): void {
 
 export function hasTushareToken(): boolean {
   return Boolean(getTushareToken())
+}
+
+export function getScriptAgentBaseUrl(): string {
+  return cache.scriptAgentBaseUrl?.trim() ?? ''
+}
+
+export function getScriptAgentModel(): string {
+  return cache.scriptAgentModel?.trim() ?? ''
+}
+
+export function setScriptAgentEndpoint(baseUrl: string, model: string): void {
+  const nextBase = baseUrl.trim()
+  const nextModel = model.trim()
+  if (nextBase) {
+    cache.scriptAgentBaseUrl = nextBase
+  } else {
+    delete cache.scriptAgentBaseUrl
+  }
+  if (nextModel) {
+    cache.scriptAgentModel = nextModel
+  } else {
+    delete cache.scriptAgentModel
+  }
+  persist()
 }

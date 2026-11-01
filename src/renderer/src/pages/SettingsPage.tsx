@@ -28,6 +28,10 @@ import {
 } from '../../../shared/constants/pipeline'
 import { yyyymmddToIso } from '../../../shared/constants/market'
 import type { BoardStats, MarketSyncProgress } from '../../../shared/types/market'
+import {
+  scriptAgentSetupError,
+  type ScriptAgentPublicConfig
+} from '../../../shared/types/scriptAgent'
 import type {
   PipelineGlobalStatus,
   PipelineStatusResult,
@@ -71,6 +75,19 @@ const GLOBAL_BUTTON_LABELS: Record<PipelineGlobalStatus, string> = {
 
 const EXPAND_COL_WIDTH = 44
 const ORDINAL_COL_WIDTH = 120
+
+function applyAgentConfig(
+  config: ScriptAgentPublicConfig,
+  setBaseUrl: (value: string) => void,
+  setModel: (value: string) => void,
+  setHasKey: (value: boolean) => void,
+  setConfigured: (value: boolean) => void
+): void {
+  setBaseUrl(config.baseUrl)
+  setModel(config.model)
+  setHasKey(config.hasApiKey)
+  setConfigured(scriptAgentSetupError(config) == null)
+}
 
 function childrenByParent(): Map<PipelineStepId, PipelineStepMeta[]> {
   const map = new Map<PipelineStepId, PipelineStepMeta[]>()
@@ -119,6 +136,11 @@ export function SettingsPage({
   const [hasToken, setHasToken] = useState(false)
   const [tokenMasked, setTokenMasked] = useState<string | null>(null)
   const [tokenInput, setTokenInput] = useState('')
+  const [agentBaseUrl, setAgentBaseUrl] = useState('')
+  const [agentModel, setAgentModel] = useState('')
+  const [agentKeyInput, setAgentKeyInput] = useState('')
+  const [agentHasKey, setAgentHasKey] = useState(false)
+  const [agentConfigured, setAgentConfigured] = useState(false)
   const [status, setStatus] = useState<PipelineStatusResult | null>(null)
   const [boardStats, setBoardStats] = useState<BoardStats | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
@@ -143,15 +165,23 @@ export function SettingsPage({
     setLoading(true)
     setError(null)
     try {
-      const [ready, tokenConfigured, masked, boards] = await Promise.all([
+      const [ready, tokenConfigured, masked, boards, agentConfig] = await Promise.all([
         window.api.python.ready(),
         window.api.config.hasTushareToken(),
         window.api.config.getTushareTokenMasked(),
-        window.api.stocks.boardStats()
+        window.api.stocks.boardStats(),
+        window.api.config.getScriptAgent()
       ])
       setHasToken(tokenConfigured)
       setTokenMasked(masked)
       setBoardStats(boards)
+      applyAgentConfig(
+        agentConfig,
+        setAgentBaseUrl,
+        setAgentModel,
+        setAgentHasKey,
+        setAgentConfigured
+      )
       if (ready) {
         const importsOk = Object.values(ready.imports).every(Boolean)
         setPythonReady(importsOk ? `Python ${ready.python}` : '依赖未就绪')
@@ -192,6 +222,23 @@ export function SettingsPage({
       setTokenInput('')
       setMessage('Token 已保存到本地配置')
       await loadAll(true)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleSaveAgent = async (): Promise<void> => {
+    setError(null)
+    setMessage(null)
+    try {
+      const saved = await window.api.config.setScriptAgent({
+        baseUrl: agentBaseUrl,
+        model: agentModel,
+        apiKey: agentKeyInput
+      })
+      applyAgentConfig(saved, setAgentBaseUrl, setAgentModel, setAgentHasKey, setAgentConfigured)
+      setAgentKeyInput('')
+      setMessage('脚本助手已保存')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
     }
@@ -278,6 +325,12 @@ export function SettingsPage({
             color={hasToken ? 'default' : 'warning'}
             variant="outlined"
           />
+          <Chip
+            size="small"
+            label={agentConfigured ? '脚本助手已配置' : '脚本助手未配置'}
+            color={agentConfigured ? 'success' : 'warning'}
+            variant="outlined"
+          />
         </Stack>
 
         {loading || syncing || clearing ? (
@@ -358,6 +411,66 @@ export function SettingsPage({
             >
               保存
             </Button>
+          </Stack>
+        </Paper>
+
+        <Paper elevation={0} sx={{ p: 2, border: 1, borderColor: 'divider' }}>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+            <Typography variant="subtitle2">脚本助手</Typography>
+            <Chip
+              size="small"
+              label={agentConfigured ? '已配置' : '未配置'}
+              color={agentConfigured ? 'success' : 'warning'}
+              variant="outlined"
+            />
+          </Stack>
+          <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1.5 }}>
+            通过 OpenAI 兼容接口生成指标和策略草稿。API Key 加密存在本机，不会回到界面。环境变量
+            SCRIPT_AGENT_API_KEY 优先于本机保存的密钥。
+          </Typography>
+          <Stack spacing={1}>
+            <TextField
+              size="small"
+              label="Base URL"
+              value={agentBaseUrl}
+              onChange={(event) => setAgentBaseUrl(event.target.value)}
+              placeholder="https://api.example.com/v1"
+              fullWidth
+            />
+            <TextField
+              size="small"
+              label="模型名"
+              value={agentModel}
+              onChange={(event) => setAgentModel(event.target.value)}
+              placeholder="模型名"
+              fullWidth
+            />
+            <TextField
+              size="small"
+              type="password"
+              autoComplete="off"
+              label="API Key"
+              value={agentKeyInput}
+              onChange={(event) => setAgentKeyInput(event.target.value)}
+              placeholder={
+                agentHasKey ? '已配置，留空则不修改' : '留空时可改用环境变量 SCRIPT_AGENT_API_KEY'
+              }
+              fullWidth
+            />
+            <Box>
+              <Button
+                variant="outlined"
+                onClick={() => void handleSaveAgent()}
+                disabled={
+                  loading ||
+                  !agentBaseUrl.trim() ||
+                  !agentModel.trim() ||
+                  (!agentHasKey && !agentKeyInput.trim())
+                }
+              >
+                保存
+              </Button>
+            </Box>
           </Stack>
         </Paper>
 
