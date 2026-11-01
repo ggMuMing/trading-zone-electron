@@ -22,6 +22,7 @@ import TableRow from '@mui/material/TableRow'
 import Typography from '@mui/material/Typography'
 import DeleteOutline from '@mui/icons-material/DeleteOutline'
 import FolderOpen from '@mui/icons-material/FolderOpen'
+import InsertChartOutlined from '@mui/icons-material/InsertChartOutlined'
 import PendingActions from '@mui/icons-material/PendingActions'
 import Save from '@mui/icons-material/Save'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -70,6 +71,7 @@ import type {
 import type { Stock } from '../../../../shared/types/stock'
 import { CHART_ICON_SX, ChartIconButton } from '../chart/ChartIconButton'
 import { ConditionalOrderDialog } from './ConditionalOrderDialog'
+import { PaperArchivePanel } from './PaperArchivePanel'
 import { paperFieldSx, PAPER_FIELD_INSET } from './paperFieldSx'
 import { PaperSymbolPicker } from './PaperSymbolPicker'
 import { SettingsTab, SettingsTabs } from '../chart/SettingsTabs'
@@ -377,17 +379,17 @@ function PositionBoard({
           return (
             <TableRow key={position.tsCode}>
               <TableCell>{labelOf(position)}</TableCell>
-              <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+              <TableCell align="left" sx={{ fontVariantNumeric: 'tabular-nums' }}>
                 {position.shares}
               </TableCell>
-              <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+              <TableCell align="left" sx={{ fontVariantNumeric: 'tabular-nums' }}>
                 {costPrice === null ? '—' : formatOrderPrice(costPrice)}
               </TableCell>
-              <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+              <TableCell align="left" sx={{ fontVariantNumeric: 'tabular-nums' }}>
                 {price === null ? '—' : formatOrderPrice(price)}
               </TableCell>
               <TableCell
-                align="right"
+                align="left"
                 sx={{ fontVariantNumeric: 'tabular-nums', color: pnl === null ? 'text.secondary' : pnlColor(pnl) }}
               >
                 {pnl === null ? '—' : formatYuan(pnl)}
@@ -783,6 +785,7 @@ export function PaperTradingPanel({
   const [archiveReady, setArchiveReady] = useState(false)
   const [archives, setArchives] = useState<PaperArchive[]>([])
   const [viewingArchiveId, setViewingArchiveId] = useState<string | null>(null)
+  const [archivePanelOpen, setArchivePanelOpen] = useState(false)
   const [archiveOpen, setArchiveOpen] = useState(false)
   const [archiveName, setArchiveName] = useState('')
   const [archiveError, setArchiveError] = useState<string | null>(null)
@@ -2280,7 +2283,27 @@ export function PaperTradingPanel({
           </Box>
           <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', borderTop: 1, borderColor: 'divider' }}>
             <Box sx={{ px: 1, pt: 1 }}>
-              <SectionTitle>交易记录</SectionTitle>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  mb: 0.75
+                }}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                  交易记录
+                </Typography>
+                <ChartIconButton
+                  ariaLabel="数据面板"
+                  title={viewingArchive ? '数据面板' : '选择一条模拟记录'}
+                  roomy
+                  disabled={viewingArchive === null}
+                  onClick={() => setArchivePanelOpen(true)}
+                >
+                  <InsertChartOutlined sx={CHART_ICON_SX} />
+                </ChartIconButton>
+              </Box>
             </Box>
             {viewingArchive ? (
               <TradeRecords
@@ -2305,6 +2328,12 @@ export function PaperTradingPanel({
           </Box>
         </Box>
       )}
+      <PaperArchivePanel
+        open={archivePanelOpen && viewingArchive !== null}
+        record={viewingArchive}
+        adjust={session.adjust}
+        onClose={() => setArchivePanelOpen(false)}
+      />
       <ConditionalOrderDialog
         open={conditionalOpen}
         trading={trading}
