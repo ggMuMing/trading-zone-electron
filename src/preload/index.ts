@@ -3,6 +3,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 import type { Stock } from '../shared/types/stock'
 import type { PaperArchive, PaperArchiveDraft } from '../shared/types/paperArchive'
 import type { PaperPlan, PaperPlanDraft } from '../shared/types/paperPlan'
+import type { ChartReviewDraft, ChartReviewRecord } from '../shared/types/chartReview'
 import type { TradeJournal, TradeJournalDraft } from '../shared/types/tradeJournal'
 import type { MarketClearResult, StrategyListResult, StrategyRunParams, StrategyRunResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
 import type { StrategyScreenParams, StrategyScreenResult } from '../shared/types/screener'
@@ -235,6 +236,19 @@ const api = {
     list: (): Promise<PaperArchive[]> => ipcRenderer.invoke('paperArchive:list'),
     create: (params: { draft: PaperArchiveDraft }): Promise<PaperArchive> =>
       ipcRenderer.invoke('paperArchive:create', params)
+  },
+  chartReview: {
+    get: (params: { tsCode: string; tradeDate: string }): Promise<ChartReviewRecord | null> =>
+      ipcRenderer.invoke('chartReview:get', params),
+    dates: (params: { tsCode: string }): Promise<string[]> =>
+      ipcRenderer.invoke('chartReview:dates', params),
+    save: (params: {
+      tsCode: string
+      tradeDate: string
+      draft: ChartReviewDraft
+    }): Promise<ChartReviewRecord> => ipcRenderer.invoke('chartReview:save', params),
+    clear: (params: { tsCode: string; tradeDate: string }): Promise<void> =>
+      ipcRenderer.invoke('chartReview:clear', params)
   },
   tradeJournal: {
     list: (): Promise<TradeJournal[]> => ipcRenderer.invoke('tradeJournal:list'),

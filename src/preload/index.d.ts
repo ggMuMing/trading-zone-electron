@@ -2,6 +2,7 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 import type { Stock } from '../shared/types/stock'
 import type { PaperArchive, PaperArchiveDraft } from '../shared/types/paperArchive'
 import type { PaperPlan, PaperPlanDraft } from '../shared/types/paperPlan'
+import type { ChartReviewDraft, ChartReviewRecord } from '../shared/types/chartReview'
 import type { TradeJournal, TradeJournalDraft } from '../shared/types/tradeJournal'
 import type { MarketClearResult, StrategyListResult, StrategyRunParams, StrategyRunResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
 import type { StrategyScreenParams, StrategyScreenResult } from '../shared/types/screener'
@@ -169,6 +170,16 @@ export interface AppApi {
   paperArchive: {
     list: () => Promise<PaperArchive[]>
     create: (params: { draft: PaperArchiveDraft }) => Promise<PaperArchive>
+  }
+  chartReview: {
+    get: (params: { tsCode: string; tradeDate: string }) => Promise<ChartReviewRecord | null>
+    dates: (params: { tsCode: string }) => Promise<string[]>
+    save: (params: {
+      tsCode: string
+      tradeDate: string
+      draft: ChartReviewDraft
+    }) => Promise<ChartReviewRecord>
+    clear: (params: { tsCode: string; tradeDate: string }) => Promise<void>
   }
   tradeJournal: {
     list: () => Promise<TradeJournal[]>

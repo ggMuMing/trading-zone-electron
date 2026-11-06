@@ -10,6 +10,7 @@ import Typography from '@mui/material/Typography'
 import type { ReactNode } from 'react'
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown'
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth'
+import FactCheckIcon from '@mui/icons-material/FactCheck'
 import GroupAddIcon from '@mui/icons-material/GroupAdd'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
 import ReplayIcon from '@mui/icons-material/Replay'
@@ -73,6 +74,9 @@ export interface ChartToolbarProps {
   showJump?: boolean
   onOpenGroup?: () => void
   groupDisabled?: boolean
+  onOpenReview?: () => void
+  reviewOpen?: boolean
+  reviewDisabled?: boolean
   trailing?: ReactNode
 }
 
@@ -103,6 +107,9 @@ export function ChartToolbar({
   showJump = true,
   onOpenGroup,
   groupDisabled = false,
+  onOpenReview,
+  reviewOpen = false,
+  reviewDisabled = false,
   trailing
 }: ChartToolbarProps): React.JSX.Element {
   const [periodAnchor, setPeriodAnchor] = useState<HTMLElement | null>(null)
@@ -283,6 +290,22 @@ export function ChartToolbar({
           </Typography>
         </Stack>
       </Popover>
+      {onOpenReview ? <Divider orientation="vertical" flexItem /> : null}
+      {onOpenReview ? (
+        <Button
+          size="small"
+          startIcon={<FactCheckIcon />}
+          disabled={reviewDisabled}
+          aria-pressed={reviewOpen}
+          onClick={onOpenReview}
+          sx={{
+            mx: 0.5,
+            ...(reviewOpen ? { color: 'primary.main', bgcolor: 'action.selected' } : {})
+          }}
+        >
+          复盘
+        </Button>
+      ) : null}
       {onReplayStart || replayDirect ? <Divider orientation="vertical" flexItem /> : null}
       {onReplayStart ? (
         <Button

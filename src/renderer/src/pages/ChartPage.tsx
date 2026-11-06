@@ -46,6 +46,7 @@ import type { Stock } from '../../../shared/types/stock'
 import type { StrategyScreenHit } from '../../../shared/types/screener'
 import type { StrategyInfo } from '../../../shared/types/pythonProtocol'
 import { ChartToolbar } from './chart/ChartToolbar'
+import { ReviewPanel, type ReviewPanelHandle } from './chart/ReviewPanel'
 import { AssignGroupDialog } from './groups/AssignGroupDialog'
 import { DrawingToolbar } from './chart/DrawingToolbar'
 import { nearestTradingDate } from './chart/locateDate'
@@ -64,6 +65,7 @@ import { StockPicker } from './StockPicker'
 
 const PICKER_WIDTH_STORAGE_KEY = 'trading-zone.chart.stockPickerWidth'
 const STRATEGY_WIDTH_STORAGE_KEY = 'trading-zone.chart.strategyPanelWidth'
+const REVIEW_WIDTH_STORAGE_KEY = 'trading-zone.chart.reviewWidth'
 const UNIVERSE_STORAGE_KEY = 'trading-zone.chart.universeId'
 const DRAWING_STROKE_STORAGE_KEY = 'trading-zone.chart.drawingStroke'
 const DRAWING_SNAP_STORAGE_KEY = 'trading-zone.chart.drawingSnap'
@@ -302,12 +304,42 @@ export function ChartPage({
     { timeIso: string; kind: StrategyHighlightKind; prominent?: boolean } | null
   >(null)
   const hasRightPanel = rightPanel != null
+  const showReview = showToolbarExtras && rightPanel == null
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const [reviewWidth, setReviewWidth] = useState(() => loadStrategyWidth(REVIEW_WIDTH_STORAGE_KEY))
   const [strategyWidth, setStrategyWidth] = useState(() => loadStrategyWidth(rightPanelWidthStorageKey))
   const [strategyResizing, setStrategyResizing] = useState(false)
   const [locateRequest, setLocateRequest] = useState<ChartLocateRequest | null>(null)
-  const strategyResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
+  const strategyResizeRef = useRef<{
+    startX: number
+    startWidth: number
+    forReview: boolean
+  } | null>(null)
   const strategyWidthRef = useRef(strategyWidth)
   strategyWidthRef.current = strategyWidth
+  const reviewWidthRef = useRef(reviewWidth)
+  reviewWidthRef.current = reviewWidth
+  const reviewOpenRef = useRef(reviewOpen)
+  reviewOpenRef.current = reviewOpen
+  const reviewPanelRef = useRef<ReviewPanelHandle>(null)
+  const commitSelectedCodeRef = useRef<(next: string | null) => void>(() => {})
+  const selectedCodeRef = useRef(selectedCode)
+  selectedCodeRef.current = selectedCode
+  const commitSelectedCode = useCallback((next: string | null): void => {
+    void (async () => {
+      if (next === selectedCodeRef.current) {
+        return
+      }
+      if (reviewOpenRef.current) {
+        const ok = (await reviewPanelRef.current?.confirmLeave()) ?? true
+        if (!ok) {
+          return
+        }
+      }
+      setSelectedCode(next)
+    })()
+  }, [])
+  commitSelectedCodeRef.current = commitSelectedCode
   const chartRowRef = useRef<HTMLDivElement>(null)
 
   const applyUniverse = useCallback(
@@ -318,14 +350,14 @@ export function ChartPage({
         setUniverseCaption(resolved.caption)
         setPickerStocks(resolved.stocks)
         if (selectFirst) {
-          setSelectedCode(resolved.stocks[0]?.ts_code ?? null)
+          commitSelectedCodeRef.current(resolved.stocks[0]?.ts_code ?? null)
         } else {
-          setSelectedCode((prev) => {
-            if (prev && resolved.stocks.some((stock) => stock.ts_code === prev)) {
-              return prev
-            }
-            return resolved.stocks[0]?.ts_code ?? null
-          })
+          const prev = selectedCodeRef.current
+          const next =
+            prev && resolved.stocks.some((stock) => stock.ts_code === prev)
+              ? prev
+              : (resolved.stocks[0]?.ts_code ?? null)
+          commitSelectedCodeRef.current(next)
         }
       } finally {
         setUniverseLoading(false)
@@ -358,17 +390,25 @@ export function ChartPage({
   }
 
   const handleUniverseChange = (nextUniverseId: string): void => {
-    setUniverseId(nextUniverseId)
-    setScreenHitsState(null)
-    setDateHighlightState(null)
-    try {
-      localStorage.setItem(UNIVERSE_STORAGE_KEY, nextUniverseId)
-    } catch {
-      // ignore storage failures
-    }
-    void applyUniverse(nextUniverseId, allStocks, true).catch((err: unknown) => {
-      setError(err instanceof Error ? err.message : String(err))
-    })
+    void (async () => {
+      if (reviewOpenRef.current) {
+        const ok = (await reviewPanelRef.current?.confirmLeave()) ?? true
+        if (!ok) {
+          return
+        }
+      }
+      setUniverseId(nextUniverseId)
+      setScreenHitsState(null)
+      setDateHighlightState(null)
+      try {
+        localStorage.setItem(UNIVERSE_STORAGE_KEY, nextUniverseId)
+      } catch {
+        // ignore storage failures
+      }
+      void applyUniverse(nextUniverseId, allStocks, true).catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : String(err))
+      })
+    })()
   }
 
   const refreshAll = async (): Promise<void> => {
@@ -394,8 +434,6 @@ export function ChartPage({
 
   const chartRequestRef = useRef(0)
   const keepLocateRef = useRef(false)
-  const selectedCodeRef = useRef(selectedCode)
-  selectedCodeRef.current = selectedCode
   const drawingsRef = useRef(drawings)
   drawingsRef.current = drawings
   const drawingLoadToken = useRef(0)
@@ -587,6 +625,10 @@ export function ChartPage({
     localStorage.setItem(rightPanelWidthStorageKey, String(value))
   }
 
+  const persistReviewWidth = (value: number): void => {
+    localStorage.setItem(REVIEW_WIDTH_STORAGE_KEY, String(value))
+  }
+
   const handleSplitterPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
     event.preventDefault()
     event.currentTarget.setPointerCapture(event.pointerId)
@@ -617,7 +659,12 @@ export function ChartPage({
   const handleStrategySplitterPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
     event.preventDefault()
     event.currentTarget.setPointerCapture(event.pointerId)
-    strategyResizeRef.current = { startX: event.clientX, startWidth: strategyWidth }
+    const forReview = reviewOpenRef.current
+    strategyResizeRef.current = {
+      startX: event.clientX,
+      startWidth: forReview ? reviewWidthRef.current : strategyWidthRef.current,
+      forReview
+    }
     setStrategyResizing(true)
   }
 
@@ -626,18 +673,26 @@ export function ChartPage({
     if (!drag) {
       return
     }
-    setStrategyWidth(
-      clampStrategyWidth(drag.startWidth + (drag.startX - event.clientX), strategyMaxWidth())
-    )
+    const next = clampStrategyWidth(drag.startWidth + (drag.startX - event.clientX), strategyMaxWidth())
+    if (drag.forReview) {
+      setReviewWidth(next)
+    } else {
+      setStrategyWidth(next)
+    }
   }
 
   const handleStrategySplitterPointerUp = (event: React.PointerEvent<HTMLDivElement>): void => {
-    if (!strategyResizeRef.current) {
+    const drag = strategyResizeRef.current
+    if (!drag) {
       return
     }
     strategyResizeRef.current = null
     setStrategyResizing(false)
-    persistStrategyWidth(strategyWidthRef.current)
+    if (drag.forReview) {
+      persistReviewWidth(reviewWidthRef.current)
+    } else {
+      persistStrategyWidth(strategyWidthRef.current)
+    }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
@@ -655,16 +710,20 @@ export function ChartPage({
   }, [])
 
   useEffect(() => {
-    if (rightPanelFixedWidth != null || (!selectedStrategy && !hasRightPanel)) {
+    if (rightPanelFixedWidth != null || (!selectedStrategy && !hasRightPanel && !reviewOpen)) {
       return
     }
     const clampToWorkspace = (): void => {
-      setStrategyWidth((current) => clampStrategyWidth(current, strategyMaxWidth()))
+      if (reviewOpen) {
+        setReviewWidth((current) => clampStrategyWidth(current, strategyMaxWidth()))
+      } else {
+        setStrategyWidth((current) => clampStrategyWidth(current, strategyMaxWidth()))
+      }
     }
     clampToWorkspace()
     window.addEventListener('resize', clampToWorkspace)
     return () => window.removeEventListener('resize', clampToWorkspace)
-  }, [selectedStrategy, hasRightPanel, rightPanelFixedWidth])
+  }, [selectedStrategy, hasRightPanel, rightPanelFixedWidth, reviewOpen])
 
   const applyLayoutAndExecute = (next: ChartLayout): void => {
     setLayout(next)
@@ -967,31 +1026,61 @@ export function ChartPage({
       (replayFixedStart == null || chartTimes.some((time) => time >= replayFixedStart))
     )
 
+  const closeReview = async (): Promise<boolean> => {
+    if (!reviewOpenRef.current) {
+      return true
+    }
+    const ok = (await reviewPanelRef.current?.confirmLeave()) ?? true
+    if (!ok) {
+      return false
+    }
+    setReviewOpen(false)
+    return true
+  }
+
+  const toggleReview = (): void => {
+    if (reviewOpenRef.current) {
+      void closeReview()
+      return
+    }
+    setReviewOpen(true)
+  }
+
   const handleReplayStart = (request: ReplayStartRequest): void => {
-    if (!chartTimes || chartTimes.length === 0 || replayActive) {
-      return
-    }
-    const isoDate =
-      request.mode === 'random'
-        ? chartTimes[Math.floor(Math.random() * chartTimes.length)]
-        : nearestTradingDate(chartTimes, request.isoDate)
-    if (!isoDate) {
-      return
-    }
-    setReplayCutoff(isoDate)
-    setReplayRunning(true)
+    void (async () => {
+      if (!chartTimes || chartTimes.length === 0 || replayActive) {
+        return
+      }
+      const isoDate =
+        request.mode === 'random'
+          ? chartTimes[Math.floor(Math.random() * chartTimes.length)]
+          : nearestTradingDate(chartTimes, request.isoDate)
+      if (!isoDate) {
+        return
+      }
+      if (!(await closeReview())) {
+        return
+      }
+      setReplayCutoff(isoDate)
+      setReplayRunning(true)
+    })()
   }
 
   const handleReplayBegin = (): void => {
-    if (!chartTimes || chartTimes.length === 0 || replayActive || !replayFixedStart) {
-      return
-    }
-    const isoDate = chartTimes.find((time) => time >= replayFixedStart)
-    if (!isoDate) {
-      return
-    }
-    setReplayCutoff(isoDate)
-    setReplayRunning(true)
+    void (async () => {
+      if (!chartTimes || chartTimes.length === 0 || replayActive || !replayFixedStart) {
+        return
+      }
+      const isoDate = chartTimes.find((time) => time >= replayFixedStart)
+      if (!isoDate) {
+        return
+      }
+      if (!(await closeReview())) {
+        return
+      }
+      setReplayCutoff(isoDate)
+      setReplayRunning(true)
+    })()
   }
 
   const handleReplayStop = (): void => {
@@ -1012,7 +1101,7 @@ export function ChartPage({
 
   const showSessionSymbols = (nextStocks: Stock[], presentation: ChartSessionPresentation): void => {
     setPickerStocks([...nextStocks])
-    setSelectedCode(nextStocks[0]?.ts_code ?? null)
+    commitSelectedCode(nextStocks[0]?.ts_code ?? null)
     setHideChartTime(presentation.hideTime)
     if (!presentation.maskSymbol) {
       setSymbolAlias(new Map())
@@ -1072,7 +1161,7 @@ export function ChartPage({
     }
     if (selectedCodeRef.current !== tsCode) {
       keepLocateRef.current = true
-      setSelectedCode(tsCode)
+      commitSelectedCode(tsCode)
     }
     setLocateRequest((current) => ({ timeIso, token: (current?.token ?? 0) + 1 }))
   }, [])
@@ -1080,7 +1169,7 @@ export function ChartPage({
   const setScreenHits = useCallback((hits: StrategyScreenHit[] | null) => {
     setScreenHitsState(hits)
     if (!hits || hits.length === 0) {
-      setSelectedCode(null)
+      commitSelectedCode(null)
     }
   }, [])
 
@@ -1123,6 +1212,11 @@ export function ChartPage({
     locateTrade
   }
   const selectedAlias = selected ? symbolAlias.get(selected.ts_code) : undefined
+  const reviewSymbolLabel =
+    selectedAlias ??
+    (selected ? `${selected.name || selected.ts_code}（${selected.ts_code}）` : '请选择股票')
+  const sideWidth = reviewOpen ? reviewWidth : strategyWidth
+  const showSideColumn = hasRightPanel || selectedStrategy != null || reviewOpen
   const hitCatalog = screenSession ? allStocks : pickerStocks
   const listedStocks =
     screenHits == null
@@ -1151,7 +1245,9 @@ export function ChartPage({
       : null
     : dateHighlight
       ? { markers: [], highlight: dateHighlight }
-      : strategyOverlay
+      : reviewOpen
+        ? null
+        : strategyOverlay
 
   return (
     <Box
@@ -1205,7 +1301,7 @@ export function ChartPage({
               screenHits && screenHits.length === 0 ? '这一天没有信号' : constituentsEmptyHint
             }
             hideCode={symbolAlias.size > 0}
-            onSelect={setSelectedCode}
+            onSelect={commitSelectedCode}
             onUniverseChange={fixedPickerStocks || screenSession ? undefined : handleUniverseChange}
             showSearch={screenSession ? Boolean(screenHits && screenHits.length > 0) : !fixedPickerStocks}
           />
@@ -1302,6 +1398,11 @@ export function ChartPage({
               showJump={showToolbarExtras}
               groupDisabled={!selected}
               onOpenGroup={showToolbarExtras && selected ? () => setAssignOpen(true) : undefined}
+              onOpenReview={showReview ? toggleReview : undefined}
+              reviewOpen={reviewOpen}
+              reviewDisabled={
+                !selectedCode || !chartTimes || chartTimes.length === 0 || replayCutoff !== null
+              }
               replayDirect={replayFixedStart != null || paperSession}
               replayShowStart={!paperSession}
               onReplayBegin={replayFixedStart != null ? handleReplayBegin : undefined}
@@ -1434,7 +1535,7 @@ export function ChartPage({
               )}
             </Box>
           </Paper>
-          {hasRightPanel || selectedStrategy ? (
+          {showSideColumn ? (
             <>
               {rightPanelFixedWidth != null ? (
                 <Box
@@ -1460,10 +1561,12 @@ export function ChartPage({
                 <Box
                   role="separator"
                   aria-orientation="vertical"
-                  aria-label={hasRightPanel ? rightPanelResizeLabel : '调整策略面板宽度'}
+                  aria-label={
+                    reviewOpen ? '调整复盘面板宽度' : hasRightPanel ? rightPanelResizeLabel : '调整策略面板宽度'
+                  }
                   aria-valuemin={STRATEGY_WIDTH_MIN}
                   aria-valuemax={strategyMaxWidth()}
-                  aria-valuenow={strategyWidth}
+                  aria-valuenow={sideWidth}
                   onPointerDown={handleStrategySplitterPointerDown}
                   onPointerMove={handleStrategySplitterPointerMove}
                   onPointerUp={handleStrategySplitterPointerUp}
@@ -1495,9 +1598,7 @@ export function ChartPage({
               <Paper
                 elevation={0}
                 sx={{
-                  width:
-                    rightPanelFixedWidth ??
-                    clampStrategyWidth(strategyWidth, strategyMaxWidth()),
+                  width: rightPanelFixedWidth ?? clampStrategyWidth(sideWidth, strategyMaxWidth()),
                   flexShrink: 0,
                   border: 1,
                   borderColor: 'divider',
@@ -1507,7 +1608,21 @@ export function ChartPage({
                   overflow: 'hidden'
                 }}
               >
-                {hasRightPanel ? (
+                {reviewOpen ? (
+                  <ReviewPanel
+                    ref={reviewPanelRef}
+                    tsCode={selectedCode}
+                    symbolLabel={reviewSymbolLabel}
+                    chartCode={chartCode}
+                    chartTimes={chartTimes}
+                    chartFault={chartFault}
+                    stocks={allStocks}
+                    onJumpToDate={handleJumpToDate}
+                    onClose={() => {
+                      void closeReview()
+                    }}
+                  />
+                ) : hasRightPanel ? (
                   typeof rightPanel === 'function' ? rightPanel(panelContext) : rightPanel
                 ) : selectedStrategy ? (
                   <StrategyPanel

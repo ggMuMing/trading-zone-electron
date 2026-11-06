@@ -26,3 +26,6 @@ Thumbs.db
 
 # Electron
 *.asar
+
+# Independent market-data service
+data_service/

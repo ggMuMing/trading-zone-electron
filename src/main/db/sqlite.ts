@@ -161,6 +161,14 @@ CREATE TABLE IF NOT EXISTS symbol_group_member (
 
 CREATE INDEX IF NOT EXISTS idx_symbol_group_member_code
   ON symbol_group_member(ts_code);
+
+CREATE TABLE IF NOT EXISTS chart_review (
+  ts_code    TEXT NOT NULL,
+  trade_date TEXT NOT NULL,
+  payload    TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (ts_code, trade_date)
+);
 `
 
 function rebuildPaperArchiveIfNeeded(database: Database.Database): void {

@@ -12,6 +12,7 @@ import { runScriptAgentTurn } from '../agent/scriptAgent'
 import { paperArchiveRepository } from '../db/paperArchiveRepository'
 import { paperPlanRepository } from '../db/paperPlanRepository'
 import { symbolGroupRepository } from '../db/symbolGroupRepository'
+import { chartReviewRepository } from '../db/chartReviewRepository'
 import { tradeJournalRepository } from '../db/tradeJournalRepository'
 import { stocksRepository } from '../db/stocksRepository'
 import { applicationService } from '../services/applicationService'
@@ -33,6 +34,11 @@ import {
   readSaveSymbolGroupHits,
   readSymbolRefs
 } from '../../shared/symbolGroup/symbolGroup'
+import {
+  readChartReview,
+  readChartReviewKey,
+  readChartReviewTsCode
+} from '../../shared/chartReview/readChartReview'
 import { readTradeJournalDraft } from '../../shared/tradeJournal/tradeJournal'
 import type { StrategyRunParams } from '../../shared/types/pythonProtocol'
 import type { StrategyScreenParams } from '../../shared/types/screener'
@@ -802,6 +808,29 @@ export function registerHandlers(): void {
 
   ipcMain.handle('symbolGroup:saveHits', (_event, params: unknown) => {
     return symbolGroupRepository.saveHits(readSaveSymbolGroupHits(params))
+  })
+
+  ipcMain.handle('chartReview:get', (_event, params: unknown) => {
+    const key = readChartReviewKey(params)
+    return chartReviewRepository.get(key.tsCode, key.tradeDate)
+  })
+
+  ipcMain.handle('chartReview:dates', (_event, params: unknown) => {
+    return chartReviewRepository.dates(readChartReviewTsCode(params))
+  })
+
+  ipcMain.handle('chartReview:save', (_event, params: unknown) => {
+    if (!params || typeof params !== 'object') {
+      throw new Error('chartReview:save requires params object')
+    }
+    const key = readChartReviewKey(params)
+    const draft = readChartReview((params as Record<string, unknown>).draft)
+    return chartReviewRepository.save(key.tsCode, key.tradeDate, draft)
+  })
+
+  ipcMain.handle('chartReview:clear', (_event, params: unknown) => {
+    const key = readChartReviewKey(params)
+    chartReviewRepository.clear(key.tsCode, key.tradeDate)
   })
 
   ipcMain.handle('tradeJournal:list', () => {
