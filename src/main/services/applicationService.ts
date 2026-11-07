@@ -12,12 +12,19 @@ import type {
   MarketPoolItem,
   MarketQueryParams,
   MarketQueryResult,
+  DailyBasicBackfillResult,
   MarketSyncProgress,
   MarketSyncStatus,
   SyncMarketPoolResult,
   SyncMarketWindowResult
 } from '../../shared/types/market'
-import { parseIndicatorManifest, assertParams, normalizeParams, defaultScriptParams, isLegacyIndicatorSource } from '../../shared/chart/indicatorScript'
+import {
+  parseIndicatorManifest,
+  assertParams,
+  normalizeParams,
+  defaultScriptParams,
+  isLegacyIndicatorSource
+} from '../../shared/chart/indicatorScript'
 import type { ChartInput } from '../../shared/types/chart'
 import { parseChartDrawings, type ChartDrawing } from '../../shared/types/chartDrawing'
 import type {
@@ -76,7 +83,11 @@ import type {
   PipelineRunStepOutcome,
   PipelineStatusResult
 } from '../../shared/types/pipeline'
-import { pythonBridge, readExampleMaSource, readExampleStrategySource } from '../bridge/pythonBridge'
+import {
+  pythonBridge,
+  readExampleMaSource,
+  readExampleStrategySource
+} from '../bridge/pythonBridge'
 import { getTushareToken } from '../config/appConfig'
 import { chartDrawingRepository } from '../db/chartDrawingRepository'
 import { chartLayoutRepository } from '../db/chartLayoutRepository'
@@ -85,9 +96,19 @@ import { strategyScriptRepository } from '../db/strategyScriptRepository'
 import { marketPoolRepository } from '../db/marketPoolRepository'
 import { stocksRepository } from '../db/stocksRepository'
 import { swIndustryRepository } from '../db/swIndustryRepository'
+import { buildHeatmap, type HeatmapQuoteRow } from '../heatmap/buildHeatmap'
 import { decodeOhlcvArrow } from '../market/arrowOhlcv'
 import type { DashboardQueryParams, DashboardQueryResult } from '../../shared/types/dashboard'
-import type { IndexConstituentsResult, IndexWeightSyncResult } from '../../shared/types/indexConstituents'
+import {
+  isHeatmapIndexUniverse,
+  type HeatmapQueryParams,
+  type HeatmapQueryResult
+} from '../../shared/types/heatmap'
+
+import type {
+  IndexConstituentsResult,
+  IndexWeightSyncResult
+} from '../../shared/types/indexConstituents'
 import type {
   SwIndustryBreadcrumb,
   SwIndustryMembersResult,
@@ -123,9 +144,7 @@ export interface SyncStockListResult {
 function requireToken(): string {
   const token = getTushareToken()
   if (!token) {
-    throw new Error(
-      'Tushare token 未配置。请设置环境变量 TUSHARE_TOKEN，或通过配置写入 userData。'
-    )
+    throw new Error('Tushare token 未配置。请设置环境变量 TUSHARE_TOKEN，或通过配置写入 userData。')
   }
   return token
 }
@@ -335,10 +354,11 @@ export const applicationService = {
         message: '正在计算待补齐交易日…'
       })
 
-      const plan = await pythonBridge.call<MarketSyncPlanResult>(
-        PYTHON_METHODS.syncMarketPlan,
-        { token, start_date: startDate, end_date: endDate }
-      )
+      const plan = await pythonBridge.call<MarketSyncPlanResult>(PYTHON_METHODS.syncMarketPlan, {
+        token,
+        start_date: startDate,
+        end_date: endDate
+      })
 
       const pending = plan.pending_dates ?? []
       const skippedDays = plan.complete_count
@@ -443,6 +463,99 @@ export const applicationService = {
     }
   },
 
+  /** 临时入口：给已有完整日线、但还没有 daily_basic 的交易日补全全部字段。 */
+  async backfillDailyBasic(onProgress?: SyncProgressHandler): Promise<DailyBasicBackfillResult> {
+    if (marketSyncing) {
+      throw new Error('行情同步正在进行中')
+    }
+
+    const token = requireToken()
+    marketSyncing = true
+
+    const emit = (progress: MarketSyncProgress): void => {
+      lastSyncProgress = progress
+      onProgress?.(progress)
+    }
+
+    try {
+      emit({
+        stage: 'plan',
+        done_days: 0,
+        total_pending: 0,
+        skipped_days: 0,
+        error_count: 0,
+        message: '正在计算待补日指标…'
+      })
+
+      const plan = await pythonBridge.call<{ pending_dates?: string[]; skipped_days?: number }>(
+        PYTHON_METHODS.planDailyBasic,
+        {}
+      )
+      const pending = plan.pending_dates ?? []
+      const skippedDays = plan.skipped_days ?? 0
+      let rowCount = 0
+      const errors: Array<{ trade_date: string; message: string }> = []
+
+      for (let index = 0; index < pending.length; index += 1) {
+        const tradeDate = pending[index]
+        emit({
+          stage: 'fetch_day',
+          done_days: index,
+          total_pending: pending.length,
+          skipped_days: skippedDays,
+          current_date: tradeDate,
+          error_count: errors.length,
+          message: `补全日指标 ${index + 1}/${pending.length}（${tradeDate}）`
+        })
+
+        try {
+          const day = await pythonBridge.call<{ row_count?: number }>(
+            PYTHON_METHODS.syncDailyBasicDay,
+            { token, trade_date: tradeDate },
+            MARKET_DAY_TIMEOUT_MS
+          )
+          rowCount += day.row_count ?? 0
+          emit({
+            stage: 'fetch_day',
+            done_days: index + 1,
+            total_pending: pending.length,
+            skipped_days: skippedDays,
+            current_date: tradeDate,
+            error_count: errors.length,
+            message: `补全日指标 ${index + 1}/${pending.length}（${tradeDate}）`
+          })
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err)
+          errors.push({ trade_date: tradeDate, message })
+        }
+      }
+
+      const fetchedDays = pending.length - errors.length
+      emit({
+        stage: 'done',
+        done_days: pending.length,
+        total_pending: pending.length,
+        skipped_days: skippedDays,
+        error_count: errors.length,
+        message:
+          pending.length === 0
+            ? skippedDays === 0
+              ? '还没有完整日线，请先更新日线'
+              : `已有日线交易日的日指标已齐（${skippedDays} 日）`
+            : `日指标补全完成：写入 ${fetchedDays} 日，跳过 ${skippedDays} 日`
+      })
+
+      return {
+        fetched_days: fetchedDays,
+        skipped_days: skippedDays,
+        row_count: rowCount,
+        errors
+      }
+    } finally {
+      marketSyncing = false
+    }
+  },
+
   async clearMarket(): Promise<MarketClearResult> {
     if (marketSyncing) {
       throw new Error('行情同步正在进行中，无法清除')
@@ -459,7 +572,10 @@ export const applicationService = {
     if (marketPoolRepository.count() > 0) {
       return
     }
-    const codes = stocksRepository.listAll().slice(0, MARKET_POOL_SIZE).map((s) => s.ts_code)
+    const codes = stocksRepository
+      .listAll()
+      .slice(0, MARKET_POOL_SIZE)
+      .map((s) => s.ts_code)
     if (codes.length > 0) {
       marketPoolRepository.replaceAll(codes)
     }
@@ -513,6 +629,26 @@ export const applicationService = {
       payload.breadth_universe = params.breadth_universe
     }
     return pythonBridge.call<DashboardQueryResult>(PYTHON_METHODS.queryDashboard, payload)
+  },
+
+  async queryHeatmap(params: HeatmapQueryParams): Promise<HeatmapQueryResult> {
+    const quoteParams: Record<string, unknown> = { trade_date: params.as_of }
+    if (isHeatmapIndexUniverse(params.universe)) {
+      quoteParams.index_code = params.universe
+    }
+    const quotes = await pythonBridge.call<{ as_of: string | null; rows: HeatmapQuoteRow[] }>(
+      PYTHON_METHODS.queryHeatmapQuotes,
+      quoteParams
+    )
+    return buildHeatmap({
+      asOf: quotes.as_of,
+      universe: params.universe,
+      area: params.area,
+      industryLevel: params.industry_level,
+      industryCode: params.industry_code,
+      members: swIndustryRepository.listListedMembers(),
+      quotes: quotes.rows ?? []
+    })
   },
 
   exampleIndicatorSource(): string {

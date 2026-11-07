@@ -4,12 +4,26 @@ import type { PaperArchive, PaperArchiveDraft } from '../shared/types/paperArchi
 import type { PaperPlan, PaperPlanDraft } from '../shared/types/paperPlan'
 import type { ChartReviewDraft, ChartReviewRecord } from '../shared/types/chartReview'
 import type { TradeJournal, TradeJournalDraft } from '../shared/types/tradeJournal'
-import type { MarketClearResult, StrategyListResult, StrategyRunParams, StrategyRunResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
+import type {
+  MarketClearResult,
+  StrategyListResult,
+  StrategyRunParams,
+  StrategyRunResult,
+  WorkerReadyMessage
+} from '../shared/types/pythonProtocol'
 import type { StrategyScreenParams, StrategyScreenResult } from '../shared/types/screener'
 import type { ChartInput } from '../shared/types/chart'
 import type { ChartDrawing } from '../shared/types/chartDrawing'
-import type { ChartLayout, LayoutItemParams, LayoutReorderDirection } from '../shared/types/chartLayout'
-import type { IndicatorScript, ScriptTryParams, ScriptTryResult } from '../shared/types/indicatorScript'
+import type {
+  ChartLayout,
+  LayoutItemParams,
+  LayoutReorderDirection
+} from '../shared/types/chartLayout'
+import type {
+  IndicatorScript,
+  ScriptTryParams,
+  ScriptTryResult
+} from '../shared/types/indicatorScript'
 import type {
   StrategyScript,
   StrategyScriptTryParams,
@@ -27,6 +41,7 @@ import type {
   MarketPoolItem,
   MarketQueryParams,
   MarketQueryResult,
+  DailyBasicBackfillResult,
   MarketSyncProgress,
   MarketSyncStatus,
   SyncMarketPoolResult
@@ -34,7 +49,11 @@ import type {
 import type { PipelineRunResult, PipelineStatusResult } from '../shared/types/pipeline'
 import type { PipelineStepId } from '../shared/constants/pipeline'
 import type { DashboardQueryParams, DashboardQueryResult } from '../shared/types/dashboard'
-import type { IndexConstituentsResult, IndexWeightSyncResult } from '../shared/types/indexConstituents'
+import type { HeatmapQueryParams, HeatmapQueryResult } from '../shared/types/heatmap'
+import type {
+  IndexConstituentsResult,
+  IndexWeightSyncResult
+} from '../shared/types/indexConstituents'
 import type {
   SwIndustryBreadcrumb,
   SwIndustryMembersResult,
@@ -71,6 +90,7 @@ export interface AppApi {
     refreshCalendar: () => Promise<PipelineStatusResult>
     pipelineStatus: () => Promise<PipelineStatusResult>
     runPipeline: () => Promise<PipelineRunResult>
+    backfillDailyBasic: () => Promise<DailyBasicBackfillResult>
     runStep: (params: { step_id: PipelineStepId; force?: boolean }) => Promise<PipelineRunResult>
     clear: () => Promise<MarketClearResult>
     syncIndexWeights: () => Promise<IndexWeightSyncResult>
@@ -89,6 +109,9 @@ export interface AppApi {
   }
   dashboard: {
     query: (params?: DashboardQueryParams) => Promise<DashboardQueryResult>
+  }
+  heatmap: {
+    query: (params: HeatmapQueryParams) => Promise<HeatmapQueryResult>
   }
   chart: {
     build: (params: MarketQueryParams) => Promise<ChartInput | null>

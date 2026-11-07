@@ -26,6 +26,7 @@ import type {
   ScriptAgentPublicConfig,
   ScriptAgentTurnRequest
 } from '../../shared/types/scriptAgent'
+import { readHeatmapQuery } from '../../shared/types/heatmap'
 import { readPaperArchiveDraft } from '../../shared/paper/paperArchive'
 import { readPaperPlanDraft } from '../../shared/paper/paperPlan'
 import {
@@ -92,7 +93,11 @@ function scriptAgentPublicConfig(): ScriptAgentPublicConfig {
   }
 }
 
-function parseScriptAgentConfig(params: unknown): { baseUrl: string; model: string; apiKey: string } {
+function parseScriptAgentConfig(params: unknown): {
+  baseUrl: string
+  model: string
+  apiKey: string
+} {
   const raw = readParams(params, 'config:setScriptAgent')
   if (typeof raw.baseUrl !== 'string' || typeof raw.model !== 'string') {
     throw new Error('baseUrl and model must be strings')
@@ -300,6 +305,12 @@ export function registerHandlers(): void {
     })
   })
 
+  ipcMain.handle('market:backfillDailyBasic', async (event) => {
+    return applicationService.backfillDailyBasic((progress) => {
+      event.sender.send('market:syncProgress', progress)
+    })
+  })
+
   ipcMain.handle('market:runStep', async (event, params: unknown) => {
     if (!params || typeof params !== 'object') {
       throw new Error('market:runStep requires params object')
@@ -395,6 +406,10 @@ export function registerHandlers(): void {
           ? p.breadth_universe
           : undefined
     })
+  })
+
+  ipcMain.handle('heatmap:query', async (_event, params: unknown) => {
+    return applicationService.queryHeatmap(readHeatmapQuery(params))
   })
 
   ipcMain.handle('chart:build', async (_event, params: unknown) => {
@@ -747,7 +762,10 @@ export function registerHandlers(): void {
 
   ipcMain.handle('symbolGroup:renameCategory', (_event, params: unknown) => {
     const raw = readParams(params, 'symbolGroup:renameCategory')
-    return symbolGroupRepository.renameCategory(readRequiredId(raw.id, '分类无效'), readNameField(raw))
+    return symbolGroupRepository.renameCategory(
+      readRequiredId(raw.id, '分类无效'),
+      readNameField(raw)
+    )
   })
 
   ipcMain.handle('symbolGroup:deleteCategory', (_event, params: unknown) => {
@@ -757,7 +775,10 @@ export function registerHandlers(): void {
 
   ipcMain.handle('symbolGroup:createGroup', (_event, params: unknown) => {
     const raw = readParams(params, 'symbolGroup:createGroup')
-    return symbolGroupRepository.createGroup(readOptionalCategoryId(raw.categoryId), readNameField(raw))
+    return symbolGroupRepository.createGroup(
+      readOptionalCategoryId(raw.categoryId),
+      readNameField(raw)
+    )
   })
 
   ipcMain.handle('symbolGroup:renameGroup', (_event, params: unknown) => {
@@ -777,7 +798,10 @@ export function registerHandlers(): void {
 
   ipcMain.handle('symbolGroup:addMembers', (_event, params: unknown) => {
     const raw = readParams(params, 'symbolGroup:addMembers')
-    symbolGroupRepository.addMembers(readRequiredId(raw.groupId, '分组无效'), readSymbolRefs(raw.symbols))
+    symbolGroupRepository.addMembers(
+      readRequiredId(raw.groupId, '分组无效'),
+      readSymbolRefs(raw.symbols)
+    )
   })
 
   ipcMain.handle('symbolGroup:removeMembers', (_event, params: unknown) => {
@@ -803,7 +827,11 @@ export function registerHandlers(): void {
     if (typeof raw.name !== 'string') {
       throw new Error('标的无效')
     }
-    symbolGroupRepository.setSymbolGroups(readRequiredId(raw.tsCode, '标的无效'), raw.name, groupIds)
+    symbolGroupRepository.setSymbolGroups(
+      readRequiredId(raw.tsCode, '标的无效'),
+      raw.name,
+      groupIds
+    )
   })
 
   ipcMain.handle('symbolGroup:saveHits', (_event, params: unknown) => {

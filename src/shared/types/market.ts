@@ -77,12 +77,7 @@ export interface MarketCoverageResult {
 }
 
 export type MarketSyncStage =
-  | 'stock_list'
-  | 'plan'
-  | 'fetch_day'
-  | 'dashboard_backfill'
-  | 'step'
-  | 'done'
+  'stock_list' | 'plan' | 'fetch_day' | 'dashboard_backfill' | 'step' | 'done'
 
 export interface MarketSyncProgress {
   stage: MarketSyncStage
@@ -101,6 +96,14 @@ export interface MarketSyncProgress {
 export interface MarketSyncStatus {
   syncing: boolean
   progress: MarketSyncProgress | null
+}
+
+/** 临时：按已有完整日线，补齐缺的 daily_basic。 */
+export interface DailyBasicBackfillResult {
+  fetched_days: number
+  skipped_days: number
+  row_count: number
+  errors: Array<{ trade_date: string; message: string }>
 }
 
 export interface SyncMarketWindowResult {

@@ -11,6 +11,26 @@ import pyarrow.ipc as pa_ipc
 
 _DAILY_BAR_EXTRA_COLUMNS = ("pre_close", "change", "pct_chg", "ah_vol", "ah_amount")
 
+# Tushare daily_basic 数值列。limit_status 单独成列；市值单位万元，股本单位万股。
+STOCK_DAILY_BASIC_FLOAT_COLUMNS: tuple[str, ...] = (
+    "close",
+    "turnover_rate",
+    "turnover_rate_f",
+    "volume_ratio",
+    "pe",
+    "pe_ttm",
+    "pb",
+    "ps",
+    "ps_ttm",
+    "dv_ratio",
+    "dv_ttm",
+    "total_share",
+    "float_share",
+    "free_share",
+    "total_mv",
+    "circ_mv",
+)
+
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS daily_bar (
   ts_code VARCHAR NOT NULL,
@@ -85,6 +105,30 @@ CREATE TABLE IF NOT EXISTS stock_limit_status (
   PRIMARY KEY (ts_code, trade_date)
 );
 
+CREATE TABLE IF NOT EXISTS stock_daily_basic (
+  ts_code VARCHAR NOT NULL,
+  trade_date VARCHAR NOT NULL,
+  close DOUBLE,
+  turnover_rate DOUBLE,
+  turnover_rate_f DOUBLE,
+  volume_ratio DOUBLE,
+  pe DOUBLE,
+  pe_ttm DOUBLE,
+  pb DOUBLE,
+  ps DOUBLE,
+  ps_ttm DOUBLE,
+  dv_ratio DOUBLE,
+  dv_ttm DOUBLE,
+  total_share DOUBLE,
+  float_share DOUBLE,
+  free_share DOUBLE,
+  total_mv DOUBLE,
+  circ_mv DOUBLE,
+  limit_status INTEGER,
+  synced_at TIMESTAMP NOT NULL,
+  PRIMARY KEY (ts_code, trade_date)
+);
+
 CREATE TABLE IF NOT EXISTS index_weight (
   index_code VARCHAR NOT NULL,
   trade_date VARCHAR NOT NULL,
@@ -139,6 +183,8 @@ def init_schema(conn: duckdb.DuckDBPyConnection | None = None) -> None:
     c.execute(_SCHEMA_SQL)
     for column in _DAILY_BAR_EXTRA_COLUMNS:
         c.execute(f"ALTER TABLE daily_bar ADD COLUMN IF NOT EXISTS {column} DOUBLE")
+    # 未发布的两列市值表，并入 stock_daily_basic 后不再使用。
+    c.execute("DROP TABLE IF EXISTS stock_mv")
 
 
 def close_conn() -> None:
@@ -373,6 +419,36 @@ def upsert_limit_status(rows: list[dict[str, Any]]) -> int:
     return len(rows)
 
 
+def upsert_stock_daily_basic(rows: list[dict[str, Any]]) -> int:
+    if not rows:
+        return 0
+    conn = get_conn()
+    synced_at = _now_iso()
+    columns: dict[str, Any] = {
+        "ts_code": [str(r["ts_code"]) for r in rows],
+        "trade_date": [str(r["trade_date"]) for r in rows],
+    }
+    for name in STOCK_DAILY_BASIC_FLOAT_COLUMNS:
+        columns[name] = pa.array([r.get(name) for r in rows], type=pa.float64())
+    columns["limit_status"] = pa.array([r.get("limit_status") for r in rows], type=pa.int32())
+    columns["synced_at"] = [synced_at] * len(rows)
+    view = "_tmp_stock_daily_basic"
+    conn.register(view, pa.table(columns))
+    insert_columns = ", ".join(columns)
+    try:
+        conn.execute(
+            f"""
+            INSERT OR REPLACE INTO stock_daily_basic
+              ({insert_columns})
+            SELECT {insert_columns}
+            FROM {view}
+            """
+        )
+    finally:
+        conn.unregister(view)
+    return len(rows)
+
+
 def list_index_dates(ts_code: str, start_date: str, end_date: str) -> list[str]:
     conn = get_conn()
     rows = conn.execute(
@@ -414,6 +490,52 @@ def list_limit_status_dates(start_date: str, end_date: str) -> list[str]:
         [start_date, end_date],
     ).fetchall()
     return [str(r[0]) for r in rows]
+
+
+def list_stock_daily_basic_dates(start_date: str, end_date: str) -> list[str]:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT DISTINCT trade_date FROM stock_daily_basic
+        WHERE trade_date >= ?
+          AND trade_date <= ?
+        ORDER BY trade_date
+        """,
+        [start_date, end_date],
+    ).fetchall()
+    return [str(r[0]) for r in rows]
+
+
+def list_missing_daily_basic_dates() -> tuple[list[str], int]:
+    """已有完整日线、但还没有 daily_basic 的交易日。返回 (待补日期, 已有日数)。"""
+    conn = get_conn()
+    pending = [
+        str(row[0])
+        for row in conn.execute(
+            """
+            SELECT s.trade_date
+            FROM sync_trade_date s
+            WHERE s.status = 'complete'
+              AND s.bar_count > 0
+              AND NOT EXISTS (
+                SELECT 1 FROM stock_daily_basic b WHERE b.trade_date = s.trade_date
+              )
+            ORDER BY s.trade_date
+            """
+        ).fetchall()
+    ]
+    have = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM sync_trade_date s
+        WHERE s.status = 'complete'
+          AND s.bar_count > 0
+          AND EXISTS (
+            SELECT 1 FROM stock_daily_basic b WHERE b.trade_date = s.trade_date
+          )
+        """
+    ).fetchone()
+    return pending, int(have[0]) if have else 0
 
 
 def fetch_index_bars(ts_code: str, start_date: str, end_date: str) -> list[dict[str, Any]]:
@@ -701,6 +823,62 @@ def fetch_latest_constituents(index_code: str) -> dict[str, Any]:
         "index_code": index_code,
         "as_of": as_of,
         "con_codes": [str(r[0]) for r in rows],
+    }
+
+
+def fetch_heatmap_quotes(trade_date: str, index_code: str | None = None) -> dict[str, Any]:
+    """日线收盘价、涨跌幅、成交额，以及同日流通市值、总市值。截止日无行情时退到不晚于该日的最近交易日。"""
+    conn = get_conn()
+    resolved = conn.execute(
+        """
+        SELECT MAX(trade_date) FROM daily_bar
+        WHERE trade_date <= ?
+        """,
+        [trade_date],
+    ).fetchone()
+    as_of = str(resolved[0]) if resolved and resolved[0] else None
+    if not as_of:
+        return {"as_of": None, "rows": []}
+
+    index_filter = ""
+    params: list[Any] = [as_of]
+    if index_code:
+        index_filter = """
+          AND d.ts_code IN (
+            SELECT con_code FROM index_weight
+            WHERE index_code = ?
+              AND trade_date = (
+                SELECT MAX(trade_date) FROM index_weight
+                WHERE index_code = ? AND trade_date <= ?
+              )
+          )
+        """
+        params.extend([index_code, index_code, as_of])
+
+    rows = conn.execute(
+        f"""
+        SELECT d.ts_code, d.pct_chg, d.close, d.amount, b.circ_mv, b.total_mv
+        FROM daily_bar d
+        LEFT JOIN stock_daily_basic b
+          ON b.ts_code = d.ts_code AND b.trade_date = d.trade_date
+        WHERE d.trade_date = ?
+        {index_filter}
+        """,
+        params,
+    ).fetchall()
+    return {
+        "as_of": as_of,
+        "rows": [
+            {
+                "ts_code": str(row[0]),
+                "pct_chg": _as_float(row[1]),
+                "close": _as_float(row[2]),
+                "amount": _as_float(row[3]),
+                "circ_mv": _as_float(row[4]),
+                "total_mv": _as_float(row[5]),
+            }
+            for row in rows
+        ],
     }
 
 
@@ -1275,6 +1453,7 @@ def clear_market() -> str:
     conn.execute("DELETE FROM index_daily")
     conn.execute("DELETE FROM margin")
     conn.execute("DELETE FROM stock_limit_status")
+    conn.execute("DELETE FROM stock_daily_basic")
     conn.execute("DELETE FROM index_weight")
     conn.execute("DELETE FROM fut_daily")
     conn.execute("DELETE FROM sync_step_state")

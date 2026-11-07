@@ -11,6 +11,18 @@ const TREE_SELECT = `
   FROM sw_industry
 `
 
+export interface ListedIndustryMember {
+  ts_code: string
+  name: string
+  market: string
+  l1_code: string
+  l1_name: string
+  l2_code: string
+  l2_name: string
+  l3_code: string
+  l3_name: string
+}
+
 function isLevel(value: string): value is SwIndustryLevel {
   return value === 'L1' || value === 'L2' || value === 'L3'
 }
@@ -149,6 +161,25 @@ export const swIndustryRepository = {
       src: string
     }>
     return rows.map(mapNode).filter((row): row is SwIndustryNode => row !== null)
+  },
+
+  listListedMembers(): ListedIndustryMember[] {
+    return getDb()
+      .prepare(
+        `SELECT
+            s.ts_code,
+            s.name,
+            COALESCE(s.market, '') AS market,
+            m.l1_code, l1.name AS l1_name,
+            m.l2_code, l2.name AS l2_name,
+            m.l3_code, l3.name AS l3_name
+         FROM sw_industry_member m
+         JOIN stocks s ON s.ts_code = m.ts_code AND s.list_status = 'L'
+         JOIN sw_industry l1 ON l1.index_code = m.l1_code
+         JOIN sw_industry l2 ON l2.index_code = m.l2_code
+         JOIN sw_industry l3 ON l3.index_code = m.l3_code`
+      )
+      .all() as ListedIndustryMember[]
   },
 
   listMemberCodes(indexCode: string): string[] {

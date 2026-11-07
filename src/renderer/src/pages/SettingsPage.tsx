@@ -207,7 +207,7 @@ export function SettingsPage({
     void loadAll(true)
   }, [])
 
-  const globalStatus: PipelineGlobalStatus = syncing ? 'running' : status?.global ?? 'init'
+  const globalStatus: PipelineGlobalStatus = syncing ? 'running' : (status?.global ?? 'init')
   const busy = loading || syncing || clearing
   const stepById = new Map<string, PipelineStepState>(
     (status?.steps ?? []).map((step) => [step.id, step])
@@ -269,6 +269,37 @@ export function SettingsPage({
 
   const handleRunPipeline = (): void => {
     void runAndReload(() => window.api.market.runPipeline())
+  }
+
+  const handleBackfillDailyBasic = (): void => {
+    void (async () => {
+      onSyncingChange(true)
+      setError(null)
+      setMessage(null)
+      setConfirmClear(false)
+      try {
+        const result = await window.api.market.backfillDailyBasic()
+        if (result.errors.length > 0) {
+          const written = result.fetched_days > 0 ? `已写入 ${result.fetched_days} 日。` : ''
+          setError(
+            written + result.errors.map((item) => `${item.trade_date} ${item.message}`).join('；')
+          )
+        } else if (result.fetched_days === 0 && result.skipped_days === 0) {
+          setMessage('还没有完整日线，请先更新日线')
+        } else if (result.fetched_days === 0) {
+          setMessage(`日指标已齐，已有 ${result.skipped_days} 个交易日`)
+        } else {
+          setMessage(
+            `已补全 ${result.fetched_days} 个交易日的日指标，跳过 ${result.skipped_days} 日`
+          )
+        }
+        await loadAll(false)
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : String(err))
+      } finally {
+        onSyncingChange(false)
+      }
+    })()
   }
 
   const handleRunStep = (stepId: PipelineStepId, force = false): void => {
@@ -486,9 +517,7 @@ export function SettingsPage({
             <Chip
               size="small"
               label={`截至 ${
-                status?.last_closed_trade_date
-                  ? yyyymmddToIso(status.last_closed_trade_date)
-                  : '—'
+                status?.last_closed_trade_date ? yyyymmddToIso(status.last_closed_trade_date) : '—'
               }`}
               variant="outlined"
             />
@@ -511,6 +540,13 @@ export function SettingsPage({
               startIcon={clearing ? <CircularProgress size={16} color="inherit" /> : undefined}
             >
               {clearing ? '清除中…' : confirmClear ? '确认清除数据？' : '清除所有数据'}
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={handleBackfillDailyBasic}
+              disabled={busy || !hasToken}
+            >
+              临时补全日指标
             </Button>
             <Button variant="outlined" disabled title="本轮不开放">
               自定义管理数据
@@ -535,7 +571,7 @@ export function SettingsPage({
               {visiblePipelineSteps.map((meta) => {
                 const step = stepById.get(meta.id)
                 const stepStatus: PipelineStepStatus =
-                  runningStepId === meta.id ? 'running' : step?.status ?? 'not_started'
+                  runningStepId === meta.id ? 'running' : (step?.status ?? 'not_started')
                 const histUnlocked = meta.parent
                   ? isDailyBarHistoryStepUnlocked(meta, stepById)
                   : true

@@ -5,12 +5,26 @@ import type { PaperArchive, PaperArchiveDraft } from '../shared/types/paperArchi
 import type { PaperPlan, PaperPlanDraft } from '../shared/types/paperPlan'
 import type { ChartReviewDraft, ChartReviewRecord } from '../shared/types/chartReview'
 import type { TradeJournal, TradeJournalDraft } from '../shared/types/tradeJournal'
-import type { MarketClearResult, StrategyListResult, StrategyRunParams, StrategyRunResult, WorkerReadyMessage } from '../shared/types/pythonProtocol'
+import type {
+  MarketClearResult,
+  StrategyListResult,
+  StrategyRunParams,
+  StrategyRunResult,
+  WorkerReadyMessage
+} from '../shared/types/pythonProtocol'
 import type { StrategyScreenParams, StrategyScreenResult } from '../shared/types/screener'
 import type { ChartInput } from '../shared/types/chart'
 import type { ChartDrawing } from '../shared/types/chartDrawing'
-import type { ChartLayout, LayoutItemParams, LayoutReorderDirection } from '../shared/types/chartLayout'
-import type { IndicatorScript, ScriptTryParams, ScriptTryResult } from '../shared/types/indicatorScript'
+import type {
+  ChartLayout,
+  LayoutItemParams,
+  LayoutReorderDirection
+} from '../shared/types/chartLayout'
+import type {
+  IndicatorScript,
+  ScriptTryParams,
+  ScriptTryResult
+} from '../shared/types/indicatorScript'
 import type {
   StrategyScript,
   StrategyScriptTryParams,
@@ -28,6 +42,7 @@ import type {
   MarketPoolItem,
   MarketQueryParams,
   MarketQueryResult,
+  DailyBasicBackfillResult,
   MarketSyncProgress,
   MarketSyncStatus,
   SyncMarketPoolResult
@@ -35,7 +50,11 @@ import type {
 import type { PipelineRunResult, PipelineStatusResult } from '../shared/types/pipeline'
 import type { PipelineStepId } from '../shared/constants/pipeline'
 import type { DashboardQueryParams, DashboardQueryResult } from '../shared/types/dashboard'
-import type { IndexConstituentsResult, IndexWeightSyncResult } from '../shared/types/indexConstituents'
+import type { HeatmapQueryParams, HeatmapQueryResult } from '../shared/types/heatmap'
+import type {
+  IndexConstituentsResult,
+  IndexWeightSyncResult
+} from '../shared/types/indexConstituents'
 import type {
   SwIndustryBreadcrumb,
   SwIndustryMembersResult,
@@ -76,10 +95,10 @@ const api = {
     pipelineStatus: (): Promise<PipelineStatusResult> =>
       ipcRenderer.invoke('market:pipelineStatus'),
     runPipeline: (): Promise<PipelineRunResult> => ipcRenderer.invoke('market:runPipeline'),
-    runStep: (params: {
-      step_id: PipelineStepId
-      force?: boolean
-    }): Promise<PipelineRunResult> => ipcRenderer.invoke('market:runStep', params),
+    backfillDailyBasic: (): Promise<DailyBasicBackfillResult> =>
+      ipcRenderer.invoke('market:backfillDailyBasic'),
+    runStep: (params: { step_id: PipelineStepId; force?: boolean }): Promise<PipelineRunResult> =>
+      ipcRenderer.invoke('market:runStep', params),
     clear: (): Promise<MarketClearResult> => ipcRenderer.invoke('market:clear'),
     syncIndexWeights: (): Promise<IndexWeightSyncResult> =>
       ipcRenderer.invoke('market:syncIndexWeights'),
@@ -111,6 +130,10 @@ const api = {
   dashboard: {
     query: (params?: DashboardQueryParams): Promise<DashboardQueryResult> =>
       ipcRenderer.invoke('dashboard:query', params ?? {})
+  },
+  heatmap: {
+    query: (params: HeatmapQueryParams): Promise<HeatmapQueryResult> =>
+      ipcRenderer.invoke('heatmap:query', params)
   },
   chart: {
     build: (params: MarketQueryParams): Promise<ChartInput | null> =>
@@ -200,7 +223,8 @@ const api = {
       ipcRenderer.invoke('paperPlan:create', params),
     update: (params: { id: string; draft: PaperPlanDraft }): Promise<PaperPlan> =>
       ipcRenderer.invoke('paperPlan:update', params),
-    remove: (params: { id: string }): Promise<void> => ipcRenderer.invoke('paperPlan:remove', params)
+    remove: (params: { id: string }): Promise<void> =>
+      ipcRenderer.invoke('paperPlan:remove', params)
   },
   symbolGroup: {
     tree: (): Promise<SymbolGroupTree> => ipcRenderer.invoke('symbolGroup:tree'),
@@ -227,8 +251,11 @@ const api = {
       ipcRenderer.invoke('symbolGroup:removeMembers', params),
     membership: (params: { tsCode: string }): Promise<string[]> =>
       ipcRenderer.invoke('symbolGroup:membership', params),
-    setSymbolGroups: (params: { tsCode: string; name: string; groupIds: string[] }): Promise<void> =>
-      ipcRenderer.invoke('symbolGroup:setSymbolGroups', params),
+    setSymbolGroups: (params: {
+      tsCode: string
+      name: string
+      groupIds: string[]
+    }): Promise<void> => ipcRenderer.invoke('symbolGroup:setSymbolGroups', params),
     saveHits: (params: SaveSymbolGroupHitsParams): Promise<SaveSymbolGroupHitsResult> =>
       ipcRenderer.invoke('symbolGroup:saveHits', params)
   },
@@ -256,7 +283,8 @@ const api = {
       ipcRenderer.invoke('tradeJournal:create', params),
     update: (params: { id: string; draft: TradeJournalDraft }): Promise<TradeJournal> =>
       ipcRenderer.invoke('tradeJournal:update', params),
-    remove: (params: { id: string }): Promise<void> => ipcRenderer.invoke('tradeJournal:remove', params)
+    remove: (params: { id: string }): Promise<void> =>
+      ipcRenderer.invoke('tradeJournal:remove', params)
   }
 }
 

@@ -15,7 +15,12 @@ from pydantic import ValidationError  # noqa: E402
 from worker.codec import emit, read_message  # noqa: E402
 from worker.handlers.compute_indicator import compute_indicator  # noqa: E402
 from worker.handlers.dashboard_query import query_dashboard  # noqa: E402
-from worker.handlers.dashboard_sync import dashboard_backfill  # noqa: E402
+from worker.handlers.heatmap_query import query_heatmap_quotes  # noqa: E402
+from worker.handlers.dashboard_sync import (  # noqa: E402
+    dashboard_backfill,
+    plan_daily_basic,
+    sync_daily_basic_day,
+)
 from worker.handlers.index_constituents import query_index_constituents  # noqa: E402
 from worker.handlers.index_weight_sync import sync_index_weight  # noqa: E402
 from worker.handlers.sw_industry_sync import sync_sw_industry  # noqa: E402
@@ -51,6 +56,8 @@ HANDLERS: dict[str, Handler] = {
     "data.sync.market_plan": market_plan,
     "data.sync.market_day": market_day,
     "data.sync.dashboard_backfill": dashboard_backfill,
+    "data.sync.daily_basic_plan": plan_daily_basic,
+    "data.sync.daily_basic_day": sync_daily_basic_day,
     "data.sync.index_weight": sync_index_weight,
     "data.sync.sw_industry": sync_sw_industry,
     "data.sync.trade_cal": sync_trade_cal,
@@ -58,6 +65,7 @@ HANDLERS: dict[str, Handler] = {
     "data.admin.clear_market": clear_market,
     "data.query.ohlcv": query_ohlcv,
     "data.query.dashboard": query_dashboard,
+    "data.query.heatmap_quotes": query_heatmap_quotes,
     "data.query.index_constituents": query_index_constituents,
     "data.meta.market_coverage": market_coverage,
     "data.meta.pipeline_status": pipeline_status,

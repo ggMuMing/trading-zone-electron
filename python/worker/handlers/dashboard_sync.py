@@ -11,21 +11,52 @@ from worker.dashboard_codes import (
     DASHBOARD_FUT_CODES,
 )
 from worker.db import market_db
-from worker.models import DashboardBackfillParams, DashboardBackfillResult
+from worker.models import DashboardBackfillParams, DashboardBackfillResult, MarketSyncDayParams
 from worker.rate_limit import wait_for_tushare_slot
 
 INDEX_DAILY_FIELDS = (
     "ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount"
 )
 MARGIN_FIELDS = "trade_date,exchange_id,rzye,rqye,rzrqye"
-LIMIT_FIELDS = "ts_code,trade_date,limit_status"
+DAILY_BASIC_FIELDS = "ts_code,trade_date,limit_status," + ",".join(
+    market_db.STOCK_DAILY_BASIC_FLOAT_COLUMNS
+)
 FUT_DAILY_FIELDS = "ts_code,trade_date,close"
 
 
 def sync_limit_status_for_date(pro: Any, trade_date: str) -> int:
-    """涨跌停状态仍随股票日线按日拉。指数 / 两融 / 期指改由步骤 2/8/9 按区间全量拉取。"""
+    """涨跌停状态仍随股票日线按日拉。同一次 daily_basic 写入全部日指标。"""
     wait_for_tushare_slot()
-    return market_db.upsert_limit_status(fetch_limit_status(pro, trade_date))
+    limit_count, _basic_count = write_daily_basic(pro, trade_date)
+    return limit_count
+
+
+def plan_daily_basic(_params: dict) -> dict[str, Any]:
+    market_db.init_schema()
+    pending, skipped = market_db.list_missing_daily_basic_dates()
+    return {"pending_dates": pending, "skipped_days": skipped}
+
+
+def sync_daily_basic_day(params: dict) -> dict[str, Any]:
+    parsed = MarketSyncDayParams.model_validate(params)
+    market_db.init_schema()
+    pro = ts.pro_api(parsed.token)
+    wait_for_tushare_slot()
+    limit_count, row_count = write_daily_basic(pro, parsed.trade_date)
+    if row_count <= 0:
+        raise RuntimeError(f"daily_basic empty for {parsed.trade_date}")
+    return {
+        "trade_date": parsed.trade_date,
+        "row_count": row_count,
+        "limit_count": limit_count,
+    }
+
+
+def write_daily_basic(pro: Any, trade_date: str) -> tuple[int, int]:
+    limit_rows, basic_rows = fetch_daily_basic(pro, trade_date)
+    row_count = market_db.upsert_stock_daily_basic(basic_rows)
+    limit_count = market_db.upsert_limit_status(limit_rows)
+    return limit_count, row_count
 
 
 def dashboard_backfill(params: dict) -> DashboardBackfillResult:
@@ -99,15 +130,25 @@ def dashboard_backfill(params: dict) -> DashboardBackfillResult:
                 errors.append(f"fut_daily {ts_code}: {exc}" if str(exc) else f"fut_daily {ts_code} failed")
 
     limit_dates = set(market_db.list_limit_status_dates(parsed.start_date, parsed.end_date))
-    missing_limit = [d for d in target_dates if d not in limit_dates]
-    for trade_date in missing_limit:
+    basic_dates = set(market_db.list_stock_daily_basic_dates(parsed.start_date, parsed.end_date))
+    missing_limit = {d for d in target_dates if d not in limit_dates}
+    missing_basic = {d for d in target_dates if d not in basic_dates}
+    for trade_date in sorted(missing_limit | missing_basic):
         try:
             wait_for_tushare_slot()
-            rows = fetch_limit_status(pro, trade_date)
-            limit_count += market_db.upsert_limit_status(rows)
-            limit_days += 1
+            limit_rows, basic_rows = fetch_daily_basic(pro, trade_date)
+            if trade_date in missing_limit:
+                limit_count += market_db.upsert_limit_status(limit_rows)
+                limit_days += 1
+            if trade_date in missing_basic:
+                market_db.upsert_stock_daily_basic(basic_rows)
         except Exception as exc:  # noqa: BLE001
-            errors.append(f"limit_status {trade_date}: {exc}" if str(exc) else f"limit_status {trade_date} failed")
+            label = (
+                "limit_status"
+                if trade_date in missing_limit and trade_date not in missing_basic
+                else "daily_basic"
+            )
+            errors.append(f"{label} {trade_date}: {exc}" if str(exc) else f"{label} {trade_date} failed")
 
     return DashboardBackfillResult(
         start_date=parsed.start_date,
@@ -231,23 +272,36 @@ def fetch_fut_daily(
     return rows
 
 
-def fetch_limit_status(pro: Any, trade_date: str) -> list[dict[str, Any]]:
-    df = pro.daily_basic(trade_date=trade_date, fields=LIMIT_FIELDS)
+def fetch_daily_basic(pro: Any, trade_date: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """一次 daily_basic：涨跌停状态，以及换手率、估值、股本、市值。"""
+    df = pro.daily_basic(trade_date=trade_date, fields=DAILY_BASIC_FIELDS)
     if df is None or df.empty:
-        return []
-    rows: list[dict[str, Any]] = []
+        return [], []
+    limit_rows: list[dict[str, Any]] = []
+    basic_rows: list[dict[str, Any]] = []
     for row in df.itertuples(index=False):
-        status = _nullable_int(getattr(row, "limit_status", None))
-        if status is None:
+        ts_code = str(getattr(row, "ts_code", "") or "").strip()
+        day = str(getattr(row, "trade_date", "") or "").strip()
+        if not ts_code or not day:
             continue
-        rows.append(
-            {
-                "ts_code": str(row.ts_code),
-                "trade_date": str(row.trade_date),
-                "limit_status": status,
-            }
-        )
-    return rows
+        status = _nullable_int(getattr(row, "limit_status", None))
+        if status is not None:
+            limit_rows.append(
+                {
+                    "ts_code": ts_code,
+                    "trade_date": day,
+                    "limit_status": status,
+                }
+            )
+        basic: dict[str, Any] = {
+            "ts_code": ts_code,
+            "trade_date": day,
+            "limit_status": status,
+        }
+        for name in market_db.STOCK_DAILY_BASIC_FLOAT_COLUMNS:
+            basic[name] = _nullable_float(getattr(row, name, None))
+        basic_rows.append(basic)
+    return limit_rows, basic_rows
 
 
 def _nullable_float(value: object) -> float | None:
